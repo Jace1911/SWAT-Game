@@ -1,0 +1,509 @@
+/* =====================================================================
+   MODULE 3 — UI / INPUT / AUDIO  (DOM + pointer events; calls Core API)
+   ---------------------------------------------------------------------
+   Everything here is platform glue. Port: replace with Godot Control
+   nodes / Unity UI; the Core calls (queueOrder, execute, stepTick …)
+   stay the same.
+   ===================================================================== */
+(function () {
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const isPhone = () => window.innerWidth <= 760;
+const V = Render.view;
+let uiVer = -1, logLen = 0, busy = false, lastFxSound = 0, openTeam = null;
+
+/* ---------------- audio (WebAudio beeps, no assets) ---------------- */
+let actx = null, muted = localStorage.getItem('swat.muted') === '1';
+function ac() { if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } } if (actx && actx.state === 'suspended') actx.resume(); return actx; }
+function tone(f, d = 0.08, type = 'sine', vol = 0.08, when = 0, slide = 0) { if (muted) return; const a = ac(); if (!a) return; const t = a.currentTime + when; const o = a.createOscillator(), g = a.createGain(); o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f * slide), t + d);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(g).connect(a.destination); o.start(t); o.stop(t + d + 0.02); }
+function noise(d = 0.2, vol = 0.15, lp = 1200) { if (muted) return; const a = ac(); if (!a) return; const n = Math.floor(a.sampleRate * d), b = a.createBuffer(1, n, a.sampleRate), ch = b.getChannelData(0); for (let i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+  const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain(); f.type = 'lowpass'; f.frequency.value = lp; g.gain.value = vol; s.buffer = b; s.connect(f).connect(g).connect(a.destination); s.start(); }
+const SFX = { click: () => tone(1400, 0.04, 'square', 0.03), order: () => { tone(880, 0.05, 'sine', 0.06); tone(1320, 0.06, 'sine', 0.05, 0.05); }, err: () => tone(220, 0.15, 'square', 0.05),
+  exec: () => { tone(520, 0.08, 'sawtooth', 0.05); tone(780, 0.1, 'sawtooth', 0.05, 0.09); tone(1040, 0.14, 'sawtooth', 0.05, 0.19); }, pager: () => { tone(2100, 0.07, 'square', 0.04); tone(2100, 0.07, 'square', 0.04, 0.12); tone(2600, 0.1, 'square', 0.04, 0.24); },
+  shot: () => noise(0.18, 0.25, 2600), breach: () => { noise(0.45, 0.35, 500); tone(70, 0.4, 'sine', 0.2, 0, 0.5); }, bang: () => { noise(0.6, 0.4, 4000); tone(3800, 0.6, 'sine', 0.02); }, thud: () => tone(110, 0.12, 'sine', 0.12, 0, 0.6),
+  bad: () => { tone(660, 0.18, 'square', 0.05); tone(440, 0.25, 'square', 0.05, 0.2); }, good: () => { tone(660, 0.08); tone(880, 0.08, 'sine', 0.08, 0.09); tone(1320, 0.16, 'sine', 0.08, 0.18); } };
+function sounds() { const S = Core.state;
+  for (const f of S.fx) if (f.id > lastFxSound) { lastFxSound = f.id; if (f.type === 'shot') SFX.shot(); else if (f.type === 'breach' || f.type === 'blast') SFX.breach(); else if (f.type === 'flash') setTimeout(SFX.bang, 250); else if (f.type === 'thud' || f.type === 'glass') SFX.thud(); }
+  let pager = false, bad = false, good = false; for (const e of S.events) { if (e.type === 'pager') pager = true; if (e.kind === 'bad') bad = true; if (e.kind === 'good') good = true; } S.events.length = 0;
+  if (bad) SFX.bad(); else if (pager) SFX.pager(); else if (good) SFX.good(); }
+
+/* ---------------- helpers ---------------- */
+let toastT = 0; function toast(msg, ok) { const t = $('toast'); t.textContent = msg; t.className = 'show' + (ok ? ' ok' : ''); clearTimeout(toastT); toastT = setTimeout(() => t.className = '', 2300); if (!ok) SFX.err(); }
+function shieldSVG(num, count, down) { return `<div class="shield"><svg viewBox="0 0 34 38"><defs><linearGradient id="sg${num}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${down ? '#5a1a24' : '#1b6fd6'}"/><stop offset="1" stop-color="${down ? '#2a0a10' : '#0a2a5a'}"/></linearGradient></defs><path d="M17 1.5 C22 4 27 4.5 32 4 L32 18 C32 27 25 33 17 36.5 C9 33 2 27 2 18 L2 4 C7 4.5 12 4 17 1.5Z" fill="url(#sg${num})" stroke="${down ? '#ff3b4e' : '#7fe3ff'}" stroke-width="1.6"/></svg><div class="n">${num}</div><div class="c">${count}</div></div>`; }
+const SKILL = s => s >= 0.85 ? 'Elite' : s >= 0.75 ? 'Veteran' : s >= 0.65 ? 'Seasoned' : 'Trained';
+function selUnit() { return V.sel ? Core.unit(V.sel) : null; }
+function select(uid) { V.sel = uid; V.mode = 'move'; V.aim = null; hidePop(); SFX.click(); refresh(true); }
+/* Action buttons. `kinds` = which unit kinds see the button (others are hidden, not just disabled). */
+const ACTS = [
+  { k: 'move', ic: '➜', name: 'Move', key: 'M', kinds: 'team patrol drone robot', tip: 'Tap the map to queue a move — outdoors it snaps to the nearest cover; red path = exposed to the suspect' },
+  { k: 'move', ic: '⛟', name: 'Drive', key: 'M', kinds: 'cruiser', tip: 'Tap the street / a driveway to drive the cruiser there (needs someone inside)' },
+  { k: 'breach', ic: '✸', name: 'Breach', key: 'B', kinds: 'team', tip: 'Tap a door, then choose the method: charge, ram, Halligan pry or kick' },
+  { k: 'detonate', ic: '✹', name: 'Detonate', key: 'X', kinds: 'team', tip: 'Tap a door with a hung charge to detonate it (team must be at a safe standoff)', eq: 'charge' },
+  { k: 'bang', ic: '✦', name: 'Flashbang', key: 'F', kinds: 'team', tip: 'Tap a room to throw a flashbang', eq: 'bang' },
+  { k: 'gas', ic: '☁', name: 'CS Gas', key: 'G', kinds: 'team', tip: 'Tap a room to deploy CS gas — it spreads through open doors; teams mask up automatically', eq: 'gas' },
+  { k: 'mask', ic: 'Ⓜ', name: 'Mask', key: 'K', kinds: 'team', tip: 'Don / remove gas masks (donning takes one tick; masks slightly reduce vision and aim)', instant: true },
+  { k: 'clear', ic: '▣', name: 'Clear', key: 'C', kinds: 'team', tip: 'Tap a room to enter and clear it' },
+  { k: 'shoot', ic: '◎', name: 'Fire', key: 'T', kinds: 'team patrol', tip: 'Tap the suspect / a window to fire aimed shots — the hit chance is shown before you commit' },
+  { k: 'suppress', ic: '⁂', name: 'Suppress', key: 'U', kinds: 'team patrol', tip: 'Tap a window / room to lay suppressive fire: low hit chance, makes the suspect duck instead of firing' },
+  { k: 'overwatch', ic: '⌯', name: 'Overwatch', key: 'O', kinds: 'team', tip: 'Tap a green perch (neighbor window/roof) or a yard spot for the sniper; the cone shows the sight-lines' },
+  { k: 'board', ic: '⛐', name: 'Get In', key: 'E', kinds: 'patrol', tip: 'Tap a cruiser to get in (2 seats)' },
+  { k: 'exit-house', ic: '⇱', name: 'Exit · House', key: 'E', kinds: 'cruiser', tip: 'Occupants get out on the house side (fast, but exposed)', instant: true },
+  { k: 'exit-safe', ic: '⇲', name: 'Exit · Safe', key: 'Q', kinds: 'cruiser', tip: 'Occupants get out on the far side, behind the car body (a driver sliding across takes +1 tick)', instant: true },
+  { k: 'hold', ic: '■', name: 'Hold', key: 'H', kinds: 'team patrol cruiser drone robot', tip: 'Hold position for the rest of this 30 s', instant: true },
+  { k: 'polecam', ic: '◉', name: 'Pole Cam', key: 'P', kinds: 'team', tip: 'Tap a door to look under it', eq: 'polecam' },
+  { k: 'drone', ic: '✈', name: 'Drone', key: 'D', kinds: 'team', tip: 'Tap a spot to fly the micro-drone there', eq: 'drone' },
+  { k: 'robot', ic: '⛭', name: 'Robot', key: 'R', kinds: 'team', tip: 'Tap a spot to drive the robot there', eq: 'robot' },
+  { k: 'pa', ic: '📢', name: 'PA Contact', key: 'L', kinds: 'team cruiser', tip: 'Loudspeaker: ask him to pick up / talk (in range of the house). He may yell from a window or door — or fire at the voice', instant: true, sep: true },
+  { k: 'callout', ic: '📣', name: 'Call Out', key: 'Y', kinds: 'team cruiser', tip: 'Contain & call out: order him out with hands up over the PA. Low odds; better with full containment, gas or rapport', instant: true },
+  { k: 'tphone', ic: '☎', name: 'Throw Phone', key: 'J', kinds: 'team', tip: 'Tap a room: the team approaches an opening (open door / broken window) and throws the phone in. Can be blocked, shot or ignored', eq: 'tphone' },
+  { k: 'rphone', ic: '⛭', name: 'Robot Phone', key: 'V', kinds: 'team', tip: 'Tap a room: the robot carries the throw-phone in through an open door (needs robot + Tech). Safer, slower', eq: 'tphone' },
+  { k: 'aid', ic: '✚', name: 'First Aid', key: 'A', kinds: 'team patrol', tip: 'Tap a casualty: go to them and render aid (a Medic with a medkit stabilises; others buy a little time)', sep: true },
+  { k: 'rescue', ic: '⇆', name: 'Rescue', key: 'W', kinds: 'team patrol', tip: 'Tap a casualty: reach them and drag them to the nearest casualty collection point in cover' },
+  { k: 'evac', ic: '🚑', name: 'Evacuate', key: 'Z', kinds: 'team patrol', tip: 'Tap a casualty: carry them all the way to the EMS ambulance point (then transport to hospital)' },
+];
+const STANCE_ORDER = ['return', 'free', 'hold'], STANCE_IC = { return: '↺', free: '✱', hold: '⊘' };
+function actsFor(u) { return u ? ACTS.filter(a => a.kinds.split(' ').includes(u.kind)) : ACTS.filter(a => a.kinds.includes('team')); }
+function allowed(u, k) { if (!u || u.status !== 'ok') return false; if (u.kind === 'cruiser' && u.disabled && k === 'move') return false; return actsFor(u).some(a => a.k === k); }
+const maskTxt = m => m === 'on' ? 'MASKED' : m === 'donning' ? 'MASKING…' : 'mask off (carried)';
+const coverTxt = u => { if (u.kind === 'patrol' && u.inCar) return 'in cruiser'; const c = Core.coverInfo(u.x, u.y); return c.level === 'inside' ? 'inside' : c.level === 'cover' ? `hard cover${c.obj ? ' · ' + c.obj : ''}` : c.level === 'partial' ? `concealed${c.obj ? ' · ' + c.obj : ''}` : 'EXPOSED'; };
+const coverCol = u => { if (u.kind === 'patrol' && u.inCar) return 'var(--cyan2)'; const l = Core.coverInfo(u.x, u.y).level; return l === 'open' ? 'var(--red)' : l === 'partial' ? 'var(--amber)' : 'var(--green)'; };
+
+/* ---------------- panels ---------------- */
+function renderTop() { const S = Core.state, I = Core.intelInfo(); $('opname').textContent = S.opName; const tt = S.phase === 'over' ? S.turn + 1 : S.turn; $('st-turn').textContent = Core.elapsedAt(tt, S.phase === 'executing' ? S.tick : 0); $('st-clock').textContent = Core.clockAt(tt, S.phase === 'executing' ? S.tick : 0).slice(0, 5); $('st-seed').textContent = S.seed + (S.opts && S.opts.career ? ' · C' : '');
+  $('opsub').textContent = `BARRICADED SUBJECT · ${I.arch === 'UNKNOWN' ? 'RESIDENTIAL' : I.arch.toUpperCase()}`;
+  $('st-down').innerHTML = `<span style="color:${S.stats.down ? 'var(--red)' : '#fff'}">${S.stats.down}</span> / ${Core.LOSE_DOWN}`;
+  const m = S.suspect.mode; const cls = S.phase === 'over' ? (S.result && S.result.win ? 'green' : 'red') : m === 'barricaded' ? 'red' : m === 'alert' || m === 'fleeing' ? 'amber' : 'green';
+  $('st-status').innerHTML = `<span class="pill ${cls}">${S.phase === 'over' ? (S.result.win ? 'RESOLVED' : 'FAILED') : S.phase === 'executing' ? 'EXECUTING' : (I.suspect === 'UNKNOWN' ? 'BARRICADED' : I.suspect)}</span>`; }
+function teamStatus(u) { const t = []; if (u.mask === 'on') t.push('<span style="color:var(--green)">Ⓜ masked</span>'); else if (u.mask === 'donning') t.push('<span style="color:var(--amber)">masking…</span>');
+  if (u.impair > 0.1) t.push(`<span style="color:var(--amber)">☁ impaired ${Math.round(u.impair * 100)}%</span>`); if (u.stun > 0) t.push('<span style="color:var(--amber)">✷ dazed</span>');
+  if (u.perch) t.push(`<span style="color:var(--green)">⌯ ${esc(u.perch.name || 'overwatch')}</span>`); return t.join(' · '); }
+function teamCard(u) { const S = Core.state, n = Core.teamOk(u).length, down = u.status !== 'ok'; const specs = [...new Set(Core.teamOk(u).map(o => o.spec))].map(sp => Core.SPECS[sp].icon).join(' ');
+  const ri = Core.roomAt(u.x, u.y); const where = ri >= 0 && S.rooms[ri].known ? S.rooms[ri].name : Core.nearStaging(u.x, u.y) ? 'Staging' : 'Exterior';
+  const eq = Object.keys(u.equip).filter(k => u.equip[k] > 0).map(k => `<span class="chip">${Core.EQUIP[k].short}${u.equip[k] > 1 ? '×' + u.equip[k] : ''}</span>`).join('');
+  const st = teamStatus(u);
+  return `<div class="card ${V.sel === u.uid ? 'sel' : ''} ${down ? 'down' : ''}" data-sel="${u.uid}">${shieldSVG(u.num, n, down)}<div style="min-width:0;flex:1"><div class="nm">${esc(u.name.toUpperCase())} <span style="color:var(--dim);font-weight:600;font-size:11px">${specs}</span></div>
+    <div class="meta">${down ? '<span style="color:var(--red)">COMBAT INEFFECTIVE</span>' : `${n} officers · ${where} · <span style="color:${coverCol(u)}">${coverTxt(u)}</span> · ${u.orders.length} ord`}</div>
+    ${!down ? `<div class="meta">${Core.STANCES[u.stance] || ''}${st ? ' · ' + st : ''}</div>` : ''}<div class="chips">${eq}</div></div><button class="info" data-team="${u.uid}" title="Team details">ⓘ</button></div>`; }
+function patrolCard(u) { const S = Core.state, c = S.contain.find(q => Math.hypot(q.x - u.x, q.y - u.y) <= 1.6), down = u.status !== 'ok';
+  const car = u.inCar ? Core.unit(u.inCar) : null;
+  const st = down ? '<span style="color:var(--red)">DOWN</span>' : u.panic > 0 ? '<span style="color:var(--amber)">PANICKED</span>' : u.retreating ? '<span style="color:var(--amber)">FALLING BACK</span>' : u.impair > 0.1 ? `<span style="color:var(--amber)">COUGHING ${Math.round(u.impair * 100)}%</span>` : car ? `In ${esc(car.name)}` : c ? 'Covering ' + c.name : 'Unassigned post';
+  return `<div class="card ${V.sel === u.uid ? 'sel' : ''} ${down ? 'down' : ''}" data-sel="${u.uid}"><div class="pbadge" style="border-color:${down ? 'var(--red)' : u.panic > 0 || u.impair > 0.1 ? 'var(--amber)' : '#9fb7d0'}">P${u.num}</div><div style="min-width:0"><div class="nm" style="font-size:12px">${esc(u.name)}</div>
+    <div class="meta">${st}${down ? '' : ` · <span style="color:${coverCol(u)}">${coverTxt(u)}</span>`}${u.orders.length ? ' · ' + u.orders.length + ' ord' : ''}</div>${down ? '' : `<div class="meta">${Core.STANCES[u.stance] || ''} · no gas mask</div>`}</div></div>`; }
+function cruiserCard(u) { const occ = u.occ.map(id => Core.unit(id)).filter(Boolean); const side = Core.houseSideOf(u);
+  return `<div class="card ${V.sel === u.uid ? 'sel' : ''} ${u.disabled ? 'down' : ''}" data-sel="${u.uid}"><div class="pbadge" style="border-color:${u.disabled ? 'var(--red)' : u.hits ? 'var(--amber)' : 'var(--cyan2)'};border-radius:7px">${u.num ? 'C' + u.num : 'C'}</div><div style="min-width:0"><div class="nm" style="font-size:12px">${esc(u.name)}</div>
+    <div class="meta">${u.disabled ? '<span style="color:var(--red)">DISABLED</span>' : occ.length ? occ.map(o => 'P' + o.num).join(', ') + ' inside' : 'Empty — cover object'}${u.hits ? ` · <span style="color:var(--amber)">${u.hits} hit${u.hits > 1 ? 's' : ''}</span>` : ''}${u.orders.length ? ' · ' + u.orders.length + ' ord' : ''}</div>
+    <div class="meta">Driver side faces ${side === 'driver' ? '<span style="color:var(--amber)">the house</span>' : 'away from the house'}</div></div></div>`; }
+function renderTeams() { const S = Core.state; const teams = S.units.filter(u => u.kind === 'team'); let h = '';
+  h += `<div class="sec">SWAT Teams</div>`; h += teams.length ? teams.map(teamCard).join('') : `<div class="row" style="color:var(--dim)">No team formed yet — officers arrive by pager.</div>`;
+  const staged = S.officers.filter(o => o.status === 'staged' && !o.team);
+  if (staged.length) { h += `<div class="sec">At Staging · Unassigned</div>`; h += staged.map(o => `<div class="row"><span style="color:var(--cyan2)">${Core.SPECS[o.spec].icon}</span>${esc(o.name)}${o.quals.length ? ' <span class="chip">◆ Spotter</span>' : ''}<span class="r">${Core.SPECS[o.spec].name}</span></div>`).join('');
+    h += `<button id="b-form" style="width:100%;margin-top:6px" ${S.phase !== 'planning' ? 'disabled' : ''}>＋ Form Team (${Math.min(5, staged.length)})</button>`; }
+  const enr = S.officers.filter(o => o.status === 'enroute');
+  if (enr.length) { h += `<div class="sec">Paged · En Route</div>`; h += enr.map(o => `<div class="row" style="color:#c6b8f0"><span>📟</span>${esc(o.name)}<span class="r">${Core.SPECS[o.spec].name} · ETA ${Core.tMin(Math.max(1, o.eta - S.turn))}</span></div>`).join(''); }
+  h += `<div class="sec">Patrol (Perimeter)</div>`; h += S.units.filter(q => q.kind === 'patrol').map(patrolCard).join('');
+  const cars = S.units.filter(q => q.kind === 'cruiser'); if (cars.length) { h += `<div class="sec">Cruisers</div>`; h += cars.map(cruiserCard).join(''); }
+  const devs = S.units.filter(q => (q.kind === 'drone' || q.kind === 'robot') && q.status === 'ok');
+  if (devs.length) { h += `<div class="sec">Devices</div>`; h += devs.map(u => `<div class="card ${V.sel === u.uid ? 'sel' : ''}" data-sel="${u.uid}"><div class="pbadge" style="border-color:var(--violet)">${u.kind === 'drone' ? 'D' : 'R'}</div><div><div class="nm" style="font-size:12px">${esc(u.name)}</div><div class="meta">Battery ${Core.tMin(u.battery)}</div></div></div>`).join(''); }
+  $('teams').innerHTML = h; $('l-count').textContent = `${S.officers.filter(o => o.status === 'ok').length} DEPLOYED`;
+  // phone chips
+  let c = ''; for (const u of teams) c += `<div class="tchip ${V.sel === u.uid ? 'sel' : ''}" data-sel="${u.uid}">${shieldSVG(u.num, Core.teamOk(u).length, u.status !== 'ok')}${esc(u.name)}${u.mask === 'on' ? ' Ⓜ' : ''}</div>`;
+  for (const u of S.units.filter(q => q.kind === 'patrol' && q.status === 'ok')) c += `<div class="tchip ${V.sel === u.uid ? 'sel' : ''}" data-sel="${u.uid}"><div class="pbadge" style="width:24px;height:24px;font-size:9px;border-color:${coverCol(u)}">P${u.num}</div></div>`;
+  for (const u of cars) c += `<div class="tchip ${V.sel === u.uid ? 'sel' : ''}" data-sel="${u.uid}"><div class="pbadge" style="width:24px;height:24px;font-size:9px;border-radius:6px;border-color:${u.disabled ? 'var(--red)' : 'var(--cyan2)'}">C${u.num || ''}</div></div>`;
+  if (enr.length) c += `<div class="tchip" style="color:#c6b8f0">📟 ${enr.length} en route</div>`;
+  if (staged.length) c += `<div class="tchip" id="c-form" style="color:var(--green)">＋ Form team (${staged.length})</div>`;
+  $('chips').innerHTML = c; }
+function negRow() { const N = Core.negoSummary(); if (N.outcome) return `<span>Negotiation</span><b style="font-size:11px;color:var(--green)">${esc(N.outcome)}</b>`;
+  if (N.contact) return `<span>Negotiation</span><b style="font-size:11px;color:var(--green)">${N.contact === 'phone' || N.contact === 'tphone' ? 'ON THE LINE' : 'PA CONTACT'} · ${Core.state.suspect.talk | 0}%</b><span>Mood</span><b style="font-size:11px">${esc(N.mood)}</b>`;
+  return `<span>Negotiation</span><b style="font-size:11px;color:var(--dim)">${N.onScene ? (N.numberKnown ? 'number known' : N.line ? 'phone inside' : 'no contact') : 'negotiator en route'}</b>`; }
+function casPill(c, o) { if (!c) return `<span class="pill red">${o.stable ? 'STABLE' : 'HIT'}</span>`; const col = c.state === 'kia' || c.state === 'lost' ? '' : c.state === 'evacuated' || c.state === 'transport' || c.stable ? 'green' : c.state === 'mobile' ? 'amber' : 'red';
+  return `<span class="pill ${col}" title="${esc(Core.sevWord(c))}">${esc(Core.casLabel(c).toUpperCase())}${Core.casActive(c) && !c.stable ? ' · ' + Core.tDur(c.crit) : ''}</span>`; }
+function casOf(o) { return (Core.state.cas || []).find(c => c.who === 'officer' && c.ref === o.id); }
+function renderInfo() { const S = Core.state, I = Core.intelInfo(), sp = S.suspect;
+  const thrCol = /VISUAL|ARMED|LOCATED/.test(I.threat) ? 'var(--red)' : 'var(--dim)';
+  $('binfo').innerHTML = `<span>Layout</span><b style="font-size:11px">${esc(I.arch)}</b><span>Rooms known</span><b>${I.roomsKnown} / ${I.roomsTotal}</b><span>Rooms cleared/viewed</span><b>${I.explored}</b><span>Threat</span><b style="color:${thrCol};font-size:11px">${I.threat}</b><span>Weapon</span><b style="font-size:11px">${esc(I.weapon)}</b><span>Suspect</span><b>${I.suspect}</b>`
+    + (sp.maskSeen ? `<span>Gas mask</span><b style="color:var(--red)">WEARING ONE</b>` : '') + (sp.visible && sp.impair > 0.1 && !sp.maskOn ? `<span>Condition</span><b style="color:var(--amber)">COUGHING</b>` : '')
+    + (I.containKnown ? `<span>Containment</span><b style="color:${I.contain === I.containTotal && !I.sides.gaps.length ? 'var(--green)' : 'var(--amber)'}">${I.contain} / ${I.containTotal} posts · ${I.sides.n}/${I.sides.of} sides${I.sides.gaps.length ? ' · GAP ' + I.sides.gaps.join(', ').toUpperCase() : ''}</b>` : `<span>Containment</span><b style="color:var(--dim);font-size:11px">? — run a Status Check</b>`) + `${negRow()}${I.cas ? `<span>Casualties</span><b style="color:var(--amber)">${I.cas} need help</b>` : ''}<span>Intel action</span><b style="color:var(--cyan2)">${S.cmd ? Core.COMMANDS[S.cmd].name : '—'}</b>`;
+  $('intelpct').textContent = I.level + '%'; $('intelbar').style.width = I.level + '%'; }
+function renderLog(force) { const S = Core.state; if (!force && S.log.length === logLen) return; logLen = S.log.length; const L = S.log.slice(-60);
+  $('log').innerHTML = L.map(e => `<div class="${e.kind}"><span class="t" title="mission ${Core.elapsedAt(e.turn, e.tick)}">${Core.clockAt(e.turn, e.tick)}</span>${esc(e.text)}</div>`).join(''); $('log').scrollTop = 1e6;
+  const last = L[L.length - 1]; $('ticker').textContent = last ? last.text : ''; }
+function renderActs() { const S = Core.state, u = selUnit(); let h = ''; const list = actsFor(u);
+  for (const a of list) { const ok = !!u && allowed(u, a.k) && S.phase === 'planning'; const cnt = a.eq && u && u.equip ? u.equip[a.eq] || 0 : null;
+    const nm = a.k === 'mask' && u ? (u.mask === 'on' ? 'Mask Off' : 'Masks On') : a.name;
+    h += `<button class="act ${V.mode === a.k && u ? 'on' : ''}" data-act="${a.k}" ${ok ? '' : 'disabled'} title="${esc(a.tip)} (${a.key})"><span class="ic">${a.ic}</span>${nm}${cnt !== null && u && u.kind === 'team' ? `<span class="ct">${cnt}</span>` : ''}</button>`;
+    if (a.k === 'hold') h += '<span class="vsep"></span>'; }
+  { const nc = (S.cas || []).filter(c => Core.casActive(c) && c.known && c.who !== 'suspect').length; if (nc) h += `<span class="vsep"></span><span class="chip" style="align-self:center;color:var(--amber);white-space:nowrap" title="Known casualties needing help">✚ ${nc} casualt${nc === 1 ? 'y' : 'ies'}</span>`; }
+  if (u && (u.kind === 'team' || u.kind === 'patrol')) { const st = u.stance || 'return';
+    h += `<button class="act" data-act="stance" ${S.phase === 'planning' && u.status === 'ok' ? '' : 'disabled'} title="Fire stance (S): Return fire → Fire at will → Hold fire. Officers return fire automatically when the suspect shoots"><span class="ic">${STANCE_IC[st]}</span>${st === 'return' ? 'Ret. Fire' : st === 'free' ? 'At Will' : 'Hold Fire'}</button>`; }
+  h += '<span class="vsep"></span>';
+  h += `<button class="act ${S.cmd ? 'on' : ''}" data-act="intel" ${S.phase === 'planning' ? '' : 'disabled'} title="Intel & negotiation (I)"><span class="ic">◈</span>Intel</button>`;
+  h += `<button class="act" data-act="undo" ${u && u.orders.length && S.phase === 'planning' ? '' : 'disabled'} title="Undo last order (Backspace)"><span class="ic">↶</span>Undo</button>`;
+  h += `<button class="act" data-act="clearall" ${u && u.orders.length && S.phase === 'planning' ? '' : 'disabled'} title="Clear this unit's orders"><span class="ic">✕</span>Cancel</button>`;
+  $('acts').innerHTML = h;
+  const n = S.units.reduce((a, q) => a + (q.status === 'ok' ? q.orders.length : 0), 0) + (S.cmd ? 1 : 0);
+  $('exec').disabled = S.phase !== 'planning'; $('exec-sub').textContent = S.phase === 'executing' ? `TICK ${S.tick}/${Core.TICKS}` : `${n} ORDER${n === 1 ? '' : 'S'} QUEUED`; }
+function renderHint() { const S = Core.state, u = selUnit(); let t;
+  if (S.phase === 'executing') t = `Executing ${Core.elapsedAt(S.turn)} → ${Core.elapsedAt(S.turn + 1)} … ${Core.elapsedAt(S.turn, S.tick)}`;
+  else if (S.phase === 'over') t = 'Operation complete — start a New Scenario';
+  else if (!u) t = isPhone() ? 'Tap a shield, patrol or cruiser chip · drag to pan · pinch to zoom' : 'Select a team, patrol officer or cruiser (click map / card / 1–9) · drag to pan · wheel to zoom';
+  else { const a = actsFor(u).find(q => q.k === V.mode); t = `${u.name}: ${a ? a.tip : ''}`; }
+  if (V.hint) t = V.hint; $('hint').textContent = t; }
+function refresh(force) { const S = Core.state; if (!force && uiVer === S.version) return; uiVer = S.version; renderTop(); renderTeams(); renderInfo(); renderLog(force); renderActs(); renderHint(); if (openTeam && $('m-team').classList.contains('show')) renderTeamDlg(); layoutSafe(); }
+
+/* ---------------- team detail modal ---------------- */
+function renderTeamDlg() { const S = Core.state, u = Core.unit(openTeam); if (!u) { closeModal('m-team'); return; }
+  const at = Core.nearStaging(u.x, u.y), planning = S.phase === 'planning'; const others = S.units.filter(q => q.kind === 'team' && q !== u);
+  const qualChips = o => (o.quals || []).map(q => `<span class="chip" title="${esc(Core.QUALS[q].desc)}">${Core.QUALS[q].icon} ${Core.QUALS[q].name}</span>`).join(' ');
+  const mem = u.members.map(id => Core.off(id)).map(o => `<tr><td><b style="color:#fff">${esc(o.name)}</b>${o.dog ? `<div style="font-size:10.5px;color:var(--dim)">K9 "${o.dog}"</div>` : ''}${o.quals && o.quals.length ? `<div class="chips">${qualChips(o)}</div>` : ''}</td><td><span style="color:var(--cyan2)">${Core.SPECS[o.spec].icon}</span> ${Core.SPECS[o.spec].name}<div style="font-size:10.5px;color:var(--dim)">${Core.SPECS[o.spec].desc}</div></td>
+    <td style="width:90px"><div style="font-size:10.5px;color:var(--dim)">${SKILL(o.skill)} · ${Math.round(o.skill * 100)}</div><div class="bar"><i style="width:${Math.round(o.skill * 100)}%"></i></div></td>
+    <td>${o.status === 'down' ? casPill(casOf(o), o) : `<select data-move="${o.id}" ${planning ? '' : 'disabled'}><option value="">Move to…</option><option value="__staging">Staging (unassign)</option>${others.map(t => `<option value="${t.uid}">${esc(t.name)}</option>`).join('')}</select>`}</td></tr>`).join('');
+  const eq = Object.keys(Core.EQUIP).map(k => `<div title="${esc(Core.EQUIP[k].desc)}">${Core.EQUIP[k].name}<div style="font-size:10.5px;color:var(--dim)">${Core.EQUIP[k].desc}</div></div><button data-eq="${k}" data-d="-1" ${at && planning && u.equip[k] > 0 ? '' : 'disabled'}>−</button><span class="q">${u.equip[k] || 0}</span><button data-eq="${k}" data-d="1" ${at && planning && S.armory[k] > 0 ? '' : 'disabled'}>＋</button><span class="a">armory ${S.armory[k]}</span>`).join('');
+  const specs = [...new Set(Core.teamOk(u).map(o => o.spec))].map(sp => `<span class="chip">${Core.SPECS[sp].icon} ${Core.SPECS[sp].name}</span>`).join('');
+  // capability summary: overwatch / spotter, breaching methods, masks
+  const sp = Core.spotterOf(u); const caps = [];
+  if (Core.hasSpec(u, 'marksman')) caps.push(`<b style="color:#fff">Overwatch:</b> sniper ready${sp ? ` · spotter <b style="color:var(--green)">${esc(sp.name)}</b> (${esc(sp.label)}, ×${sp.mult} hit chance)` : ' · <span style="color:var(--amber)">no spotter (add any officer; a qualified Sniper Spotter is best)</span>'}`);
+  caps.push(`<b style="color:#fff">Breach methods:</b> ${Object.keys(Core.BREACH).map(m => { const c = Core.breachCan(u, m); return c === true ? `<span class="chip">${Core.BREACH[m].name}</span>` : `<span class="chip" style="opacity:.45" title="${esc(c)}">${Core.BREACH[m].name}</span>`; }).join(' ')}${Core.hasSpec(u, 'breacher') ? ' · <span style="color:var(--green)">⚒ Breacher on team (better odds)</span>' : ''}`);
+  caps.push(`<b style="color:#fff">Gas masks:</b> ${maskTxt(u.mask)}${u.impair > 0.1 ? ` · <span style="color:var(--amber)">impaired ${Math.round(u.impair * 100)}%</span>` : ''}${u.stun > 0 ? ' · <span style="color:var(--amber)">dazed</span>' : ''} · <b style="color:#fff">Stance:</b> ${Core.STANCES[u.stance]}`);
+  $('team-dlg').innerHTML = `<div class="ph">${shieldSVG(u.num, Core.teamOk(u).length, u.status !== 'ok')}<input type="text" id="t-name" maxlength="14" value="${esc(u.name)}" aria-label="Team name"><span class="sp"></span><small>SKILL ${Math.round(Core.teamSkill(u) * 100)} · ${Core.teamOk(u).length}/${u.members.length} ACTIVE</small><button class="ib" data-close="m-team">✕</button></div>
+  <div class="body"><div class="chips" style="margin-bottom:8px">${specs || '<span class="chip">No specialties</span>'}</div>
+  <div style="font-size:11.5px;color:#bcd0e6;display:grid;gap:4px;margin-bottom:6px">${caps.map(c => `<div>${c}</div>`).join('')}</div>
+  <div class="sec">Members</div><table><tr><th>Officer</th><th>Specialty</th><th>Skill</th><th>Assign</th></tr>${mem}</table>
+  ${others.length ? '' : '<div style="font-size:11px;color:var(--dim);margin-top:6px">Form a second team (staging) to transfer members between teams.</div>'}
+  <div class="sec">Equipment</div>${at ? '' : '<div class="note">⚠ Team must be at the staging area (SWAT truck) to draw from or return to the armory.</div>'}<div class="eq">${eq}</div>
+  <div style="display:flex;gap:8px;margin-top:14px"><button data-close="m-team" style="flex:1">Done</button><button id="t-sel" style="flex:1" class="on">Give Orders</button></div></div>`; }
+function openTeamDlg(uid) { openTeam = uid; renderTeamDlg(); $('m-team').classList.add('show'); SFX.click(); }
+function closeModal(id) { const ids = id ? [id] : ['m-team', 'm-intel', 'm-help', 'm-end', 'm-brief', 'm-911', 'm-career']; if (ids.includes('m-911')) stopSpeech(); for (const k of ids) { const m = $(k); if (m) m.classList.remove('show'); if (k === 'm-team') openTeam = null; } }
+$('team-dlg').addEventListener('change', e => { const t = e.target;
+  if (t.id === 't-name') { Core.renameTeam(openTeam, t.value); refresh(true); }
+  if (t.dataset.move) { const r = Core.assign(t.dataset.move, t.value === '__staging' ? null : t.value); if (!r.ok) toast(r.reason); else SFX.order(); if (!Core.unit(openTeam)) closeModal('m-team'); refresh(true); } });
+$('team-dlg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.eq) { const r = Core.equip(openTeam, b.dataset.eq, +b.dataset.d); if (!r.ok) toast(r.reason); else SFX.click(); refresh(true); }
+  if (b.id === 't-sel') { const id = openTeam; closeModal('m-team'); select(id); } });
+
+/* ---------------- intel modal ---------------- */
+const TALK_DESC = { call: 'Dial his cell or the throw-phone. He may not answer or may refuse', rapport: 'Calm, personal talk — steady progress, lowers agitation', listen: 'Let him vent — best when he is very agitated',
+  concession: 'Offer something (food, a call to family) — big boost, limited uses', status: 'Check on him / anyone inside — small gain, refreshes the read', ultimatum: 'Demand he comes out now — works only with strong rapport, else escalates' };
+function renderIntel() { const S = Core.state; let h = '';
+  for (const k in Core.COMMANDS) { const c = Core.COMMANDS[k], a = c.avail(); h += `<button class="cmd ${S.cmd === k ? 'on' : ''}" data-cmd="${k}" ${a === true ? '' : 'disabled'}><b>${c.name}</b><span>${c.desc}</span>${a === true ? '' : `<br><em>${esc(a)}</em>`}</button>`; }
+  const N = Core.negoSummary(); let t = '';
+  for (const k of Core.TALK_KEYS) { const a = N.avail[k]; t += `<button class="cmd ${N.pick === k ? 'on' : ''}" data-talk="${k}" ${a === true ? '' : 'disabled'}><b>${esc(N.names[k])}</b><span>${TALK_DESC[k]}</span>${a === true ? '' : `<br><em>${esc(a)}</em>`}</button>`; }
+  const P = N.preview, pr = P ? ['cover', 'shield', 'overwatch', 'commands'].map(k => `<span class="chip" style="color:${P[k] ? 'var(--green)' : 'var(--red)'}">${P[k] ? '✓' : '✗'} ${k}</span>`).join(' ') : '';
+  const amb = P ? Math.round(Core.ambushRisk(P) * 100) : null;
+  const stat = `<div class="kv" style="margin-bottom:8px"><span>Negotiators</span><b>${N.onScene ? N.onScene + ' on scene' + (N.onScene > 1 ? ' (coaching +10%)' : '') : 'en route'}</b>
+    <span>Contact</span><b style="color:${N.contact ? 'var(--green)' : 'var(--amber)'}">${N.contact ? ({ phone: 'Phone line', tphone: 'Throw-phone line', pa: 'PA / shouting' })[N.contact] || N.contact : N.quiet ? 'He went quiet (' + Core.tMin(N.quiet) + ')' : 'None'}</b>
+    <span>Suspect number</span><b>${N.numberKnown ? 'KNOWN · ' + esc(N.numberSrc || '') : 'unknown'}</b>${N.line ? '<span>Throw-phone</span><b style="color:var(--green)">inside</b>' : ''}
+    <span>Mood · rapport</span><b>${esc(N.mood)} · ${esc(N.rapport)}</b><span>Attempts · refusals</span><b>${N.attempts} · ${N.refusals}</b><span>Rounds · concessions</span><b>${N.rounds} · ${N.concessions}</b>
+    ${N.read ? `<span>Read on him</span><b style="font-size:11px">${esc(N.read)}</b>` : ''}${N.outcome ? `<span>Outcome</span><b style="color:var(--green)">${esc(N.outcome)}</b>` : ''}</div>`;
+  const hist = N.hist.length ? `<div class="loglite">${N.hist.map(x => `<div>${Core.elapsedAt(x.turn)} · ${esc(x.t)}</div>`).join('')}</div>` : '';
+  $('intel-dlg').innerHTML = `<div class="ph">Intel · Negotiation<span class="sp"></span><small>ONE EACH PER 30 S · RUNS ON EXECUTE</small><button class="ib" data-close="m-intel">✕</button></div><div class="body">
+    <div class="sh">Intel action</div><div class="grid2">${h}</div>
+    ${S.cmd ? `<button data-cmd="__none" style="margin-top:10px;width:100%">Cancel queued: ${Core.COMMANDS[S.cmd].name}</button>` : ''}
+    <div class="sh" style="margin-top:14px">Negotiation · dialogue</div>${stat}<div class="grid2">${t}</div>
+    ${N.pick ? `<button data-talk="__none" style="margin-top:10px;width:100%">Cancel queued: ${esc(N.names[N.pick])}</button>` : ''}
+    <p style="font-size:11px;color:var(--dim);margin:8px 0 0">Other ways to open contact: select a cruiser or a team with a bullhorn → <b>PA Contact</b>; a team with a throw-phone → <b>Throw Phone</b> / <b>Robot Phone</b>. He may refuse, hang up or not answer.</p>${hist}
+    <div class="sh" style="margin-top:14px">Surrender walk-out protocol</div>${P ? `<div class="chips">${pr}</div><p style="font-size:11px;color:var(--dim);margin:6px 0">Hidden-weapon ambush risk at the walk-out spot right now: <b style="color:${amb > 12 ? 'var(--red)' : 'var(--amber)'}">${amb}%</b>. Cover = teams in cover with a view of the spot; shield = a team with a ballistic shield within 8 m; overwatch = a sniper with a sight-line; commands = PA / bullhorn in range.</p>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button data-tool="surr" style="flex:1">◎ Set walk-out spot</button><button data-tool="ems" style="flex:1">🚑 Move EMS point</button></div>
+    </div>`; }
+$('intel-dlg').addEventListener('click', e => { const b = e.target.closest('button[data-talk],button[data-tool]'); if (!b) return; e.stopPropagation();
+  if (b.dataset.tool) { V.tool = b.dataset.tool; closeModal('m-intel'); toast(b.dataset.tool === 'ems' ? 'Tap the map to place the EMS ambulance point (outside, away from the house)' : 'Tap the map outside the house to set the surrender walk-out spot', true); refresh(true); return; }
+  const k = b.dataset.talk; const r = Core.setTalk(k === '__none' ? null : k); if (!r.ok) { toast(r.reason); return; } SFX.order(); if (k !== '__none') toast(`${Core.negoSummary().names[k]} queued for the next 30 s`, true); closeModal('m-intel'); refresh(true); }, true);
+$('intel-dlg').addEventListener('click', e => { const b = e.target.closest('button[data-cmd]'); if (!b) return; const k = b.dataset.cmd; if (k === 'call911') { closeModal('m-intel'); open911(); return; } const r = Core.setCommand(k === '__none' ? null : k); if (!r.ok) toast(r.reason); else { SFX.order(); if (k !== '__none') toast(Core.COMMANDS[k].instant ? `${Core.COMMANDS[k].name} — done (see log)` : `${Core.COMMANDS[k].name} queued for the next 30 s`, true); } closeModal('m-intel'); refresh(true); });
+
+/* ---------------- end / help ---------------- */
+function showEnd() { const S = Core.state, R = S.result; if (!R) return; careerRecordEnd(); const turns = S.turn + (S.phase === 'over' ? 1 : 0);
+  $('end-dlg').innerHTML = `<div class="ph">Operation Debrief<span class="sp"></span><small>${esc(S.opName)} · SEED ${S.seed}</small></div><div class="body"><div class="big" style="color:${R.win ? 'var(--green)' : 'var(--red)'}">${esc(R.title)}</div><p style="text-align:center;color:#bcd0e6">${esc(R.text)}</p>
+   <div class="kv"><span>Mission time</span><b>${Core.tMin(turns)} (${Core.elapsedAt(turns)})</b><span>Resolution</span><b>${esc(S.stats.method || '—')}</b><span>Breaches</span><b>${S.stats.breaches}</b><span>Shots fired by suspect</span><b>${S.stats.shots}</b><span>Officers hit</span><b>${S.stats.down}</b></div>
+   ${(R.debrief || []).length ? `<div class="sh" style="margin-top:12px">After-action</div><div class="kv">${R.debrief.map(d => `<span>${esc(d.k.trim())}</span><b style="font-size:11.5px;font-weight:500;${d.k.startsWith('  ') ? 'color:var(--dim)' : ''}">${esc(d.v)}</b>`).join('')}</div>` : ''}
+   ${careerEndHTML()}<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button data-close="m-end" style="flex:1">Review Map</button><button id="e-retry" style="flex:1">Replay Seed${S.opts && S.opts.career ? ' (not counted)' : ''}</button><button id="e-cont" class="on" style="flex:1">Continue ▸ Career</button></div></div>`;
+  $('m-end').classList.add('show'); }
+$('end-dlg').addEventListener('click', e => { if (e.target.id === 'e-new') { closeModal('m-end'); newGame(); } if (e.target.id === 'e-retry') { closeModal('m-end'); newGame(Core.state.seed); } if (e.target.id === 'e-cont') { closeModal('m-end'); openCareer(); } });
+const HB = (t, s) => `<p><b style="color:#fff">${t}:</b> ${s}</p>`;
+$('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><button class="ib" data-close="m-help">✕</button></div><div class="body" style="font-size:12.5px;color:#bcd0e6">
+ ${HB('Goal', `an armed suspect is barricaded in one of the houses. Contain it, gather intel, then talk him out or make a safe entry. Win when he is <b>detained</b> or <b>surrenders</b>. You lose if ${Core.LOSE_DOWN} officers are hit and down, he escapes the perimeter, or ${Core.tMin(Core.TURN_LIMIT)} of mission time pass.`)}
+ ${HB('Time', 'the game pauses while you plan. Select a unit and queue orders (dotted paths). Orders chain — e.g. Move → Breach → Flashbang → Clear. Optionally queue one Intel action, then press <b style="color:var(--amber)">EXECUTE</b>: everyone acts at once for <b>30 seconds</b> of mission time (8 steps of ~4 s). The <b>mission clock</b> in the top bar starts at 0:00 when SWAT is activated and advances 0:30 per EXECUTE; the radio log shows the time of day. ETAs, gas, breach and critical-care timers are shown in minutes / m:ss.')}
+ ${HB('Mission brief & 911 call', 'every mission opens with a brief of what happened before SWAT was activated: the 911 call, what the first patrol units did, and anything known about the suspect. <b>Listen to the 911 call</b> (📋 button, or Intel → Review 911 Call) shows the transcript with times and can read it aloud (mute / skip). The caller ID or a family caller may give you his phone number. Reviewing is instant.')}
+ ${HB('Perimeter on arrival', 'patrol cruisers start at the ends of the block or at the nearest intersection, keeping traffic out (striped <b>TRAFFIC BLOCKED</b> markers on the map and minimap) — moving one opens the street. Patrol officers may already be in good positions, or may have left a side of the house unwatched by accident, or bunched up at the front. Run Intel → <b>Status Check</b> (instant) for a roll call: it reveals which sides are watched and flags any gap. An unwatched side is how he slips out.')}
+ ${HB('Officer down on arrival', 'sometimes a patrol officer was hit before SWAT arrived: injured and mobile, immobile and bleeding out with a critical countdown, or killed. A downed officer in the front yard is in the line of fire — plan the rescue (shield, cover, medic) before the timer runs out.')}
+ ${HB('Cover', 'every spot is checked against real sight lines from <i>each</i> window and exterior door. <b>Hard cover</b> (cruisers, parked cars, tree trunks, sheds, neighbor houses, utility boxes) stops rounds — hits are rare. <b>Concealment</b> (hedges, fences, mailboxes) hides you so he fires less often, but rounds go straight through. Outdoor moves snap to the nearest hard cover (then concealment) within 4–7 m; if there is none you get a ⚠ NO COVER warning and the officer stands exposed. Shield on the unit: <span style="color:var(--green)">green</span> = hard cover, <span style="color:var(--amber)">amber</span> = concealment, <span style="color:var(--red)">red</span> = exposed. Planned routes are tinted red/amber where they cross his lines of fire.')}
+ ${HB('Containment posts', 'the amber ◇ posts (4 corners, front, rear) are always at real cover: each one is shielded from every window and door yet can still watch the house. Front posts are <b>CRUISER COVER</b>: nothing to hide behind in a front yard, so drive a cruiser to the ghost car outline in the street and stand behind it (a parked street car can serve too). Side and rear posts use the yard (sheds, trees, hedges) or the corners of the neighbor houses. A solid green shield badge = <b>HARD COVER</b>, a leaf = <b>CONCEALMENT</b>; zoom in to see what shields it. Where a yard has nothing to hide behind, the scene adds some (hedge row, trees, utility box). Patrol officers start behind cover; posts count as held when an officer is within ~2 m or an occupied cruiser within 3 m.')}
+ ${HB('Suspect fire', 'he targets exposed officers first, then cruiser drivers, then officers in cover. Officers on <i>Return fire</i> shoot back automatically — only the nearest two, as a snap shot at the muzzle flash (×0.8, patrol ×0.55); exposed patrol officers fall back to cover. Use the stance button to switch Return fire / Fire at will / Hold fire.')}
+ ${HB('Shooting', 'Fire / Suppress, then hover or tap a target to see the hit chance and its breakdown (base, range, cover, visibility, skill, spotter, impairment). Pistols rarely hit, rifles are low, the sniper is best — especially when he is at a window. Suppress rarely hits but makes him duck.')}
+ ${HB('Cruisers', 'patrol officers can Get In (2 seats); select the cruiser to Drive it or Exit on the <i>house side</i> (fast, exposed) or the <i>safe side</i> (behind the car; a driver sliding over costs +1 tick). The windshield is weak — a driver can be hit. Parked cruisers are cover.')}
+ ${HB('Sniper overwatch', 'a team with a Marksman can take Overwatch on a perch in a neighbor house (window or roof) or a yard vantage point; the cone shows his sight-lines. A spotter raises his hit chance — a qualified <b>◆ Sniper Spotter</b> most, any other officer moderately — and spots the suspect at windows sooner. Perched snipers are very hard to hit.')}
+ ${HB('CS gas', 'gas spreads room to room through open doors and broken windows and vents outdoors as a plume; you only see it where you have vision or intel. Deploying gas calls “Gas! Masks on” — donning takes a tick. Unmasked officers in gas are heavily impaired; masks cost a little vision and aim. Patrol have no masks: they cough, may fall back or panic — pull them out. The suspect may flee or give up… unless he has a gas mask (you only learn that when you see him).')}
+ ${HB('Negotiation', 'Two negotiators arrive staggered. Open contact by <b>Call</b> (needs his number — from a neighbor interview, the 911 record or family), <b>PA Contact</b> from a cruiser or a bullhorn team (he may yell from a window — or shoot), or a <b>Throw Phone</b> tossed through an open door/broken window or carried in by the robot (can be blocked, shot or ignored). He can refuse, not answer or hang up. Once talking, pick one dialogue move per turn in Intel: Build Rapport, Active Listening, Concession, Status Check, Ultimatum.')}
+ ${HB('Surrender walk-out', 'when he agrees, he walks to the ◎ walk-out spot next turn and kneels; the nearest unit takes custody. Some hide a weapon: set protocol first — teams in cover watching the spot, a shield team close, sniper overwatch and a PA/bullhorn giving commands — each cuts the ambush risk (shown in Intel).')}
+ ${HB('Contain & call out', '<b>Call Out</b> over a PA orders him out. Low odds (~10–15%), better with full containment, gas and rapport; agitation lowers it.')}
+ ${HB('Casualties', 'a hit person may be killed (memorial marker), injured but mobile (moves to cover and walks to EMS), or immobile (needs rescue). A ✚ marker shows the critical countdown (m:ss of mission time); you only see status with vision or a radio report. <b>First Aid</b> (Medic + medkit stabilises), <b>Rescue</b> drags to cover, <b>Evacuate</b> carries to the 🚑 EMS point, then transport to hospital. Three officers hit aborts the operation.')}
+ ${HB('Breaching', 'Breach → tap a door → pick a method. <b>Charge</b> (Breacher only): hang it, back off to the safe-standoff ring, then it detonates (automatically, or choose “Hang only” and use Detonate later) — fastest and most reliable but very loud; anyone inside the ring is dazed. <b>Ram</b>: medium and loud. <b>Halligan pry</b>: quiet but slow. <b>Kick</b>: no gear, poor odds. Barricades and storm doors (shown once seen) make every method harder. Noise alerts the suspect.')}
+ ${HB('Forces', 'patrol (P1–P4) are on scene — park them on the amber ◇ containment points. SWAT officers are paged and arrive at staging; press <b>Form Team</b>. Tap ⓘ (or a selected shield) for members, specialties, qualifications, armory and transfers.')}
+ ${HB('Career', 'press 🎖 <b>Career</b> to run your unit: start a career mission (a new random scenario each time), then the result is saved automatically in this browser — record, outcomes, time, debrief score. Officers gain XP, skill and rank; injured officers recover and sit out missions; officers killed go to the memorial and a rookie is hired. Career points buy gear (drone, robot, less-lethal, armored vehicle, extra negotiator / sniper, bigger teams). Export the save as a text code or file to move it to another device; <b>New Career</b> resets.')}
+ ${HB('Scenarios', 'every scenario is generated from a seed: house layout, neighborhood, cruiser and suspect gear, patrol positions and the 911 call. <b>New Scenario</b> picks a new seed; add <kbd>#seed=12345</kbd> to the URL to replay one. Seed replays and quick scenarios use the full default roster and gear and are <i>not</i> counted in your career.')}
+ <div class="grid2"><div><b style="color:var(--cyan2)">Desktop</b><br>Click a unit / card or <kbd>1</kbd>–<kbd>9</kbd> to select · click map to order<br><kbd>M</kbd> move <kbd>B</kbd> breach <kbd>X</kbd> detonate <kbd>F</kbd> flash <kbd>G</kbd> gas <kbd>K</kbd> mask <kbd>C</kbd> clear <kbd>T</kbd> fire <kbd>U</kbd> suppress <kbd>O</kbd> overwatch <kbd>E</kbd> get in / exit <kbd>S</kbd> stance <kbd>H</kbd> hold <kbd>P</kbd> pole cam <kbd>I</kbd> intel<br><kbd>Backspace</kbd> undo · <kbd>Enter</kbd> execute · <kbd>Esc</kbd> deselect<br>Drag to pan · wheel to zoom · <kbd>0</kbd> fit · click the overview map to jump</div>
+ <div><b style="color:var(--cyan2)">Touch</b><br>Tap a unit or chip to select · tap again for details<br>Tap the map to place orders (Fire: tap once to preview the hit chance, again to confirm)<br>One-finger drag to pan · pinch to zoom · ＋/－/⤢/▦ buttons<br>TEAMS / INTEL tabs open the panels; ▦ shows the overview map</div></div>
+ <button data-close="m-help" class="on" style="width:100%;margin-top:12px">Got it</button></div>`;
+document.addEventListener('click', e => { const c = e.target.closest('[data-close]'); if (c) { const id = c.dataset.close; if (id === 'left' || id === 'right') $(id).classList.remove('open'); else closeModal(id); layoutSafe(); }
+  if (e.target.classList && e.target.classList.contains('modal')) closeModal(e.target.id); });
+
+/* ---------------- breach method picker (popup at the door) ---------------- */
+let popDoor = null;
+function hidePop() { const p = $('pop'); if (p) p.className = ''; popDoor = null; }
+function doorDesc(d) { const t = [];
+  t.push(d.kind === 'garage' ? 'Garage door' : d.exterior ? 'Exterior door' : 'Interior door');
+  if (d.locked) t.push('locked'); if (d.barricaded && d.barrKnown) t.push('<span style="color:var(--red)">BARRICADED</span>');
+  if (d.storm && d.stormKnown) t.push(d.stormState === 'closed' ? '<span style="color:var(--amber)">storm door</span>' : 'storm door open');
+  if (d.charge) t.push('<span style="color:var(--amber)">charge hung</span>'); return t.join(' · '); }
+function showBreachPop(u, did, sx, sy) { const S = Core.state, d = S.doors[did]; popDoor = did;
+  let h = `<div class="pt">${esc(d.name || 'Door')}<span>${doorDesc(d)}</span></div>`;
+  for (const m of Object.keys(Core.BREACH)) { const e = Core.breachEst(u, d, m), ok = e.ok === true;
+    const tip = ok ? e.text : e.ok;
+    const line = `${Math.round(e.p * 100)}%${e.storm ? ` · storm ${Math.round(e.pStorm * 100)}%` : ''} · ~${e.ticks}t · ${e.noise}`;
+    h += `<button data-bm="${m}" ${ok ? '' : 'disabled'} title="${esc(tip)}"><b>${esc(Core.BREACH[m].name)}${m === 'charge' ? ' — hang &amp; auto-detonate' : ''}</b><small>${ok ? line : esc(e.ok)}</small></button>`;
+    if (m === 'charge' && ok) h += `<button data-bm="charge" data-hang="1" title="Hang the charge and back off to the safe standoff; use Detonate (X) when you choose"><b>Charge — hang only</b><small>detonate later on your command</small></button>`; }
+  h += `<div class="pn">Breaching is noisy: the suspect will be alerted. Stay outside the ${Core.CHARGE_SAFE} m ring when a charge blows.</div>`;
+  const p = $('pop'); p.innerHTML = h; p.className = 'show';
+  const W = window.innerWidth, Hh = window.innerHeight, r = p.getBoundingClientRect();
+  if (!isFinite(sx) || !isFinite(sy)) { sx = W / 2; sy = Hh / 2; }
+  p.style.left = Math.max(6, Math.min(W - r.width - 6, sx - r.width / 2)) + 'px'; p.style.top = Math.max(60, Math.min(Hh - r.height - 140, sy - r.height - 18)) + 'px'; }
+$('pop').addEventListener('click', e => { const b = e.target.closest('button[data-bm]'); if (!b || popDoor === null) return; const u = selUnit(); if (!u) return;
+  const o = { type: 'breach', door: popDoor, method: b.dataset.bm }; if (b.dataset.hang) o.hangOnly = true; hidePop(); q(u.uid, o); });
+
+/* ---------------- aim preview (Fire / Suppress) ---------------- */
+function planEnd(u) { const P = Core.planFor(u); for (let i = P.length - 1; i >= 0; i--) if (P[i] && P[i].ok && P[i].end) return P[i].end; return [u.x, u.y]; }
+function aimTarget(cx, cy) { const sp = Core.state.suspect; let x = Math.floor(cx), y = Math.floor(cy);
+  if (sp.visible && Math.hypot(sp.x + 0.5 - cx, sp.y + 0.5 - cy) < 1.6) { x = sp.x; y = sp.y; } return [x, y]; }
+function aimInfo(u, x, y, mode) { const from = u.perch ? [u.x, u.y] : planEnd(u); const h = Core.hitChance(u, x, y, from); let p = h.p || 0; if (mode === 'suppress') p = p * 0.35;
+  V.aim = { fx: from[0], fy: from[1], x, y, p, why: h.why }; return h; }
+function showAim(u, h, mode, confirm) { const b = $('aimbox'); if (!h) { b.className = ''; return; }
+  let s = `<div class="pt">${mode === 'suppress' ? 'SUPPRESS' : 'FIRE'} · ${esc(h.weapon || '')}${h.d !== undefined ? ' · ' + h.d + ' m' : ''}<b>${h.why ? '—' : Math.round(V.aim.p * 100) + '%'}</b></div>`;
+  if (h.why) s += `<div class="pr" style="color:var(--amber)">${esc(h.why)}</div>`;
+  for (const pt of h.parts || []) s += `<div class="pr"><span>${pt.k}</span><i>${esc(pt.t)}</i><b>${pt.k === 'base' ? Math.round(pt.v * 100) + '%' : '×' + pt.v.toFixed(2)}</b></div>`;
+  if (!h.why && h.cap && h.p >= h.cap - 0.001) s += `<div class="pr"><span>cap</span><i>max for this weapon</i><b>${Math.round(h.cap * 100)}%</b></div>`;
+  if (mode === 'suppress') s += `<div class="pr"><span>suppress</span><i>spray: makes him duck, rarely hits</i><b>×0.35</b></div>`;
+  if (confirm) s += `<div class="pn">Tap the same spot again to confirm</div>`;
+  b.innerHTML = s; b.className = 'show'; }
+
+/* ---------------- orders from map taps ---------------- */
+let lastPtrType = 'mouse', pendingAim = null;
+function q(uid, o) { const r = Core.queueOrder(uid, o); if (!r.ok) { toast(r.reason); return false; } SFX.order(); V.hint = null;
+  if (o.type === 'move' && o.cover === 'open') toast('⚠ NO COVER near that spot — the officer will be exposed to the house windows/doors');
+  else if (o.type === 'move' && o.snapped) { const ci = Core.coverInfo(o.x, o.y); toast((ci.q === 'hard' ? 'Moved to hard cover: ' : 'Moved to concealment (hides, does not stop rounds): ') + (ci.obj || 'best covered spot'), true); }
+  refresh(true); return true; }
+function mapTap(sx, sy) {
+  const S = Core.state; if (S.phase !== 'planning') return;
+  if (V.tool) { const [cx, cy] = Render.toCell(sx, sy), tool = V.tool; V.tool = null; const r = tool === 'ems' ? Core.setEMS(Math.floor(cx), Math.floor(cy)) : Core.setSurrenderSpot(Math.floor(cx), Math.floor(cy));
+    if (!r.ok) toast(r.reason); else { SFX.order(); toast(tool === 'ems' ? 'EMS point moved' : 'Walk-out spot set — he will be told to walk here and kneel', true); } refresh(true); return; }
+  const u0 = selUnit(); const hit = Render.pickUnit(sx, sy);
+  if (u0 && V.mode === 'board' && hit && Core.unit(hit).kind === 'cruiser') { q(u0.uid, { type: 'board', car: hit }); return; }
+  if (hit && !(u0 && (V.mode === 'shoot' || V.mode === 'suppress'))) { hidePop(); if (hit === V.sel) { const u = Core.unit(hit); if (u.kind === 'team') openTeamDlg(hit); return; } const u = Core.unit(hit); if (u.status === 'ok' || u.kind === 'team') { select(hit); return; } }
+  const u = selUnit(); if (!u) return;
+  const [cx, cy] = Render.toCell(sx, sy), x = Math.floor(cx), y = Math.floor(cy);
+  if (x < 0 || y < 0 || x >= Core.MAP_W || y >= Core.MAP_H) return;
+  switch (V.mode) {
+    case 'move': { hidePop(); let tx = x, ty = y; if (u.kind === 'patrol') { const c = S.contain.find(p => Math.hypot(p.x - cx + 0.5, p.y - cy + 0.5) < 1.6); if (c) { tx = c.x; ty = c.y; } }
+      q(u.uid, { type: 'move', x: tx, y: ty }); break; }
+    case 'breach': { const d = Render.pickDoor(cx, cy); if (d === null) { hidePop(); toast('Tap on a door'); return; } if (S.doors[d].state !== 'closed') { toast('That door is already open'); return; } showBreachPop(u, d, sx, sy); SFX.click(); break; }
+    case 'polecam': case 'detonate': { const d = Render.pickDoor(cx, cy); if (d === null) { toast('Tap on a door'); return; } q(u.uid, { type: V.mode, door: d }); break; }
+    case 'bang': case 'gas': case 'clear': { const r = Core.roomAt(x, y); if (r < 0) { toast('Tap inside a room'); return; } if (!S.rooms[r].known && V.mode === 'clear') { toast('Room layout unknown — gather intel or breach first'); return; }
+      q(u.uid, { type: V.mode, room: r }); break; }
+    case 'shoot': case 'suppress': { const [tx, ty] = aimTarget(cx, cy); const mode = V.mode === 'shoot' ? 'fire' : 'suppress';
+      const h = aimInfo(u, tx, ty, V.mode);
+      if (lastPtrType !== 'mouse' && !(pendingAim && Math.abs(pendingAim[0] - tx) <= 1 && Math.abs(pendingAim[1] - ty) <= 1)) { pendingAim = [tx, ty]; showAim(u, h, V.mode, true); return; }
+      pendingAim = null; if (h.why) { toast('Cannot shoot there: ' + h.why); return; }
+      if (q(u.uid, { type: 'shoot', x: tx, y: ty, mode })) { showAim(u, h, V.mode, false); setTimeout(() => { if (!pendingAim) $('aimbox').className = ''; }, 2600); } break; }
+    case 'overwatch': { const p = Render.pickPerch(cx, cy); q(u.uid, p !== null && p !== undefined ? { type: 'overwatch', perch: p } : { type: 'overwatch', x, y }); break; }
+    case 'drone': case 'robot': q(u.uid, { type: V.mode, x, y }); break;
+    case 'tphone': case 'rphone': { const r = Core.roomAt(x, y); if (r < 0) { toast('Tap inside a room'); return; } q(u.uid, { type: 'tphone', room: r, via: V.mode === 'rphone' ? 'robot' : 'team' }); break; }
+    case 'aid': case 'rescue': case 'evac': { const c = pickCas(cx, cy); if (!c) { toast('Tap on a casualty marker (✚)'); return; } q(u.uid, { type: V.mode, cas: c.id }); break; }
+    case 'board': toast('Tap a cruiser'); break;
+  }
+}
+function pickCas(cx, cy) { let best = null, bd = 2.2; for (const c of Core.state.cas || []) { if (!Core.casActive(c) || c.who === 'suspect' && c.state !== 'immobile') continue; const d = Math.hypot(c.x + 0.5 - cx, c.y + 0.5 - cy); if (d < bd) { bd = d; best = c; } } return best; }
+function action(k) { const S = Core.state, u = selUnit();
+  if (k === 'intel') { renderIntel(); $('m-intel').classList.add('show'); return; }
+  if (k === 'undo') { if (u) { Core.undoOrder(u.uid); refresh(true); } return; }
+  if (k === 'clearall') { if (u) { Core.clearOrders(u.uid); refresh(true); } return; }
+  if (k === 'cancel' || k === 'esc') { V.mode = 'move'; hidePop(); V.aim = null; pendingAim = null; $('aimbox').className = ''; refresh(true); return; }
+  if (!u) { toast('Select a unit first'); return; }
+  if (k === 'stance') { const st = STANCE_ORDER[(STANCE_ORDER.indexOf(u.stance || 'return') + 1) % 3]; Core.setStance(u.uid, st); SFX.click(); toast(`${u.name}: ${Core.STANCES[st]}`, true); refresh(true); return; }
+  if (!allowed(u, k)) { toast('Not available for this unit'); return; }
+  hidePop(); V.aim = null; pendingAim = null; $('aimbox').className = '';
+  if (k === 'hold') { q(u.uid, { type: 'hold' }); return; }
+  if (k === 'pa' || k === 'callout') { q(u.uid, { type: 'pa', mode: k === 'pa' ? 'contact' : 'callout' }); return; }
+  if ((k === 'aid' || k === 'rescue' || k === 'evac')) { const cs = (S.cas || []).filter(c => Core.casActive(c) && c.known && c.who !== 'suspect'); if (!cs.length) { toast('No known casualties'); return; } if (cs.length === 1) { q(u.uid, { type: k, cas: cs[0].id }); return; } }
+  if (k === 'mask') { q(u.uid, { type: 'mask', on: u.mask !== 'on' }); return; }
+  if (k === 'exit-house' || k === 'exit-safe') { q(u.uid, { type: 'exit', side: k === 'exit-house' ? 'house' : 'safe' }); return; }
+  if (k === 'detonate') { const ds = S.doors.filter(d => d.charge && d.charge.by === u.uid).concat(S.doors.filter(d => u.orders.some(o => o.type === 'breach' && o.hangOnly && o.door === d.id)));
+    if (ds.length === 1) { q(u.uid, { type: 'detonate', door: ds[0].id }); return; } if (!ds.length) { toast('No charge hung by this team — Breach → Charge first'); return; } }
+  V.mode = k; SFX.click(); refresh(true); }
+function actsMore() { const a = $('acts'); a.classList.toggle('more', a.scrollWidth > a.clientWidth + 4 && a.scrollLeft + a.clientWidth < a.scrollWidth - 4); }
+$('acts').addEventListener('scroll', actsMore); window.addEventListener('resize', actsMore); setInterval(actsMore, 500);
+$('acts').addEventListener('wheel', e => { const a = $('acts'); if (a.scrollWidth > a.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { a.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive: false });
+$('acts').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b && !b.disabled) action(b.dataset.act); });
+function onPanelClick(e) { const info = e.target.closest('[data-team]'); if (info) { e.stopPropagation(); openTeamDlg(info.dataset.team); return; }
+  if (e.target.closest('#b-form') || e.target.closest('#c-form')) { const r = Core.formTeam(); if (!r.ok) toast(r.reason); else { SFX.order(); toast(`${r.team.name} team formed — tap ⓘ to review`, true); V.sel = r.team.uid; V.mode = 'move'; } refresh(true); return; }
+  const c = e.target.closest('[data-sel]'); if (c) { const uid = c.dataset.sel; if (V.sel === uid && Core.unit(uid).kind === 'team' && e.currentTarget.id === 'chips') { openTeamDlg(uid); return; } select(uid);
+    const u = Core.unit(uid); if (u && isPhone()) { $('left').classList.remove('open'); layoutSafe(); } if (u) centerOn(u); } }
+$('teams').addEventListener('click', onPanelClick); $('chips').addEventListener('click', onPanelClick);
+function centerOn(u) { const [sx, sy] = Render.toScreen(u.x + 0.5, u.y + 0.5); const w = window.innerWidth, h = window.innerHeight; if (sx < 60 || sy < 60 || sx > w - 60 || sy > h - 60) Render.centerOn(u.x + 0.5, u.y + 0.5); }
+
+/* ---------------- execute loop ---------------- */
+const TICK_MS = 300;
+function execute() { const S = Core.state; if (S.phase !== 'planning' || busy) return; ac(); hidePop(); V.aim = null; $('aimbox').className = '';
+  const n = S.units.reduce((a, q) => a + (q.status === 'ok' ? q.orders.length : 0), 0); if (!n && !S.cmd) toast('No orders queued — units will hold for 30 s', true);
+  if (!Core.execute()) return; busy = true; SFX.exec(); V.hint = null; refresh(true);
+  const step = () => { Render.snapshot(TICK_MS - 20); const done = Core.stepTick(); sounds(); refresh(); if (!done) setTimeout(step, TICK_MS); else setTimeout(() => { Render.endAnim(); busy = false; sounds(); refresh(true); if (Core.state.phase === 'over') { careerRecordEnd(); setTimeout(showEnd, 700); } }, TICK_MS); };
+  setTimeout(step, 120); }
+$('exec').addEventListener('click', execute);
+
+/* ---------------- pointer: pan / pinch / wheel / tap ---------------- */
+const cv = $('map'), ptr = new Map(); let drag = null, pinch = null;
+cv.addEventListener('pointerdown', e => { lastPtrType = e.pointerType || 'mouse'; cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, [e.clientX, e.clientY]); ac();
+  if (ptr.size === 1) drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, t: performance.now() };
+  if (ptr.size === 2) { const [a, b] = [...ptr.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2 }; if (drag) drag.moved = true; } });
+cv.addEventListener('pointermove', e => { if (!ptr.has(e.pointerId)) { if (e.pointerType !== 'mouse') return; const [cx, cy] = Render.toCell(e.clientX, e.clientY); const u = selUnit();
+    V.hoverDoor = (V.mode === 'breach' || V.mode === 'polecam' || V.mode === 'detonate') && u ? Render.pickDoor(cx, cy) : null;
+    if (u && (V.mode === 'shoot' || V.mode === 'suppress') && Core.state.phase === 'planning') { const [tx, ty] = aimTarget(cx, cy); if (!V.aim || V.aim.x !== tx || V.aim.y !== ty) showAim(u, aimInfo(u, tx, ty, V.mode), V.mode, false); }
+    return; }
+  ptr.set(e.pointerId, [e.clientX, e.clientY]);
+  if (ptr.size >= 2 && pinch) { const [a, b] = [...ptr.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]), cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2; Render.pan(cx - pinch.cx, cy - pinch.cy); Render.zoomAt(cx, cy, d / Math.max(1, pinch.d)); pinch = { d, cx, cy }; return; }
+  if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 8) { drag.moved = true; hidePop(); } if (drag.moved) Render.pan(dx, dy); drag.x = e.clientX; drag.y = e.clientY; } });
+function up(e) { if (!ptr.has(e.pointerId)) return; ptr.delete(e.pointerId); if (ptr.size < 2) pinch = null;
+  if (ptr.size === 0) { if (drag && !drag.moved && e.type === 'pointerup') mapTap(e.clientX, e.clientY); drag = null; } else if (ptr.size === 1) { const [p] = [...ptr.values()]; drag = { x: p[0], y: p[1], sx: p[0], sy: p[1], moved: true }; } }
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+cv.addEventListener('wheel', e => { e.preventDefault(); hidePop(); Render.zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+cv.addEventListener('contextmenu', e => { e.preventDefault(); if (V.sel) { Core.undoOrder(V.sel); refresh(true); } });
+document.addEventListener('gesturestart', e => e.preventDefault());
+$('z-in').onclick = () => Render.zoomAt(window.innerWidth / 2, window.innerHeight / 2, 1.25);
+$('z-out').onclick = () => Render.zoomAt(window.innerWidth / 2, window.innerHeight / 2, 0.8);
+$('z-fit').onclick = () => Render.fit('house');
+$('z-all').onclick = () => { if (isPhone()) { $('ovwf').classList.toggle('show'); } else Render.fit('all'); };
+/* overview map(s): tap / drag to jump the camera */
+function bindOvw(c) { let down = false; const jump = e => { const r = c.getBoundingClientRect(); Render.ovwJump(c, (e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height); };
+  c.addEventListener('pointerdown', e => { down = true; c.setPointerCapture(e.pointerId); jump(e); e.preventDefault(); });
+  c.addEventListener('pointermove', e => { if (down) jump(e); }); const stop = () => { down = false; }; c.addEventListener('pointerup', stop); c.addEventListener('pointercancel', stop); }
+bindOvw($('ovw')); bindOvw($('ovw2'));
+window.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return; const S = Core.state; const k = e.key.toLowerCase();
+  if (k === 'escape') { if (document.querySelector('.modal.show')) document.querySelectorAll('.modal.show').forEach(m => closeModal(m.id)); else if (popDoor !== null) hidePop(); else { V.sel = null; V.aim = null; $('aimbox').className = ''; refresh(true); } return; }
+  if (document.querySelector('.modal.show')) return;
+  if (k === 'enter') { execute(); return; } if (k === 'backspace') { e.preventDefault(); action('undo'); return; } if (k === '0') { Render.fit('house'); return; }
+  if (/^[1-9]$/.test(k)) { const t = S.units.find(u => u.kind === 'team' && u.num === +k); if (t) { select(t.uid); centerOn(t); } return; }
+  if (k === 's') { action('stance'); return; } if (k === 'i') { action('intel'); return; }
+  const u = selUnit(); const a = actsFor(u).find(q => q.key.toLowerCase() === k); if (a) action(a.k); });
+
+/* ---------------- top bar & layout ---------------- */
+$('b-new').onclick = () => newGame();
+$('b-help').onclick = () => $('m-help').classList.add('show');
+function setMuteIcon() { $('b-mute').textContent = muted ? '🔇' : '🔊'; }
+$('b-mute').onclick = () => { muted = !muted; localStorage.setItem('swat.muted', muted ? '1' : '0'); setMuteIcon(); if (!muted) SFX.click(); };
+$('t-teams').onclick = () => { $('right').classList.remove('open'); $('left').classList.toggle('open'); layoutSafe(); };
+$('t-intel').onclick = () => { $('left').classList.remove('open'); $('right').classList.toggle('open'); renderInfo(); layoutSafe(); };
+function layoutSafe() { const ph = isPhone(); document.querySelectorAll('.mclose').forEach(b => b.style.display = ph ? 'inline-flex' : 'none');
+  const r = (id) => { const el = $(id); if (!el || getComputedStyle(el).display === 'none') return null; return el.getBoundingClientRect(); };
+  const top = r('top'), bot = r('bottom'), L = !ph && r('left'), R = !ph && r('right'), ch = ph && r('chips');
+  Render.setSafe({ l: L ? L.right + 6 : 0, r: R ? window.innerWidth - R.left + 6 : 0, t: (ch ? ch.bottom : top ? top.bottom : 0) + 4, b: bot ? window.innerHeight - bot.top + (ph ? 26 : 30) : 0 });
+  const z = $('zoom'); if (!ph && R) z.style.right = (window.innerWidth - R.left + 8) + 'px'; else z.style.right = ''; if (!ph && bot) z.style.bottom = (window.innerHeight - bot.top + 8) + 'px'; else z.style.bottom = '';
+  const pb = r('bottom'); if (ph && pb) { $('ovwf').style.bottom = (window.innerHeight - pb.top + 34) + 'px'; }
+}
+function onResize() { Render.resize(); layoutSafe(); }
+window.addEventListener('resize', () => { onResize(); Render.fit('house'); });
+
+
+/* ---------------- mission brief / 911 call ---------------- */
+let firstRun = false; try { firstRun = !localStorage.getItem('swat.seenHelp'); localStorage.setItem('swat.seenHelp', '1'); } catch (e) { }
+function openBrief() { const S = Core.state, B = S.brief; if (!B) return;
+  const sc = S.scene || {}, inj = S.cas.find(c => c.initial);
+  $('brief-dlg').innerHTML = `<div class="ph">Mission Brief<span class="sp"></span><small>${esc(S.opName)}${S.opts && S.opts.career ? ' · CAREER' : ''}</small><button class="ib" data-close="m-brief">✕</button></div><div class="body" style="font-size:12.5px;color:#bcd0e6">
+   <div class="kv"><span>Call</span><b>${esc(B.callAt)} · 911 · ${esc(B.type)}</b><span>Address</span><b>${esc(B.addr)}</b><span>Caller</span><b style="font-size:11.5px">${esc(B.caller)}</b><span>Subject</span><b style="font-size:11.5px">${esc(B.suspect)}</b><span>Occupants</span><b style="font-size:11.5px;font-weight:500">${esc(B.occupants)}</b><span>Weapon</span><b style="font-size:11.5px;font-weight:500">${B.shots ? 'Shots reported' : 'No shots reported'}${B.sawGun ? ' · weapon seen' : ''}</b></div>
+   ${B.officerDown ? `<div class="warnbox">⚠ <b>Officer down.</b> ${esc(B.officerDown === true ? 'A patrol officer was hit before SWAT arrived — condition unclear.' : B.officerDown)}</div>` : ''}
+   <div class="sh" style="margin-top:10px">Before SWAT</div><div class="tl">${B.patrol.map(p => `<div>${esc(p).replace(/(\d\d:\d\d(:\d\d)?)/g, '<b>$1</b>')}</div>`).join('')}</div>
+   ${B.known && B.known.length ? `<div class="sh">Background</div><div style="font-size:12px">${B.known.map(esc).join('<br>')}</div>` : ''}
+   <p style="font-size:11.5px;color:var(--dim);margin:10px 0 0">Mission clock starts at <b style="color:#fff">0:00</b> (${esc(B.activatedAt)}). Each EXECUTE = 30 s. ${Core.intelInfo().containKnown ? '' : 'Patrol positions are unconfirmed — a <b>Status Check</b> reveals any gap.'}${firstRun ? ' New here? Tap <b>?</b> for How to Play.' : ''}</p>
+   <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button id="br-911" style="flex:1">☎ Listen to 911 call${S.intel.call911 ? ' ✓' : ''}</button><button id="br-go" class="on" style="flex:1">Take command ▸</button></div></div>`;
+  $('m-brief').classList.add('show'); }
+$('brief-dlg').addEventListener('click', e => { if (e.target.closest('#br-911')) { closeModal('m-brief'); open911(); } if (e.target.closest('#br-go')) { closeModal('m-brief'); if (firstRun) { firstRun = false; $('m-help').classList.add('show'); } } });
+const TTS = { ok: typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined', on: false, i: -1, muted: false };
+function stopSpeech() { TTS.on = false; TTS.i = -1; try { if (TTS.ok) speechSynthesis.cancel(); } catch (e) { } hiLine(); }
+function hiLine() { document.querySelectorAll('#c911-dlg .tr').forEach((el, i) => el.classList.toggle('on', i === TTS.i)); const p = $('c9-play'); if (p) p.textContent = TTS.on ? '⏸ Stop' : '▶ Play audio'; }
+function speakFrom(i) { const B = Core.state.brief; if (!TTS.ok || TTS.muted) return; const L = B.transcript; if (i >= L.length) { stopSpeech(); return; }
+  TTS.on = true; TTS.i = i; hiLine(); const l = L[i]; let u;
+  try { u = new SpeechSynthesisUtterance(l.who === '[Note]' ? l.text.replace(/\(\d{3}\) ?\d{3}-\d{4}/, 'on file') : l.text); u.rate = l.who === 'Dispatcher' ? 1.05 : 1.12; u.pitch = l.who === 'Dispatcher' ? 1.15 : 0.8;
+    u.onend = () => { if (TTS.on && TTS.i === i) setTimeout(() => { if (TTS.on && TTS.i === i) speakFrom(i + 1); }, 250); }; u.onerror = () => { if (TTS.i === i) stopSpeech(); }; speechSynthesis.speak(u); } catch (e) { TTS.ok = false; stopSpeech(); } }
+function open911() { const S = Core.state, B = S.brief; if (!B) return; const r = Core.review911(); refresh(true);
+  $('c911-dlg').innerHTML = `<div class="ph">911 Call Record<span class="sp"></span><small>${esc(B.callAt)} · ${esc(B.addr)}</small><button class="ib" data-close="m-911">✕</button></div><div class="body">
+   <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">${TTS.ok ? `<button id="c9-play" style="flex:1">▶ Play audio</button><button id="c9-skip" style="flex:1">⏭ Skip line</button><button id="c9-mute" style="flex:1">${TTS.muted ? '🔇 Unmute' : '🔈 Mute'}</button>` : '<span style="font-size:11px;color:var(--dim)">Audio playback is not supported on this browser — transcript only.</span>'}</div>
+   <div>${B.transcript.map(l => `<div class="tr ${l.who === 'Caller' ? 'c' : l.who === '[Note]' ? 'n' : ''}"><span class="tt">${esc(l.t)}</span><span class="who">${esc(l.who === '[Note]' ? 'NOTE' : l.who.toUpperCase())}</span><span>${esc(l.text)}</span></div>`).join('')}</div>
+   ${B.background && B.background.length ? `<div class="sh" style="margin-top:8px">Background audio</div><div style="font-size:11.5px;color:var(--dim)">${B.background.map(esc).join('<br>')}</div>` : ''}
+   <div class="kv" style="margin-top:10px"><span>Phone number</span><b style="color:${S.nego.numberKnown ? 'var(--green)' : 'var(--dim)'}">${S.nego.numberKnown ? esc(B.phone || 'known') + ' · ' + esc(S.nego.numberSrc || '') : 'not obtained from this call'}</b></div>
+   <div style="display:flex;gap:8px;margin-top:12px"><button id="c9-brief" style="flex:1">◂ Brief</button><button data-close="m-911" class="on" style="flex:1">Close</button></div></div>`;
+  $('m-911').classList.add('show'); hiLine(); }
+$('c911-dlg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'c9-play') { if (TTS.on) stopSpeech(); else { TTS.muted = false; try { speechSynthesis.cancel(); } catch (x) { } speakFrom(0); } }
+  if (b.id === 'c9-skip' && TTS.on) { const i = TTS.i; try { speechSynthesis.cancel(); } catch (x) { } TTS.i = -2; setTimeout(() => speakFrom(i + 1), 60); }
+  if (b.id === 'c9-mute') { TTS.muted = !TTS.muted; if (TTS.muted) stopSpeech(); b.textContent = TTS.muted ? '🔇 Unmute' : '🔈 Mute'; }
+  if (b.id === 'c9-brief') { closeModal('m-911'); openBrief(); } });
+$('b-brief').onclick = () => openBrief();
+
+/* ---------------- career screen (UI only; storage lives in career.js) ---------------- */
+let CAREER = Career.load(), careerNotes = null, ccConfirm = false;
+function careerEndHTML() { const S = Core.state;
+  if (!(S.opts && S.opts.career)) return `<p style="font-size:11px;color:var(--dim);margin:10px 0 0">Quick scenario / seed replay — not counted in your career.</p>`;
+  return `<div class="sh" style="margin-top:12px">Career</div><div style="font-size:12px;color:#bcd0e6">${(careerNotes || []).map(n => `<div>• ${esc(n)}</div>`).join('') || 'Saved.'}</div>`; }
+function careerRecordEnd() { const S = Core.state; if (!(S.opts && S.opts.career) || S._careerSaved) return; S._careerSaved = true;
+  try { careerNotes = Career.record(CAREER, Core.careerSummary()); if (!Career.save(CAREER)) careerNotes.push('(Could not write to browser storage — export a code to keep this career.)'); } catch (e) { careerNotes = ['Career save failed: ' + e.message]; } }
+function openCareer() { ccConfirm = false; renderCareer(); $('m-career').classList.add('show'); }
+function renderCareer(msg) { const C = CAREER, R = C.record, S = Core.state;
+  const oc = Object.entries(R.outcomes).map(([k, v]) => `${({ negotiated: 'Negotiated surrender', callout: 'Call-out', arrest: 'Arrest', tactical: 'Tactical entry', lesslethal: 'Less-lethal', officerfire: 'Officer fire', perimeter: 'Caught on perimeter', escaped: 'Escaped', timeout: 'Out of time', aborted: 'Aborted' })[k] || k} ${v}`).join(' · ') || '—';
+  const roster = C.roster.slice().sort((a, b) => (a.recover > 0) - (b.recover > 0) || b.xp - a.xp).map(o => `<tr style="${o.recover > 0 ? 'opacity:.6' : ''}"><td><b>${esc(o.rank)} ${esc(o.last)}</b>${o.dog ? ` <small style="color:var(--dim)">+ ${esc(o.dog)}</small>` : ''}</td><td>${Core.SPECS[o.spec].icon} ${esc(Career.SPEC_NAME[o.spec])}${o.quals.includes('spotter') ? ' <span class="chip">◆ Spotter</span>' : ''}</td><td>${Math.round(o.skill * 100)}</td><td class="hm3">${o.xp}</td><td class="hm3">${o.missions}</td><td>${o.recover > 0 ? `<span class="pill amber">RECOVERING · ${o.recover}</span>` : '<span class="pill green">READY</span>'}</td></tr>`).join('');
+  const un = Object.entries(Career.UNLOCKS).map(([k, u]) => { const own = !!C.unlocks[k]; return `<div class="ucard ${own ? 'own' : ''}"><b>${esc(u.name)}</b>${esc(u.desc)}${own ? '<div style="color:var(--green);margin-top:5px">✓ Unlocked</div>' : `<button data-buy="${k}" ${C.points >= u.cost ? '' : 'disabled'}>Unlock · ${u.cost} pts</button>`}</div>`; }).join('');
+  const mem = C.memorial.length ? C.memorial.map(m => `<div>✦ <b style="color:#fff">${esc(m.rank)} ${esc(m.last)}</b> — ${esc(Career.SPEC_NAME[m.spec] || m.spec)}, ${m.missions} mission${m.missions > 1 ? 's' : ''} · ${esc(m.date)}</div>`).join('') : '<div style="color:var(--dim)">No officers lost.</div>';
+  const hist = C.history.slice(0, 6).map(h => `<div>${esc(h.date.slice(0, 10))} · <span style="color:${h.win ? 'var(--green)' : 'var(--red)'}">${esc(h.title)}</span> · ${Core.tMin(h.timeSec / 30)} · ${h.score} pts · ${esc(h.grade)}</div>`).join('') || '<div style="color:var(--dim)">No missions yet.</div>';
+  const replay = !(S.opts && S.opts.career) && S.phase !== 'over' ? `<button id="cc-seed" style="flex:1">Play seed ${S.seed} as career mission</button>` : '';
+  const ready = Career.available(C).length;
+  $('career-dlg').innerHTML = `<div class="ph">Career · SWAT Unit<span class="sp"></span><small>${C.points} PTS · SAVED IN ${esc(Career.storageKind === 'localStorage' ? 'BROWSER' : 'MEMORY ONLY')}</small><button class="ib" data-close="m-career">✕</button></div><div class="body" style="font-size:12.5px;color:#bcd0e6">
+   ${msg ? `<div class="note" style="margin-bottom:8px">${esc(msg)}</div>` : ''}
+   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button id="cc-start" class="on" style="flex:2" ${ready ? '' : 'disabled'}>▶ Start Career Mission <small>(new random scenario · ${ready} officers ready)</small></button>${replay}</div>
+   <div class="rec"><div><b>${R.played}</b>missions</div><div><b>${R.wins}–${R.losses}</b>won–lost</div><div><b>${R.played ? Core.tMin(R.timeSec / 30 / R.played) : '—'}</b>avg time</div><div><b>${R.bestScore == null ? '—' : R.bestScore}</b>best score</div><div><b>${R.officersHit} / ${R.officersLost}</b>officers hit / lost</div><div><b>${R.patrolHit}</b>patrol hit</div><div><b>${R.suspects.unhurt} / ${R.suspects.injured} / ${R.suspects.lost}</b>suspects unhurt / injured / died</div><div><b>${C.points}</b>career points</div></div>
+   <div style="font-size:11.5px;margin-top:6px"><b style="color:#fff">Outcomes:</b> ${esc(oc)}</div>
+   <div class="sh" style="margin-top:12px">Roster</div><table class="ctab"><tr><th>OFFICER</th><th>SPECIALTY</th><th>SKILL</th><th class="hm3">XP</th><th class="hm3">MISSIONS</th><th>STATUS</th></tr>${roster}</table>
+   <div class="sh" style="margin-top:12px">Unlocks</div><div class="ugrid">${un}</div>
+   <div class="sh" style="margin-top:12px">Recent missions</div><div style="font-size:11.5px">${hist}</div>
+   <div class="sh" style="margin-top:12px">Memorial</div><div style="font-size:12px">${mem}</div>
+   <div class="sh" style="margin-top:12px">Save transfer</div><textarea id="cc-code" placeholder="Paste a career code here to import" spellcheck="false"></textarea>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button id="cc-exp" style="flex:1">Show / copy code</button><button id="cc-dl" style="flex:1">⭳ Download file</button><button id="cc-up" style="flex:1">⭱ Load file</button><button id="cc-imp" style="flex:1">Import code</button><input type="file" id="cc-file" accept=".txt,text/plain" style="display:none"></div>
+   <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">${ccConfirm ? `<div class="warnbox">Erase this career (record, roster, unlocks, memorial)? This cannot be undone unless you exported a code.</div><div style="display:flex;gap:8px"><button id="cc-no" style="flex:1">Keep career</button><button id="cc-yes" style="flex:1;border-color:var(--red);color:var(--red)">Yes, start a new career</button></div>` : '<button id="cc-reset" style="width:100%">New Career…</button>'}</div></div>`; }
+$('career-dlg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const C = CAREER;
+  if (b.dataset.buy) { const r = Career.buy(C, b.dataset.buy); Career.save(C); SFX.order(); renderCareer(r.ok ? `Unlocked ${Career.UNLOCKS[b.dataset.buy].name}${r.recruit ? ' — hired Ofc. ' + r.recruit.last : ''}.` : r.reason); return; }
+  if (b.id === 'cc-start') { careerNotes = null; closeModal('m-career'); newGame(0, true); }
+  if (b.id === 'cc-seed') { careerNotes = null; closeModal('m-career'); newGame(Core.state.seed, true); }
+  if (b.id === 'cc-exp') { const code = Career.exportCode(C); $('cc-code').value = code; $('cc-code').select(); let ok = false; try { if (navigator.clipboard) { navigator.clipboard.writeText(code).catch(() => { }); ok = true; } } catch (x) { } toast(ok ? 'Career code copied (also shown in the box)' : 'Career code shown — copy it from the box', true); }
+  if (b.id === 'cc-dl') { try { const blob = new Blob([Career.exportCode(C)], { type: 'text/plain' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `swat-career-${new Date().toISOString().slice(0, 10)}.txt`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); } catch (x) { toast('Download not available — use the code'); } }
+  if (b.id === 'cc-up') $('cc-file').click();
+  if (b.id === 'cc-imp') importCareer($('cc-code').value);
+  if (b.id === 'cc-reset') { ccConfirm = true; renderCareer(); }
+  if (b.id === 'cc-no') { ccConfirm = false; renderCareer(); }
+  if (b.id === 'cc-yes') { CAREER = Career.reset(); ccConfirm = false; renderCareer('New career started.'); } });
+function importCareer(code) { try { const c = Career.importCode(code); CAREER = c; Career.save(c); renderCareer(`Imported career: ${c.record.played} missions, ${c.roster.length} officers.`); } catch (e) { renderCareer('Import failed: ' + e.message); } }
+$('career-dlg').addEventListener('change', e => { if (e.target.id !== 'cc-file' || !e.target.files[0]) return; const fr = new FileReader(); fr.onload = () => importCareer(String(fr.result)); fr.readAsText(e.target.files[0]); });
+$('b-career').onclick = () => openCareer();
+
+/* ---------------- game lifecycle ---------------- */
+function newGame(seed, career) { if (busy) return; seed = seed || (Math.floor(Math.random() * 999999) + 1); Core.newGame(seed, career ? Career.missionOpts(CAREER) : undefined); V.sel = null; V.mode = 'move'; V.hint = null; V.aim = null; pendingAim = null; hidePop(); $('aimbox').className = ''; logLen = -1; lastFxSound = 0; Core.state.events.length = 0;
+  try { history.replaceState(null, '', '#seed=' + seed); } catch (e) { }
+  if (Render.invalidate) Render.invalidate();
+  document.querySelectorAll('.modal.show').forEach(m => closeModal(m.id)); onResize(); Render.fit('house'); refresh(true); openBrief(); }
+let lastMini = 0;
+function loop(now) { Render.frame(now); if (!busy) refresh();
+  if (now - lastMini > 120) { lastMini = now; const a = $('ovw'); if (a.offsetParent) Render.drawMini(a); const b = $('ovw2'); if ($('ovwf').classList.contains('show')) Render.drawMini(b); }
+  requestAnimationFrame(loop); }
+Render.init(cv); setMuteIcon();
+window.addEventListener('hashchange', () => { const m = /seed=(\d+)/.exec(location.hash); if (m && +m[1] !== Core.state.seed) newGame(+m[1]); });
+const hs = /seed=(\d+)/.exec(location.hash); newGame(hs ? +hs[1] : 0);
+requestAnimationFrame(loop);
+
+
+/* test / automation hook */
+window.GAME = { Core, Render, Career, get career() { return CAREER; }, openBrief, open911, openCareer, select, mapTap, action, execute, openTeamDlg, closeModal, newGame, refresh, showBreachPop, hidePop, showAim, aimInfo, get busy() { return busy; }, setPtr(t) { lastPtrType = t; } };
+})();
