@@ -35,12 +35,13 @@ function casCell(x, y, outdoorFirst) {
 function addCasualty(who, ref, name, x, y, o = {}) {
   const r = S.rng, cfg = CAS_CFG; const kiaP = o.kia !== undefined ? o.kia : cfg.kia, mobP = o.mobile !== undefined ? o.mobile : cfg.mobile;
   const roll = r(); let state, sev, crit;
-  if (roll < kiaP) { state = 'kia'; sev = 3; crit = 0; }
+  if (o.minor) { state = 'mobile'; sev = 1; crit = r.int(cfg.critMobile[0], cfg.critMobile[1]) * 3; } // blunt impact behind armor: minor, very slow to worsen
+  else if (roll < kiaP) { state = 'kia'; sev = 3; crit = 0; }
   else if (roll < kiaP + mobP) { state = 'mobile'; sev = r.chance(0.7) ? 1 : 2; crit = r.int(cfg.critMobile[0], cfg.critMobile[1]); }
   else { state = 'immobile'; sev = r.chance(cfg.severe) ? 3 : 2; crit = r.int(cfg.critImmobile[0], cfg.critImmobile[1]) - (sev === 3 ? 1 : 0); }
   const [cx, cy] = casCell(x, y, roomAt(x, y) < 0);
   const c = { id: 'X' + (++S.casSeq), who, ref, name, x: cx, y: cy, sev, state, crit, crit0: crit, stable: false, aided: 0, carrier: null, tr: 0, turn: S.turn, wait: true,
-    goal: null, team: o.team || null, reported: who !== 'suspect' && (sev < 3 || !!o.witness), seen: false, known: false, by: o.by || null };
+    goal: null, team: o.team || null, reported: who !== 'suspect' && (sev < 3 || !!o.witness), seen: false, known: false, by: o.by || null, minor: !!o.minor };
   S.cas.push(c);
   if (state === 'kia') { S.stats.kia++; c.known = who !== 'suspect'; }
   casKnow(c); return c;
@@ -120,7 +121,7 @@ function casAct(u, o, speed) {
     if (u.kind === 'team' && hasSpec(u, 'medic') && !c.stable && c.aided < 2) applyAid(u, c, true);
     o.picked = true; c.carrier = u.uid; u.carrying = c.id; c.x = u.x; c.y = u.y;
     if (o.type === 'rescue' && (o.dx === undefined)) { const d = ccpFor(c.x, c.y); if (d) { o.dx = d[0]; o.dy = d[1]; } else { o.dx = u.x; o.dy = u.y; } }
-    log(`${u.name}: has ${c.name} — ${o.type === 'evac' ? 'carrying to the EMS point' : 'dragging to cover'}${u.kind === 'team' && u.equip.shield > 0 ? ' behind the shield' : ''}.`, 'radio'); return; }
+    log(`${u.name}: has ${c.name} — ${o.type === 'evac' ? 'carrying to the EMS point' : 'dragging to cover'}${u.kind === 'team' && hasShield(u) ? ' behind the shield' : ''}.`, 'radio'); return; }
   const inside = roomAt(u.x, u.y) >= 0, sp = inside ? 1 : u.kind === 'team' ? CAS_CFG.carryTeam : CAS_CFG.carryPatrol;
   const goal = o.type === 'evac' ? (x, y) => cheb(x, y, S.ems.x, S.ems.y) <= 1 : (x, y) => x === o.dx && y === o.dy;
   const r = stepAlong(u, o, goal, sp); c.x = u.x; c.y = u.y;

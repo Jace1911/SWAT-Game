@@ -11,6 +11,9 @@ const ITEM_CFG = {
   sniper:     { hands: 2, stow: 'slung', weapon: true },
   lesslethal: { hands: 2, stow: 'slung', qual: 'll', rounds: 4 },
   shield:     { hands: 1, stow: null },              // cannot be slung or packed: always one hand
+  shield3:    { hands: 1, stow: null },              // Level III shield: same handling, heavier rating
+  plate:      { where: 'worn' },                     // plate carrier: worn armor slot (inv.worn.armor = 'plate')
+  draco:      { where: 'vehicle' },                  // BearCat kit: never carried, installed from the pool
   ram:        { hands: 1, useHands: 2, stow: null }, // carried one-handed; breach = both hands (pistol auto-holstered)
   halligan:   { hands: 1, stow: 'packed' },
   polecam:    { hands: 1, stow: 'packed' },
@@ -36,7 +39,7 @@ function freeHands(o) { return invOf(o).hands.filter(x => !x).length; }
 function holds(o, k) { return invOf(o).hands.includes(k); }
 function twoHanded(o, k) { const h = invOf(o).hands; return h[0] === k && h[1] === k; }
 function carries(o, k) { const inv = invOf(o); return holds(o, k) || inv.slung.includes(k) || inv.holster.includes(k) || (inv.packed[k] || 0) > 0 || (inv.vest[k] || 0) > 0; }
-function countOf(o, k) { const inv = invOf(o); return (holds(o, k) ? 1 : 0) + inv.slung.filter(x => x === k).length + (inv.packed[k] || 0) + (inv.vest[k] || 0); }
+function countOf(o, k) { const inv = invOf(o); return (k === 'plate' && inv.worn.armor === 'plate' ? 1 : 0) + (holds(o, k) ? 1 : 0) + inv.slung.filter(x => x === k).length + (inv.packed[k] || 0) + (inv.vest[k] || 0); }
 /** Items an officer can use right now (aggregated into the team's equip). */
 function usableCount(o, k) { const c = ITEM_CFG[k] || {};
   if (k === 'lesslethal') return holds(o, 'lesslethal') && (o.quals || []).includes('ll') && invOf(o).ll > 0 && isReady(o, 'lesslethal') ? 1 : 0;
@@ -91,7 +94,7 @@ function invAct(offId, act, k) {
   const o = off(offId); if (!o || o.status === 'enroute' || o.status === 'down') return { ok: false, reason: 'Officer unavailable' };
   const inv = invOf(o), c = ITEM_CFG[k] || {}, t = o.team ? unit(o.team) : null; if (t && t.inCar) return { ok: false, reason: 'Get out of the vehicle first' };
   const done = r => { if (t) syncEquip(t); S.version++; return Object.assign({ ok: true }, r || {}); };
-  if (act === 'stow') { if (!holds(o, k)) return { ok: false, reason: 'Not in hand' }; if (!c.stow) return { ok: false, reason: k === 'shield' ? 'A shield cannot be slung or packed — it stays in one hand (hand it back at the equipment vehicle)' : `The ${EQUIP[k] ? EQUIP[k].short : k} cannot be stowed — hand it back at the equipment vehicle` };
+  if (act === 'stow') { if (!holds(o, k)) return { ok: false, reason: 'Not in hand' }; if (!c.stow) return { ok: false, reason: k === 'shield' || k === 'shield3' ? 'A shield cannot be slung or packed — it stays in one hand (hand it back at the equipment vehicle)' : `The ${EQUIP[k] ? EQUIP[k].short : k} cannot be stowed — hand it back at the equipment vehicle` };
     stowOne(o, k); setNotReady(o, k); return done({ notReady: k }); }
   if ((act === 'switch' || act === 'hold') && holds(o, k)) return { ok: false, reason: 'Already in hand' };
   if (act === 'switch') { const need = c.hands === 2 && !c.oneHand ? 2 : c.hands || 1;
@@ -105,12 +108,14 @@ function invAct(offId, act, k) {
     if (twoHanded(o, 'rifle')) inv.hands = ['rifle', null]; else { if (freeHands(o) < 1) return { ok: false, reason: 'Other hand is busy' }; inv.hands = ['rifle', 'rifle']; } return done(); }
   if (act === 'draw' || act === 'return') { const [x, y] = offPos(o); if (!atEquipment(x, y)) return { ok: false, reason: 'Equipment is drawn at the equipment vehicle (primary staging) — move there first' };
     if (!EQUIP[k]) return { ok: false, reason: 'Unknown item' };
-    if (act === 'return') { if (!countOf(o, k)) return { ok: false, reason: 'Not carried' }; const inv2 = inv; if ((inv2.vest[k] || 0) > 0) inv2.vest[k]--; else if ((inv2.packed[k] || 0) > 0) inv2.packed[k]--; else if (holds(o, k)) inv2.hands = inv2.hands.map(q => q === k ? null : q); else inv2.slung.splice(inv2.slung.indexOf(k), 1);
+    if (k === 'draco') return { ok: false, reason: 'The Draco arm kit is installed on the BearCat — order a team at the vehicle to Install Draco Arm' };
+    if (act === 'return') { if (!countOf(o, k)) return { ok: false, reason: 'Not carried' }; const inv2 = inv; if (k === 'plate') inv2.worn.armor = 'soft'; else if ((inv2.vest[k] || 0) > 0) inv2.vest[k]--; else if ((inv2.packed[k] || 0) > 0) inv2.packed[k]--; else if (holds(o, k)) inv2.hands = inv2.hands.map(q => q === k ? null : q); else inv2.slung.splice(inv2.slung.indexOf(k), 1);
       S.armory[k]++; if (k === 'lesslethal') inv.ll = 0; return done(); }
     if (!(S.armory[k] > 0)) return { ok: false, reason: 'None left at the equipment vehicle' };
     if (c.qual && !(o.quals || []).includes(c.qual)) return { ok: false, reason: 'Less-lethal launcher: specialist only' };
     if (c.spec && o.spec !== c.spec) return { ok: false, reason: `${EQUIP[k].short}: ${SPECS[c.spec].name} only` };
-    if (c.where === 'vest') inv.vest[k] = (inv.vest[k] || 0) + 1;
+    if (k === 'plate') { if (inv.worn.armor === 'plate') return { ok: false, reason: 'Already wearing rifle plates' }; inv.worn.armor = 'plate'; }
+    else if (c.where === 'vest') inv.vest[k] = (inv.vest[k] || 0) + 1;
     else if (c.where === 'packed') inv.packed[k] = (inv.packed[k] || 0) + 1;
     else { const need = c.hands === 2 ? 2 : 1; if (freeHands(o) < need) { if (c.stow) { if (c.stow === 'slung') inv.slung.push(k); else inv.packed[k] = (inv.packed[k] || 0) + 1; } else return { ok: false, reason: `${EQUIP[k].short} needs ${need} free hand${need > 1 ? 's' : ''} (it cannot be slung or packed) — stow something first` }; }
       else putInHands(o, k, need); if (c.hands) setNotReady(o, k); }
@@ -121,7 +126,9 @@ function invAct(offId, act, k) {
 function defaultKit(t) { const m = teamOk(t), take = k => { if (S.armory[k] > 0) { S.armory[k]--; return true; } return false; };
   const by = sp => m.filter(o => o.spec === sp);
   const pt = m[0], dfn = m[1];
-  if (pt && take('shield')) { const inv = invOf(pt); inv.slung.push(inv.prim); inv.hands = ['shield', 'pistol']; inv.holster = inv.holster.filter(k => k !== 'pistol'); }
+  for (const o of m) if (take('plate')) invOf(o).worn.armor = 'plate'; // individually issued rifle plates while the pool lasts
+  const sk = S.armory.shield3 > 0 ? 'shield3' : 'shield';
+  if (pt && take(sk)) { const inv = invOf(pt); inv.slung.push(inv.prim); inv.hands = [sk, 'pistol']; inv.holster = inv.holster.filter(k => k !== 'pistol'); }
   const br = by('breacher'), brx = br.filter(o => o !== pt); const ramMan = brx[0] || m.find(o => o !== pt && o !== dfn && o.spec !== 'marksman') || null;
   if (ramMan && take('ram')) { const inv = invOf(ramMan); inv.slung.push(inv.prim); inv.hands = ['ram', 'pistol']; inv.holster = inv.holster.filter(k => k !== 'pistol'); }
   const hal = brx[1] || m.find(o => o !== pt && o !== ramMan && o !== dfn && o.spec !== 'marksman'); if (hal && take('halligan')) invOf(hal).packed.halligan = 1;

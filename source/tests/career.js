@@ -10,7 +10,7 @@ const T1 = Career.teamForLevel(1), T100 = Career.teamForLevel(100), T50 = Career
 ok(T1.staff >= 4 && T1.staff <= 6 && T1.teamMax === 4, 'level 1: small staff (4–6), teams of 4');
 ok(['robot', 'charge', 'gas', 'lesslethal', 'drone', 'tphone'].every(k => T1.gear[k] === 0) && T1.gear.shield === 1 && T1.gear.ram >= 1 && !T1.armored && !T1.counts.marksman, 'level 1: basic gear only, one shield, no robot/charges/gas/snipers');
 ok(T100.staff === 30 && T100.teamMax === 8 && T100.armored, 'level 100: 30 personnel, teams of 8, armored vehicle');
-ok(Object.keys(Career.LEVEL.gear).every(k => T100.gear[k] >= 3 || ['ram', 'drone', 'robot', 'bullhorn'].includes(k) && T100.gear[k] >= 3) && T100.gear.bang >= 20, 'level 100: every equipment type, large inventory');
+ok(Object.keys(Career.LEVEL.gear).every(k => k === 'draco' ? T100.gear.draco === 1 : T100.gear[k] >= 3 || ['ram', 'drone', 'robot', 'bullhorn'].includes(k) && T100.gear[k] >= 3) && T100.gear.bang >= 20, 'level 100: every equipment type, large inventory (one Draco kit for the one BearCat)');
 ok(['leader', 'point', 'breacher', 'negotiator', 'medic', 'marksman', 'tech', 'k9'].every(s => T100.counts[s] >= 1) && T100.spotters >= 3, 'level 100: all roles (incl. snipers + spotters)');
 ok(T50.staff > T1.staff && T50.staff < T100.staff && Object.keys(T50.gear).every(k => T50.gear[k] <= T100.gear[k] && T50.gear[k] >= T1.gear[k]), 'level 50 interpolates between 1 and 100');
 let mono = true; for (let L = 2; L <= 100; L++) { const a = Career.teamForLevel(L - 1), b = Career.teamForLevel(L); if (b.staff < a.staff || Object.keys(a.gear).some(k => b.gear[k] < a.gear[k])) mono = false; } ok(mono, 'staff and gear never shrink as level rises');

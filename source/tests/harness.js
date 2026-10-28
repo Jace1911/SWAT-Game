@@ -2,6 +2,7 @@
 // Usage: node tests/harness.js [genSeeds=60] [balanceSeeds=40]
 const load = require('./load.js');
 const Core = load();
+if (process.env.NOARMOR) { Core.ARMOR_CFG.torso = 0; console.log('A/B baseline: officer body armor disabled'); } // v9 balance A/B
 const NG = +process.argv[2] || 60, NB = +process.argv[3] || 40;
 let fail = 0; const VAR = {}, GAP = {}; let INJ = 0, INJK = {}, nCars = 0; const cq = { hard: 0, conceal: 0, cruiser: 0 }, addK = {}; let nPost = 0; const arch = {}, rooms = {}, weap = {}, sigs = new Set(), bad = [];
 const t0 = Date.now();
@@ -64,7 +65,8 @@ function policy(kind) {
     }
     if (kind === 'competent') {
       const avail = Object.keys(Core.COMMANDS).filter(k => Core.COMMANDS[k].avail() === true);
-      for (const k of ['family', 'flyby']) if (avail.includes(k)) { Core.setCommand(k); break; }
+      if (avail.includes('emseval')) Core.setCommand('emseval');
+      for (const k of ['partner', 'family', 'flyby']) if (avail.includes(k)) { Core.setCommand(k); break; }
       // negotiation: call when we have a number / line, else open PA contact from a cruiser in range
       const N = Core.negoSummary(), A = N.avail;
       if (A.call === true) Core.setTalk('call');
@@ -93,14 +95,15 @@ function policy(kind) {
   };
 }
 const MAXT = +process.env.MAXT || 50, GOOD = 350; // Satisfactory or better
-function play(seed, kind) {
-  const S = Core.newGame(seed); const step = policy(kind); let guard = 0;
+function play(seed, kind, stype) {
+  stype = stype || process.env.STYPE; const S = Core.newGame(seed, stype ? { stype } : undefined); const step = policy(kind); let guard = 0;
   // v7: no mission timer and no auto-fail — the harness caps the turns itself, then the "player" withdraws.
   while (S.phase !== 'over' && guard++ < MAXT) { step(); runTurn(); }
   const capped = S.phase !== 'over'; if (capped) Core.withdraw();
   const M = Core.missionScore();
   return { capped, score: M.score, grade: M.grade, good: !!(S.result && S.result.win) && M.score >= GOOD, win: !!(Core.state.result && Core.state.result.win), title: Core.state.result ? Core.state.result.title : 'n/a', turns: Core.state.turn, down: Core.state.stats.down, method: Core.state.stats.method, kia: Core.state.stats.kia, lost: Core.state.stats.lost, amb: !!Core.state.nego.ambush };
 }
+
 if (process.env.ONE) { for (let i = 1; i <= 12; i++) { const r = play(1000 + i * 37, 'competent'); const S = Core.state; console.log(i, r.title, r.method, S.cas.map(c => c.who + ':' + c.state + (c.carrier ? '*' : '') + '@' + c.x + ',' + c.y + ' ' + (c.known ? 'K' : '?')).join(' | ')); } process.exit(0); }
 if (NB > 0) {
   const res = {};

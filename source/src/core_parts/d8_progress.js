@@ -39,7 +39,7 @@ function preview(seed, opts) { const keep = S; let out;
   try { newGame(seed, opts || {}); const B = S.brief, sp = S.suspect;
     let diff = 1 + (B.shots ? 0.5 : 0) + (B.officerDown ? 0.8 : 0) + (sp.weapon !== 'handgun' ? 0.4 : 0) + (S.rooms.length >= 9 ? 0.3 : 0) + (S.scene && S.scene.variant === 'gap' ? 0.2 : 0);
     diff = +clamp(diff, 1, 3).toFixed(1);
-    out = { seed: S.seed, op: S.opName, type: B.type, addr: B.addr, time: B.time, shots: !!B.shots, officerDown: !!B.officerDown, sawGun: !!B.sawGun, area: S.geo.name, arch: S.house.archName, diff,
+    out = { seed: S.seed, op: S.opName, type: B.type, stype: S.stype.key, stypeName: S.stype.name, addr: B.addr, time: B.time, shots: !!B.shots, officerDown: !!B.officerDown, sawGun: !!B.sawGun, area: S.geo.name, arch: S.house.archName, diff,
       label: diff >= 2.3 ? 'HIGH RISK' : diff >= 1.6 ? 'ELEVATED' : 'ROUTINE' }; }
   finally { S = keep; }
   return out; }
@@ -87,7 +87,7 @@ function sliceHit(u) { return CORNER_CFG.hitBase + CORNER_CFG.hitPerCut * ((u.sl
    FORMATIONS — where each team member stands (presentation helper, derived from context).
    Returns cell-space offsets from the team's cell centre, one per fit member.
    ===================================================================== */
-const FORM_CFG = { gap: 0.4, lat: 0.3, stagger: 0.2, fan: 0.55 };
+const FORM_CFG = { gap: 0.4, lat: 0.3, stagger: 0.2, fan: 0.55, wall: 0.3, wallIn: 0.16, wallRad: 3.3, frame: 0.36, frameLat: 0.36 };
 function formationFor(u) {
   if (!u || u.kind !== 'team' || !u.deployed || u.perch) return { kind: 'none', pts: [] };
   const n = teamOk(u).length; if (!n) return { kind: 'none', pts: [] };
@@ -95,23 +95,49 @@ function formationFor(u) {
   const okPos = (ox, oy) => { const cx = Math.round(u.x + ox), cy = Math.round(u.y + oy); if (!inb(cx, cy) || S.block[idx(cx, cy)]) return false; if (cx === u.x && cy === u.y) return true;
     if (Math.abs(cx - u.x) + Math.abs(cy - u.y) === 1) return seeE(u.x, u.y, cx, cy) && (!inside || roomAt(cx, cy) === roomAt(u.x, u.y) || roomAt(cx, cy) >= 0 || true); return los(u.x, u.y, cx, cy) === 1; };
   const fit = (ox, oy) => { for (const t of [1, 0.75, 0.5, 0.25]) if (okPos(ox * t, oy * t)) return [+(ox * t).toFixed(2), +(oy * t).toFixed(2)]; return [0, 0]; };
-  // context: at a door (a breach/pole cam order on this door, or standing next to a closed door)
+  // context: at a door (a breach/pole cam order on this door, standing next to a closed door, or holding at an open one)
   let door = null; const o = u.orders[0];
-  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const e = edge(u.x, u.y, u.x + dx, u.y + dy); if (e.t === 'D' && (e.d.state === 'closed' || (o && o.door === e.d.id))) { door = { dx, dy, d: e.d }; break; } }
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const e = edge(u.x, u.y, u.x + dx, u.y + dy); if (e.t === 'D' && (e.d.state === 'closed' || (o && o.door === e.d.id) || !o)) { door = { dx, dy, d: e.d }; break; } }
   const moving = u.moved != null && S.phase === 'executing' && S.tick - u.moved <= 1;
   const pts = []; let kind;
-  if (door && !moving) { kind = 'stack'; // stack on the wall beside the door, point man at the frame, rest behind with slight offset
-    const bx = -door.dx, by = -door.dy, sx = -door.dy, sy = door.dx; const side = okPos(sx * 0.5, sy * 0.5) ? 1 : -1;
-    for (let i = 0; i < n; i++) pts.push(fit(door.dx * 0.18 + bx * i * FORM_CFG.gap + sx * side * (FORM_CFG.lat + (i % 2) * 0.06), door.dy * 0.18 + by * i * FORM_CFG.gap + sy * side * (FORM_CFG.lat + (i % 2) * 0.06))); }
-  else if (moving || (inside && hallLike(roomAt(u.x, u.y)))) { kind = 'column'; // staggered column behind the point man
-    for (let i = 0; i < n; i++) { const s = i === 0 ? 0 : (i % 2 ? 1 : -1) * FORM_CFG.stagger; pts.push(fit(fx_ * 0.2 - fx_ * i * FORM_CFG.gap + lx * s, fy_ * 0.2 - fy_ * i * FORM_CFG.gap + ly * s)); } }
-  else if (inside) { kind = 'fan'; // in a room: fan out to cover sectors
-    for (let i = 0; i < n; i++) { const a = d + (n === 1 ? 0 : -1.1 + 2.2 * i / (n - 1)); pts.push(fit(Math.cos(a) * FORM_CFG.fan, Math.sin(a) * FORM_CFG.fan)); } }
-  else { const cv = coverAdj(u.x, u.y); kind = cv ? 'cover' : 'line'; // outside: spread along the cover edge (or a line abreast)
+  if (door && !moving) { kind = 'stack'; return { kind, pts: doorStack(u, door, n, okPos) }; }
+  if (moving || (inside && hallLike(roomAt(u.x, u.y)))) { kind = 'column'; // staggered column hugging alternating walls
+    const W = FORM_CFG.wall; for (let i = 0; i < n; i++) { const s = (i % 2 ? 1 : -1) * (moving && !inside ? FORM_CFG.stagger : W); pts.push(fit(fx_ * 0.2 - fx_ * i * FORM_CFG.gap + lx * s, fy_ * 0.2 - fy_ * i * FORM_CFG.gap + ly * s)); }
+    return { kind, pts }; }
+  if (inside) { const w = wallSpots(u, n); if (w) return { kind: 'wall', pts: w };
+    kind = 'fan'; for (let i = 0; i < n; i++) { const a = d + (n === 1 ? 0 : -1.1 + 2.2 * i / (n - 1)); pts.push(fit(Math.cos(a) * FORM_CFG.fan, Math.sin(a) * FORM_CFG.fan)); } return { kind, pts }; }
+  { const cv = coverAdj(u.x, u.y); kind = cv ? 'cover' : 'line'; // outside: spread along the cover edge (or a line abreast)
     let ax, ay, bx2 = 0, by2 = 0; if (cv) { const L = Math.hypot(cv.dx, cv.dy); ax = -cv.dy / L; ay = cv.dx / L; bx2 = cv.dx / L * 0.22; by2 = cv.dy / L * 0.22; } else { ax = lx; ay = ly; bx2 = -fx_ * 0.1; by2 = -fy_ * 0.1; }
     for (let i = 0; i < n; i++) { const k = (i - (n - 1) / 2) * FORM_CFG.gap * (n > 5 ? 0.85 : 1); pts.push(fit(ax * k + bx2, ay * k + by2)); } }
   return { kind, pts };
 }
+/** Door stack: POINT and DEFENSE (members 1 and 2) shoulder-to-frame on either side of the opening, partly exposed; everyone else
+    lined up against the wall beside the door, OUT of the opening's line of fire. Offsets are from the team's cell centre. */
+function doorStack(u, door, n, okPos) { const fwd = FORM_CFG.frame, lat = FORM_CFG.frameLat, ax = -door.dy, ay = door.dx, pts = [];
+  const cellOk = (ox, oy) => { const cx = Math.round(u.x + ox), cy = Math.round(u.y + oy); return okPos(ox, oy) && roomAt(cx, cy) === roomAt(u.x, u.y); };
+  const side = cellOk(ax * 1, ay * 1) ? 1 : cellOk(-ax, -ay) ? -1 : 0;
+  pts.push([+(door.dx * fwd + ax * lat * (side || 1)).toFixed(2), +(door.dy * fwd + ay * lat * (side || 1)).toFixed(2)]); // point: at the frame
+  if (n > 1) pts.push([+(door.dx * fwd - ax * lat * (side || 1)).toFixed(2), +(door.dy * fwd - ay * lat * (side || 1)).toFixed(2)]); // defense: opposite frame
+  for (let i = 2; i < n; i++) { const j = i - 1, along = 0.55 + j * FORM_CFG.gap; let p = null;
+    for (const sd of side ? [side, -side] : [1, -1]) { const ox = door.dx * (fwd - 0.05) + ax * sd * along, oy = door.dy * (fwd - 0.05) + ay * sd * along; if (cellOk(ox, oy)) { p = [ox, oy]; break; } }
+    if (!p) { const back = 0.35 + j * FORM_CFG.gap * 0.8; for (const sd of [side || 1, -(side || 1)]) { const ox = -door.dx * back + ax * sd * 0.55, oy = -door.dy * back + ay * sd * 0.55; if (cellOk(ox, oy)) { p = [ox, oy]; break; } } }
+    if (!p) p = [-door.dx * (0.3 + 0.1 * j) + ax * (side || 1) * 0.45, -door.dy * (0.3 + 0.1 * j) + ay * (side || 1) * 0.45];
+    pts.push([+p[0].toFixed(2), +p[1].toFixed(2)]); }
+  return pts; }
+/** Inside a room: spots hugging the walls near the team (corners preferred), spread corner-to-corner; point on the wall nearest the entry. */
+function wallSpots(u, n) { const r = roomAt(u.x, u.y), rad = FORM_CFG.wallRad, W = 0.5 - FORM_CFG.wallIn, c = [];
+  for (let y = u.y - 4; y <= u.y + 4; y++) for (let x = u.x - 4; x <= u.x + 4; x++) { if (!inb(x, y) || roomAt(x, y) !== r || S.block[idx(x, y)] || dist(x, y, u.x, u.y) > rad) continue;
+    if (!(x === u.x && y === u.y) && los(u.x, u.y, x, y) !== 1) continue;
+    let ox = 0, oy = 0, walls = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (!inb(nx, ny) || roomAt(nx, ny) !== r) { ox += dx * W; oy += dy * W; walls++; } }
+    if (!walls) continue; c.push({ ox: x - u.x + ox, oy: y - u.y + oy, walls, d: dist(x, y, u.x, u.y) }); }
+  if (c.length < Math.min(n, 2)) return null;
+  const back = u.dir || 0, bx = -Math.cos(back), by = -Math.sin(back), pick = [];
+  // point: wall spot nearest the team, toward the side it came from (entry)
+  c.sort((a, b) => (a.d - (a.ox * bx + a.oy * by) * 0.3 - a.walls * 0.1) - (b.d - (b.ox * bx + b.oy * by) * 0.3 - b.walls * 0.1)); pick.push(c[0]);
+  while (pick.length < n) { let best = null, bs = -1e9; for (const q of c) { const m = Math.min(...pick.map(p => Math.hypot(p.ox - q.ox, p.oy - q.oy))); const s = Math.min(m, 2.2) + q.walls * 0.5 - q.d * 0.12;
+      const sc = s - (m < 0.3 ? 5 : 0); if (sc > bs) { bs = sc; best = q; } }
+    pick.push(best); }
+  return pick.map(p => [+p.ox.toFixed(2), +p.oy.toFixed(2)]); }
 function hallLike(r) { const rm = S.rooms[r]; return !!rm && (/hall|corridor/i.test(rm.name) || Math.min(rm.w, rm.h) <= 2); }
 
 /* =====================================================================

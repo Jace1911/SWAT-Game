@@ -38,7 +38,10 @@ function makeRng(seed) {
 
 /* ---------- static data ---------- */
 const EQUIP = {
-  shield:     { name: 'Ballistic Shield',      short: 'Shield',   pool: 2,  desc: 'Reduces chance of an officer going down when engaged.' },
+  shield:     { name: 'Ballistic Shield (IIIA)', short: 'Shield',  pool: 2,  desc: 'Level IIIA, one hand: stops handgun and shotgun rounds in the frontal arc (partial body coverage). Teammates stacked behind get some cover.' },
+  shield3:    { name: 'Ballistic Shield (III)', short: 'Shield III', pool: 0, desc: 'Level III rifle-rated shield, one hand: also stops most rifle rounds (~60%) and some .308. Frontal arc only.' },
+  plate:      { name: 'Plate Carrier',          short: 'Plates',   pool: 0,  desc: 'Rifle plates over the IIIA vest (worn slot): stops most rifle rounds to the torso. Individually issued.' },
+  draco:      { name: 'Draco Arm Kit',          short: 'Draco',    pool: 0,  desc: 'Front-mounted breaching boom/claw for the BearCat. Two officers install it in 5 turns; then the vehicle can rip doors and windows.' },
   ram:        { name: 'Battering Ram',         short: 'Ram',      pool: 2,  desc: 'Manual breach. Medium speed; barricades and storm doors slow it.' },
   halligan:   { name: 'Halligan Bar',          short: 'Halligan', pool: 3,  desc: 'Pry or kick-assist. Quieter but slowest; must pry a storm door first.' },
   charge:     { name: 'Breaching Charge',      short: 'Charge',   pool: 3,  desc: 'Hang, back off, detonate. Fastest and most reliable; very loud. Needs a breacher.' },
@@ -99,7 +102,7 @@ function seeE(ax, ay, bx, by) { const e = edge(ax, ay, bx, by); return e.t === '
 function passE(e, o) {
   if (e.t === 'O') return true;
   if (e.t === 'F') return !!o.fly;
-  if (e.t === 'W') return !!(o.fly && e.w.broken);
+  if (e.t === 'W') return !!(o.fly && e.w.broken) || !!(e.w.cleared && !o.drive); // v9: a window torn out by the Draco arm is a walk-through opening
   if (e.t === 'D') { const d = e.d; if (d.state !== 'closed') return true; if (o.assume && o.assume.has(d.id)) return true;
     if (o.suspect && !d.exterior) return true; if (o.canOpen && !d.locked && !d.barricaded) return true; if (o.allDoors) return true; }
   return false;

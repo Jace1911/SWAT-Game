@@ -417,7 +417,22 @@ function drawBearCat(g, c, Ln, Wd, blink) { const dis = c.disabled;
   g.fillStyle = '#0a1226'; g.beginPath(); g.arc(-Ln * 0.12, 0, tr * 0.45, 0, 7); g.fill(); g.fillStyle = '#8a95a3'; g.fillRect(-Ln * 0.12 + tr * 0.4, -CS * 0.06, tr * 1.35, CS * 0.12); // hatch + short barrel/port
   g.fillStyle = dis ? '#333' : blink ? '#ff4458' : '#3a7bff'; g.fillRect(Ln * 0.07, -Wd * 0.46, CS * 0.12, CS * 0.12); g.fillStyle = dis ? '#333' : blink ? '#3a7bff' : '#ff4458'; g.fillRect(Ln * 0.07, Wd * 0.46 - CS * 0.12, CS * 0.12, CS * 0.12);
   g.fillStyle = 'rgba(255,250,220,.85)'; g.fillRect(Ln / 2 - 5, -Wd / 2 + 3, 3, 5); g.fillRect(Ln / 2 - 5, Wd / 2 - 8, 3, 5);
-  g.fillStyle = 'rgba(220,230,255,.9)'; g.font = `800 ${CS * 0.24}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SWAT', -Ln * 0.34, 0); }
+  g.fillStyle = 'rgba(220,230,255,.9)'; g.font = `800 ${CS * 0.24}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SWAT', -Ln * 0.34, 0);
+  if (c.draco || c.dracoProg) drawDraco(g, c, Ln, Wd); }
+/** v9 Draco arm: hydraulic boom on the BearCat's FRONT (+x) ending in a claw. Ghosted while being installed (with progress);
+ *  swung out toward the opening during a Draco breach this turn. */
+function drawDraco(g, c, Ln, Wd) { const S = Core.state, inst = !c.draco, act = !inst && c.dracoOut === S.turn && c.dracoAim !== undefined;
+  let rel = 0; if (act) { rel = c.dracoAim - (c.dir || 0); while (rel > Math.PI) rel -= 2 * Math.PI; while (rel < -Math.PI) rel += 2 * Math.PI; rel = Math.max(-0.9, Math.min(0.9, rel)); }
+  const bx = Ln * 0.28, L = act ? Ln * 0.22 + CS * 1.9 : Ln * 0.22 + CS * 1.05; g.save(); if (inst) { g.globalAlpha = 0.45; g.setLineDash([4, 3]); }
+  g.fillStyle = '#d9a21a'; g.beginPath(); g.arc(bx, 0, Wd * 0.17, 0, 7); g.fill(); g.strokeStyle = '#3a2a05'; g.lineWidth = 1.5; g.stroke(); // turret / pivot
+  g.translate(bx, 0); g.rotate(rel);
+  g.fillStyle = '#e8b322'; g.strokeStyle = '#3a2a05'; g.lineWidth = 1.5; g.beginPath(); g.rect(0, -CS * 0.13, L, CS * 0.26); g.fill(); g.stroke(); // boom
+  g.fillStyle = '#9aa3ad'; g.fillRect(L * 0.15, -CS * 0.05, L * 0.6, CS * 0.1); // hydraulic ram
+  g.translate(L, 0); g.strokeStyle = '#c9ced6'; g.lineWidth = CS * 0.11; g.lineCap = 'round'; const o = act ? 0.55 : 0.35;
+  for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(0, sg * CS * 0.08); g.lineTo(CS * 0.32, sg * CS * (0.14 + o * 0.3)); g.lineTo(CS * 0.55, sg * CS * 0.06); g.stroke(); } // claw tines
+  g.restore();
+  if (inst) { const f = Math.min(1, (c.dracoProg || 0) / Core.installTicks()); g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(-Ln * 0.4, -Wd / 2 - CS * 0.32, Ln * 0.8, CS * 0.18);
+    g.fillStyle = '#e8b322'; g.fillRect(-Ln * 0.4, -Wd / 2 - CS * 0.32, Ln * 0.8 * f, CS * 0.18); } }
 /** Overwatch sight-line cones for perched marksmen. */
 function drawCones(g, now) { const S = Core.state;
   for (const u of S.units) { if (u.kind !== 'team' || u.status !== 'ok' || !u.perch) continue; const c = Core.owCone(u); if (!c) continue; const [ux, uy] = posOf(u.uid, c.x, c.y);
@@ -463,15 +478,17 @@ function drawDoors(g, now) {
     if (view.hoverDoor === d.id) { g.strokeStyle = '#ffffff'; g.lineWidth = 2; g.beginPath(); g.arc(L2 / 2, 0, CS * 0.7, 0, 7); g.stroke(); }
     g.restore(); }
   for (const w of S.windows) { if (!w.broken) continue; for (const [cx, cy, ox, oy] of w.edges) { const px = (Math.max(cx, ox) + (cx === ox ? 0.5 : 0)) * CS, py = (Math.max(cy, oy) + (cy === oy ? 0.5 : 0)) * CS;
+    if (w.cleared) { const vert = cx !== ox; g.fillStyle = 'rgba(20,14,8,.95)'; g.fillRect(px - (vert ? 3 : CS / 2), py - (vert ? CS / 2 : 3), vert ? 6 : CS, vert ? CS : 6); g.strokeStyle = '#ffb020'; g.lineWidth = 1.5; g.strokeRect(px - (vert ? 3 : CS / 2), py - (vert ? CS / 2 : 3), vert ? 6 : CS, vert ? CS : 6); } // torn-out opening (Draco)
     g.fillStyle = 'rgba(180,230,255,.7)'; for (let k = 0; k < 6; k++) g.fillRect(px + Math.cos(k * 1.7) * (4 + k * 2), py + Math.sin(k * 1.7) * (4 + k * 2), 3, 2); } }
 }
 function worldFx(g, now) {
-  for (const a of anims) { const t = (now - a.t0) / 1000; const px = wpx(a.x), py = wpx(a.y);
+  for (const a of anims) { const t = (now - a.t0) / 1000; if (t < 0) continue; const px = wpx(a.x), py = wpx(a.y); // queued fx (staggered start) not yet playing
     switch (a.type) {
       case 'shot': if (t < 0.35) { const c = a.friendly ? '160,220,255' : '255,220,120'; g.strokeStyle = `rgba(${c},${1 - t / 0.35})`; g.lineWidth = 2.5; g.beginPath(); g.moveTo(px, py); g.lineTo(wpx(a.tx), wpx(a.ty)); g.stroke(); } break;
       case 'muzzle': if (t < 0.25) { g.save(); g.globalCompositeOperation = 'lighter'; glow(g, px, py, CS * 1.3, a.friendly ? 'rgba(170,220,255,A)' : 'rgba(255,200,90,A)', 0.8 * (1 - t / 0.25)); g.restore(); } break;
       case 'impact': if (t < 0.5) { g.save(); g.globalCompositeOperation = 'lighter'; for (let k = 0; k < 8; k++) { const ang = k * 0.8 + a.id, d = CS * (0.2 + t * 2.2) * (0.6 + (k % 3) * 0.2); g.fillStyle = `rgba(255,${190 + k * 8},90,${1 - t / 0.5})`; g.fillRect(px + Math.cos(ang) * d, py + Math.sin(ang) * d, 3, 3); } g.restore(); } break;
       case 'hitflash': if (t < 0.5) { g.save(); g.globalCompositeOperation = 'lighter'; glow(g, px, py, CS * (0.8 + t * 2), 'rgba(255,255,255,A)', 0.7 * (1 - t / 0.5)); g.restore(); } break;
+      case 'taser': if (t < 0.4) { g.strokeStyle = `rgba(255,226,90,${1 - t / 0.4})`; g.lineWidth = 3; g.beginPath(); g.moveTo(wpx(a.fromX), wpx(a.fromY)); g.lineTo(px, py); g.stroke(); } break;
       case 'll': if (t < 0.4) { g.strokeStyle = `rgba(180,140,255,${1 - t / 0.4})`; g.lineWidth = 3; g.beginPath(); g.moveTo(wpx(a.fromX), wpx(a.fromY)); g.lineTo(px, py); g.stroke(); } break;
       case 'flash': { if (t < 0.25) { const k = t / 0.25; g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.arc(lerp(wpx(a.fromX), px, k), lerp(wpx(a.fromY), py, k), 4, 0, 7); g.fill(); }
         else if (t < 1.2) { const k = (t - 0.25) / 0.95; g.save(); g.globalCompositeOperation = 'lighter'; glow(g, px, py, CS * (2 + 5 * k), 'rgba(255,255,240,A)', 0.95 * (1 - k)); g.restore(); } break; }
@@ -665,6 +682,9 @@ function pickDoor(cx, cy) { const S = Core.state; let best = null, bd = 1e9;
   for (const d of S.doors) { if (!doorVisible(d)) continue; const [mx, my] = doorMidCell(d); const dd = Math.hypot(cx - mx, cy - my);
     if (dd < (d.kind === 'garage' ? 2.2 : 1.2) && dd < bd) { bd = dd; best = d.id; } }
   return best; }
+function pickWindow(cx, cy) { const S = Core.state; let best = null, bd = 1.4;
+  S.windows.forEach((w, i) => { if (w.cleared) return; for (const [a, b, c, d] of w.edges) { const mx = (a + c) / 2 + 0.5, my = (b + d) / 2 + 0.5, dd = Math.hypot(cx - mx, cy - my); if (dd < bd) { bd = dd; best = i; } } });
+  return best; }
 function pickRoom(cx, cy) { const r = Core.roomAt(Math.floor(cx), Math.floor(cy)); if (r < 0) return null; return Core.state.rooms[r].known ? r : null; }
 function pickPerch(cx, cy) { const S = Core.state; let best = null, bd = 2.2; for (const p of S.perches) { const d = Math.hypot(cx - p.x - 0.5, cy - p.y - 0.5); if (d < bd) { bd = d; best = p.id; } } if (best == null) { const p = Core.perchAt(Math.floor(cx), Math.floor(cy)); if (p) best = p.id; } return best; }
 /** Overview map (#ovw): the whole neighborhood, the target house, units and the current viewport rectangle. */
@@ -694,5 +714,5 @@ function ovwJump(c, px, py) { const { k, ox, oy } = ovwGeom(c); centerOn((px - o
 
 function init(canvas) { cv = canvas; ctx = cv.getContext('2d'); resize(); }
 function invalidate() { compKey = ''; dynVer = -1; planVer = -1; L.expoVer = null; }
-return { init, resize, frame, fit, pan, zoomAt, toCell, toScreen, setSafe, snapshot, endAnim, pickUnit, pickCar, pickDoor, pickRoom, pickPerch, drawMini, ovwJump, centerOn, viewRect, view, cam, invalidate, CS, get animating() { return animating; } };
+return { init, resize, frame, fit, pan, zoomAt, toCell, toScreen, setSafe, snapshot, endAnim, pickUnit, pickCar, pickDoor, pickWindow, pickRoom, pickPerch, drawMini, ovwJump, centerOn, viewRect, view, cam, invalidate, CS, get animating() { return animating; } };
 })();

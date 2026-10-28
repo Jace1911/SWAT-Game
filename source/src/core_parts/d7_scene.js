@@ -6,7 +6,7 @@
    ===================================================================== */
 const SCENE_CFG = {
   variants: { good: 0.3, gap: 0.3, front: 0.2, mixed: 0.2 },   // patrol setup on arrival
-  injury: 0.32,                                                // chance an officer was hit before SWAT arrived
+  injury: 0.05,                                                // chance an officer was hit before SWAT arrived
   injuryKind: { mobile: 0.3, immobile: 0.38, critical: 0.22, kia: 0.1 },
   critImmobile: [4, 6], critCritical: [3, 4],                  // turns left without aid
   slip: 0.12, slipAfter: 2,                                    // unwatched side with windows: per-turn chance he tries to slip out (after N turns of gap)
@@ -91,28 +91,30 @@ function setupScene(r) {
 /** Mission brief + 911 call, generated from the seed; consistent with the hidden facts (who called, weapon) but never confirms them outright. */
 function makeBrief() {
   const r = makeRng(S.seed * 4111 + 17), sp = S.suspect, N = S.nego, sc = S.scene, G = S.geo;
-  const self = N.called911, shots = !!sc.injury || r.chance(0.55);
-  const types = self ? ['mental health crisis', 'shots reported', 'domestic disturbance'] : ['domestic disturbance', 'welfare check', 'warrant service', 'traffic stop follow-up', 'shots reported', 'mental health crisis'];
-  const type = r.pick(types); const first = r.pick(FIRST), last = r.pick(LAST), age = r.int(24, 58), addr = `${r.int(1, 48) * 100 + r.int(1, 99)} ${G.name}`;
+  const stv = S.stype || { key: 'barricade' }, ST = stv.key, self = N.called911, shots = !!sc.injury || stv.legal === 'discharge' || r.chance(ST === 'mental' ? 0.2 : ST === 'flee' ? 0.35 : 0.55);
+  const types = ST !== 'barricade' ? null : self ? ['shots reported', 'warrant service'] : ['welfare check', 'warrant service', 'traffic stop follow-up', 'shots reported'];
+  const type = types ? r.pick(types) : { mental: 'mental health crisis', domestic: 'domestic disturbance', flee: 'fleeing suspect', neighbor: 'neighbor dispute — gun displayed' }[ST]; const first = r.pick(FIRST), last = r.pick(LAST), age = r.int(24, 58), addr = `${r.int(1, 48) * 100 + r.int(1, 99)} ${G.name}`;
   const hh = r.int(0, 23), mm = r.int(0, 59), t0 = hh * 3600 + mm * 60 + r.int(0, 59), ts = s => { s = (t0 + s) % 86400; const p = n => String(n).padStart(2, '0'); return `${p(Math.floor(s / 3600))}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}`; };
   const desc = `${first} ${last}, ${age}, ${r.pick(['about 6 ft, heavy build', 'medium build, beard', 'slim, shaved head', 'tall, thin, glasses', 'stocky, short dark hair'])}`;
   const gunWord = { handgun: 'a handgun', rifle: 'a long gun', shotgun: 'a long gun — maybe a shotgun' }[sp.weapon] || 'a gun';
-  const sawGun = self ? r.chance(0.5) : r.chance(0.65);
-  const callerKind = self ? 'suspect' : { 'domestic disturbance': 'girlfriend', 'welfare check': 'sister', 'warrant service': 'neighbor', 'traffic stop follow-up': 'neighbor', 'shots reported': 'neighbor', 'mental health crisis': 'mother' }[type];
-  const callerName = self ? `${first} ${last} (did not give a name)` : { girlfriend: r.pick(['Kayla', 'Maria', 'Jess']) + ' (girlfriend)', sister: r.pick(['Dana', 'Erin', 'Tasha']) + ` ${last} (sister)`, neighbor: r.pick(['Mr. ', 'Mrs. ']) + r.pick(LAST.filter(n => n !== last)) + ' (neighbor)', mother: `Linda ${last} (mother)` }[callerKind];
-  const giveNum = !self && ['girlfriend', 'sister', 'mother'].includes(callerKind) && r.chance(SCENE_CFG.numberInCall * 2);
+  const sawGun = ST === 'neighbor' || stv.variant === 'firearm' ? true : stv.variant === 'violent' ? false : self ? r.chance(0.5) : r.chance(0.65);
+  const callerKind = self ? 'suspect' : ST === 'domestic' ? 'partner' : ST === 'neighbor' || ST === 'flee' ? 'neighbor' : { 'domestic disturbance': 'girlfriend', 'welfare check': 'sister', 'warrant service': 'neighbor', 'traffic stop follow-up': 'neighbor', 'shots reported': 'neighbor', 'mental health crisis': 'mother' }[type];
+  const callerName = self ? `${first} ${last} (did not give a name)` : { partner: r.pick(['Kayla', 'Maria', 'Jess', 'Amber']) + ' (partner)', girlfriend: r.pick(['Kayla', 'Maria', 'Jess']) + ' (girlfriend)', sister: r.pick(['Dana', 'Erin', 'Tasha']) + ` ${last} (sister)`, neighbor: r.pick(['Mr. ', 'Mrs. ']) + r.pick(LAST.filter(n => n !== last)) + ' (neighbor)', mother: `Linda ${last} (mother)` }[callerKind];
+  const giveNum = !self && ['girlfriend', 'sister', 'mother', 'partner'].includes(callerKind) && r.chance(SCENE_CFG.numberInCall * 2);
   const phone = `(612) 555-0${r.int(100, 199)}`;
   const L = [], add = (s, who, text) => L.push({ t: ts(s), who, text });
   let s = 0; add(s, 'Dispatcher', '911, what is the address of your emergency?');
-  if (self) { add(s += 4, 'Caller', `${addr}. You need to send somebody. ${type === 'mental health crisis' ? "I can't do this anymore." : type === 'shots reported' ? "I just fired a round so you'd know I'm serious." : 'She left. Everybody leaves.'}`);
+  if (self) { add(s += 4, 'Caller', `${addr}. You need to send somebody. ${type === 'mental health crisis' ? "I can't do this anymore." : type === 'shots reported' ? "I just fired a round so you'd know I'm serious." : "I'm not going back. Tell them that."}`);
     add(s += 6, 'Dispatcher', 'Okay, I am sending help. What is your name, sir?'); add(s += 5, 'Caller', "Doesn't matter. Tell them not to come in here.");
     add(s += 4, 'Dispatcher', 'Is anyone else in the house with you?'); add(s += 3, 'Caller', "No. Just me."); if (sawGun || shots) { add(s += 5, 'Dispatcher', 'Do you have any weapons?'); add(s += 3, 'Caller', sawGun ? `I've got ${gunWord.replace('a long gun — maybe a shotgun', 'a shotgun').replace('a long gun', 'a rifle')}.` : "I'm not answering that."); }
     add(s += 6, 'Dispatcher', "Sir, stay on the line with me — officers are on the way."); add(s += 2, '[Note]', 'Caller disconnected. Caller ID on the line: ' + phone + ' (registered to ' + first + ' ' + last + ').'); }
   else {
-    const what = { 'domestic disturbance': `My boyfriend — he's screaming and throwing things, I got out the back. He's still in the house at ${addr}.`, 'welfare check': `I'm calling about my brother at ${addr}. He sent me a goodbye text and now he won't answer.`, 'warrant service': `There's police at my neighbor's place, ${addr}, and he slammed the door on them and he's yelling.`, 'traffic stop follow-up': `A guy just ran from a car the police pulled over and went into ${addr}.`, 'shots reported': `I heard ${shots ? 'gunshots' : 'what sounded like a gunshot'} next door, ${addr}.`, 'mental health crisis': `My son at ${addr} — he's off his medication and he says he's going to make them shoot him.` }[type];
-    add(s += 4, 'Caller', what); add(s += 6, 'Dispatcher', 'Okay. Are you somewhere safe right now?'); add(s += 3, 'Caller', callerKind === 'neighbor' ? "I'm inside my house, I'm looking out the window." : "I'm in my car down the street.");
-    add(s += 5, 'Dispatcher', 'Does he have any weapons?'); add(s += 3, 'Caller', sawGun ? `Yes — I saw ${gunWord}.` : "I don't know. Maybe. He used to keep guns.");
-    add(s += 5, 'Dispatcher', 'Is anyone else inside?'); add(s += 3, 'Caller', r.pick(["I don't think so.", "I don't know.", 'I think he is alone.']));
+    const what = ST === 'domestic' ? (stv.variant === 'firearm' ? `My boyfriend — he hit me and then he got his gun out. I ran out the back. He's still in the house at ${addr}.` : `My boyfriend — he's been hitting me and throwing things, I got out the side door. He's still in the house at ${addr}.`)
+      : ST === 'neighbor' ? `My neighbor at ${addr} just pointed a gun at me over the fence! We've been fighting about the property line for months.`
+      : ST === 'flee' ? `A guy the police were chasing just kicked in the back door of the empty house at ${addr}. Nobody lives there — it's for sale.` : { 'domestic disturbance': `My boyfriend — he's screaming and throwing things, I got out the back. He's still in the house at ${addr}.`, 'welfare check': `I'm calling about my brother at ${addr}. He sent me a goodbye text and now he won't answer.`, 'warrant service': `There's police at my neighbor's place, ${addr}, and he slammed the door on them and he's yelling.`, 'traffic stop follow-up': `A guy just ran from a car the police pulled over and went into ${addr}.`, 'shots reported': `I heard ${shots ? 'gunshots' : 'what sounded like a gunshot'} next door, ${addr}.`, 'mental health crisis': `My son at ${addr} — he's off his medication and he says he's going to make them shoot him.` }[type];
+    add(s += 4, 'Caller', what); add(s += 6, 'Dispatcher', 'Okay. Are you somewhere safe right now?'); add(s += 3, 'Caller', callerKind === 'neighbor' ? "I'm inside my house, I'm looking out the window." : callerKind === 'partner' ? "I'm down the street — I can see a police car coming." : "I'm in my car down the street.");
+    add(s += 5, 'Dispatcher', 'Does he have any weapons?'); add(s += 3, 'Caller', sawGun ? `Yes — I saw ${gunWord}.` : stv.variant === 'violent' ? "He had a knife in the kitchen. Guns — I don't know, maybe." : "I don't know. Maybe. He used to keep guns.");
+    add(s += 5, 'Dispatcher', 'Is anyone else inside?'); add(s += 3, 'Caller', ST === 'flee' ? 'No — the house is empty, nobody lives there.' : ST === 'domestic' ? "No. The kids are at my mom's." : r.pick(["I don't think so.", "I don't know.", 'I think he is alone.']));
     if (giveNum) { add(s += 4, 'Dispatcher', 'Do you have a phone number for him?'); add(s += 4, 'Caller', `His cell is ${phone}.`); }
     add(s += 4, 'Dispatcher', `What's his name?`); add(s += 2, 'Caller', `${first}. ${first} ${last}.`);
     add(s += 5, 'Dispatcher', 'Officers are on the way. Stay where you are and keep away from the house.'); }
@@ -128,11 +130,16 @@ function makeBrief() {
   else if (shots) patrol.push(`${ts(shotS).slice(0, 5)} — patrol heard ${r.chance(0.5) ? 'one shot' : 'shots'} from inside; no one hit.`);
   patrol.push(`Subject refused commands to come out. SWAT activated at ${ts(actS)} — mission clock 0:00.`);
   const known = [];
-  known.push(r.pick(['Prior arrest for assault (2019).', 'No criminal history on file.', 'Two prior disturbance calls at this address.', 'Active misdemeanour warrant.', 'Recent job loss, per family.']));
+  known.push(r.pick(['Prior arrest for assault (2019).', 'No criminal history on file.', 'Two prior disturbance calls at this address.', 'Active misdemeanour warrant.', ST === 'flee' ? 'Prior arrest for burglary (2022).' : 'Recent job loss, per family.']));
   if (type === 'warrant service') known.push('Felony warrant (probation violation); he refused to open the door to the warrant team.');
+  if (ST === 'domestic') known.push(stv.variant === 'firearm' ? 'Two prior domestic calls at this address; a handgun is registered to him.' : 'Two prior domestic calls at this address; protective order filed last year.', 'His partner is at the perimeter with patrol — interview her (Partner Interview) for layout, weapons and history.');
+  if (ST === 'neighbor') known.push(`Ongoing property-line dispute with the neighbor on the ${stv.side} side. He displayed the gun toward that house.`, 'Known armed — the neighbor saw the weapon. Neighbor Interview available.');
+  if (ST === 'flee') known.push('Ran on foot from a traffic stop; patrol lost sight of him at the back of this house.', 'The house is vacant (bank-owned, for sale) — no residents, no family on scene.');
+  if (ST === 'mental') known.push(LEGAL_TXT[stv.legal], 'Crisis call: arrange an EMS evaluation (Intel → EMS Evaluation) and try to resolve without force.');
   if (type === 'traffic stop follow-up') known.push('Ran from a traffic stop two blocks away; the car is registered to him.');
   S.brief = { type, time: ts(0).slice(0, 5), callAt: ts(0), arriveAt: arrive, activatedAt: ts(actS), addr, caller: callerName, self, shots, sawGun, suspect: desc, name: `${first} ${last}`,
-    occupants: self ? 'Caller says he is alone. Not confirmed.' : 'Caller does not know whether anyone else is inside. Not confirmed.',
+    occupants: ST === 'flee' ? 'Vacant house — no residents. He is alone.' : ST === 'domestic' ? 'Partner is out and at the perimeter; she says nobody else is inside. Not confirmed.' : self ? 'Caller says he is alone. Not confirmed.' : 'Caller does not know whether anyone else is inside. Not confirmed.',
+    stype: ST, stypeName: stv.name || 'Barricaded subject', typeDesc: SCEN_TYPES[ST].desc, legal: stv.legal || null, variant: stv.variant || null, side: stv.side || null,
     patrol, known, officerDown: !!sc.injury, transcript: L, background: bg.sort(), phone: self || giveNum ? phone : null, giveNum, reviewed: false };
 }
 /** Listening to the 911 recording (from the brief or the intel menu): same transcript, same intel, applied once. */
@@ -158,10 +165,10 @@ function statusCheck() {
 function sceneTurn() {
   const sc = S.scene, sp = S.suspect; if (!sc) return;
   const sw = sideWatch(); if (sc.gap0.length && sc.gapClosed == null && !sw.gaps.some(g => sc.gap0.includes(g))) { sc.gapClosed = S.turn; xpAct('contain', null); }
-  if (!hostile() || sp.mode !== 'barricaded' || sp.walk || (S.nego && S.nego.contact) || S.turn < 2) { sc.gapTurns = 0; return; }
+  const TT = stypeCfg(); if (!hostile() || sp.mode !== 'barricaded' || sp.walk || (S.nego && S.nego.contact && !TT.vacant) || S.turn < Math.min(2, TT.slipAfter)) { sc.gapTurns = 0; return; }
   const wins = S.windows.filter(w => w.room !== sp.room && !w.broken && sw.gaps.includes(watchPts().find(p => p.win === w.id).side));
   if (!wins.length) { sc.gapTurns = 0; return; }
-  sc.gapTurns++; if (sc.gapTurns < SCENE_CFG.slipAfter || !S.rng.chance(SCENE_CFG.slip)) return;
+  sc.gapTurns++; if (sc.gapTurns < (TT.slipAfter || SCENE_CFG.slipAfter) || !S.rng.chance(Math.min(0.6, SCENE_CFG.slip * (TT.slipMul || 1)))) return;
   let best = null, bp = null; for (const w of wins) { const [cx, cy] = w.edges[0]; const p = findPath(sp.x, sp.y, (x, y) => x === cx && y === cy, { suspect: true, canOpen: true }); if (p && (!bp || p.length < bp.length)) { bp = p; best = w; } }
   if (!best) return; sp.mode = 'fleeing'; sp.flee = best.id; sc.slipTried = true; const side = watchPts().find(p => p.win === best.id).side;
   log(`Movement inside — sounds like he is heading for the ${side} side of the house!`, 'alert');
@@ -174,6 +181,7 @@ function sceneDebrief() {
   else t += '. No gap at the start';
   out.push({ k: 'Initial conditions', v: t + '.' });
   if (sc.injury) { const c = casById(sc.injury.cas); out.push({ k: '  Officer down on arrival', v: `${sc.injury.name}: ${sc.injury.kind === 'kia' ? 'killed before SWAT arrived' : sc.injury.kind + ' — outcome: ' + (c ? sevWord(c) : 'unknown')}.` }); }
+  out.push(...typeDebrief());
   const B = S.brief; if (B) out.push({ k: '  Call', v: `${B.type} at ${B.time}; 911 recording ${B.reviewed ? 'reviewed' : 'not reviewed'}.` });
   return out;
 }

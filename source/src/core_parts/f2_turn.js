@@ -84,9 +84,11 @@ function unitAct(u) {
   if (u.kind === 'patrol' && u.inCar) { const o = u.orders[0]; if (o && o.type === 'move') { const c = unit(u.inCar); if (c && houseSideOf(c) === 'driver' && c.occ[0] === u.uid && !o.slid) { o.slid = true; log(`${u.name}: sliding across to the far-side door…`); return; } exitCar(u, 'safe'); } return; }
   if ((u.kind === 'team' || u.kind === 'patrol' && !u.inCar) && u.detain && suspectActive()) { const sp = S.suspect;
     stepAlong(u, null, (x, y) => cheb(x, y, sp.x, sp.y) <= 1 && !(x === sp.x && y === sp.y)); return; }
+  if (u.kind === 'team') dracoInterrupt(u);
   const o = u.orders[0]; if (!o) return;
   if (u.kind === 'cruiser') {
     if (o.type === 'move') return driveCar(u, o);
+    if (o.type === 'draco') return dracoTick(u, o);
     if (o.type === 'exit') { const hs = houseSideOf(u);
       if (o.side === 'safe' && hs === 'driver' && !o.slid && u.occ.length) { o.slid = true; log(`${u.name}: crew sliding across to the far-side doors…`); return; }
       for (const id of u.occ.slice()) exitCar(unit(id), o.side); popOrder(u); return; }
@@ -106,6 +108,8 @@ function unitAct(u) {
   const outside = roomAt(u.x, u.y) < 0;
   const speed = u.kind === 'drone' ? 2 : (u.kind === 'patrol' || u.kind === 'team') && outside && (u.impair || 0) < 0.35 ? 2 : 1;
   if (o.type === 'corner') return cornerTick(u, o);
+  if (DEVICE_ORDERS.includes(o.type)) return deviceTick(u, o);
+  if (o.type === 'dracoInstall') return dracoInstallTick(u, o, speed);
   if (o.type === 'move' || o.type === 'clear') {
     const r = stepAlong(u, o, (x, y) => x === o.x && y === o.y, speed);
     if (r === null) failOrders(u, 'route blocked'); else if (r) { popOrder(u); if (o.type === 'move') u.stayPut = !!o.exposed; if (o.type === 'clear') { const rm = S.rooms[o.room];
@@ -153,7 +157,7 @@ function unitAct(u) {
     if (!th) { failOrders(u, 'nobody can free both hands to throw (shield / ram)'); return; }
     if (th.stowed.length) log(`${th.o.name}: ${th.stowed.map(k => WEAPONS[k] ? WEAPONS[k].short.toLowerCase() : k).join(' + ')} put away for the two-handed throw — back in hand, not ready until next turn.`); popOrder(u);
     if (o.type === 'bang') { fx('flash', tc[0], tc[1], { fromX: u.x, fromY: u.y }); log(`${u.name}: BANG OUT — flashbang into ${rm.known ? rm.name : 'room'}.`, 'radio'); noise(tc[0], tc[1], 10, 'bang');
-      if (S.suspect.room === o.room && hostile()) { S.suspect.stun = 5; S.suspect.daze = FIRE_CFG.bangDaze; S.suspect.ambush = false; xpAct('bang', u); log('Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
+      if (S.suspect.room === o.room && hostile()) { S.suspect.stun = 5; S.suspect.stunBy = null; S.suspect.daze = FIRE_CFG.bangDaze; S.suspect.ambush = false; xpAct('bang', u); log('Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
     else { gasDeploy(o.room); fx('gas', tc[0], tc[1], { room: o.room, fromX: u.x, fromY: u.y }); log(`${u.name}: CS gas deployed into ${rm.known ? rm.name : 'room'}.`, 'radio'); aggressive(15); }
     return;
   }
@@ -163,7 +167,7 @@ function doBreach(u, d, how) {
   d.state = 'breached'; d.known = true; d.barricaded = false; d.locked = false; S.stats.breaches++;
   const c = d.cells[Math.floor(d.cells.length / 2)]; const mx = (c[0][0] + c[1][0]) / 2, my = (c[0][1] + c[1][1]) / 2;
   fx('breach', mx, my, { how }); fx('text', mx, my, { text: 'BREACH', color: '#ffb020' });
-  xpAct('breach', u, d.name); log(`${u.name}: ${d.name} BREACHED (${BREACH[how] ? BREACH[how].name.toLowerCase() : how}).`, 'radio'); d.method = how;
+  xpAct('breach', u, d.name); log(`${u.name}: ${d.name} BREACHED (${BREACH[how] ? BREACH[how].name.toLowerCase() : how === 'draco' ? 'Draco arm' : how}).`, 'radio'); d.method = how;
   noise(mx, my, how === 'charge' ? 18 : 14, 'breach'); aggressive(how === 'charge' ? 25 : 20);
   const sp = S.suspect; if (false) { sp.stun = Math.max(sp.stun, 2); log('Suspect stunned by the blast.', 'good'); }
 }

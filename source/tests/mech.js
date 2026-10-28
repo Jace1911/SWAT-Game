@@ -153,7 +153,7 @@ for (const seed of [11, 23, 57, 101, 314]) {
   ok(crOnlyFront, 'front posts are cruiser-in-street (or a parked car), never yard cover'); ok(noYard, 'no procedural cover added in the front yard');
   ok(rb, 'every map starts with ≥2 held roadblocks'); ok(brief, 'every map has a brief + 911 transcript');
   ok(gapN > 3 && gapOk === gapN, `gap variant always leaves a side unwatched (${gapOk}/${gapN})`); ok(goodN > 2 && goodOk === goodN, `good variant watches all sides (${goodOk}/${goodN})`);
-  ok(inj >= 5 && inj <= 22 && crit, `starting injuries occur (${inj}/40, KIA ${kia}) with a valid state`); }
+  ok(Core.SCENE_CFG.injury <= 0.06 && inj <= 8 && crit, `starting injuries rare (~5%) (${inj}/40, KIA ${kia}) with a valid state`); }
 { const S = Core.newGame(4242); ok(!Core.intelInfo().containKnown, 'containment unknown before Status Check');
   Core.setCommand('status'); ok(Core.intelInfo().containKnown, 'Status Check reveals containment'); ok(S.log.some(l => /status|roll call/i.test(l.text)), 'status check logs a roll call');
   const n0 = S.log.length; Core.review911(); Core.review911(); ok(S.intel.call911 && S.log.length - n0 <= 3, 'review911 is applied once (shared by brief + command)');

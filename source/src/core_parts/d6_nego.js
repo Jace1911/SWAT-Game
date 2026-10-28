@@ -36,9 +36,9 @@ const NEGO_CFG = {
 const TALK_KEYS = ['call', 'rapport', 'listen', 'concession', 'status', 'ultimatum'];
 const TALK_NAMES = { call: 'Call his phone', rapport: 'Build rapport', listen: 'Listen / let him vent', concession: 'Offer a concession', status: 'Status check', ultimatum: 'Ultimatum' };
 function initNego(seed) {
-  const nr = makeRng(seed * 977 + 13); const T = NEGO_CFG.temper; let pick = nr(), temper = 'talker';
-  for (const k in T) { pick -= T[k].w; if (pick <= 0) { temper = k; break; } }
-  S.nego = { temper, hidden: nr.chance(NEGO_CFG.hiddenWeapon), called911: nr.chance(NEGO_CFG.number.call911), numberKnown: false, numberSrc: null, line: false, phoneRoom: null,
+  const nr = makeRng(seed * 977 + 13); const T = NEGO_CFG.temper, TW = stypeCfg().temperW; let pick = nr(), temper = 'talker';
+  for (const k in T) { pick -= TW ? TW[k] : T[k].w; if (pick <= 0) { temper = k; break; } }
+  S.nego = { temper, hidden: nr.chance(NEGO_CFG.hiddenWeapon), called911: nr.chance(NEGO_CFG.number.call911) && ['barricade', 'mental'].includes((S.stype || {}).key || 'barricade'), numberKnown: false, numberSrc: null, line: false, phoneRoom: null,
     contact: null, quiet: 0, attempts: 0, refusals: 0, rounds: 0, concessions: 0, pick: null, outcome: null, hist: [], read: null, warn: false, protocol: null, ambush: null, paTurn: -1, everContact: false, how: null };
 }
 function negOnScene() { return S.officers.filter(o => o.spec === 'negotiator' && (o.status === 'staged' || o.status === 'ok')); }
@@ -83,7 +83,7 @@ function runTalk() {
   const T = NEGO_CFG.temper[N.temper];
   if (k === 'call') { N.attempts; if (!N.line && r.chance(T.noAnswer)) { N.attempts++; N.refusals++; negHist('Negotiator: the phone rings out — no answer.', 'radio'); return; }
     contactTry(N.line ? 'line' : 'phone'); return; }
-  const C = NEGO_CFG.talk, m = talkMult(N.contact); N.rounds++; xpAct('dialogue', negOnScene().map(o => o.id)); let gain = 0, msg = '';
+  const C = NEGO_CFG.talk, m = talkMult(N.contact) * (stypeCfg().negoMul || 1); N.rounds++; xpAct('dialogue', negOnScene().map(o => o.id)); let gain = 0, msg = '';
   if (k === 'rapport') { gain = r.int(C.rapport.gain[0], C.rapport.gain[1]) * m - sp.agit * NEGO_CFG.agitDrag; sp.agit += C.rapport.agit; msg = 'building rapport — talking about his family, what he needs.'; }
   if (k === 'listen') { gain = r.int(C.listen.gain[0], C.listen.gain[1]) * m; sp.agit += C.listen.agit; msg = 'letting him vent. He is calming down.';
     if (r.chance(C.listen.intel)) { sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.located = true; msg += ` He mentions he is in the ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'house'}.`; } }
@@ -117,7 +117,7 @@ function shoutReveal(u, mayFire) {
 function paAct(u, o) {
   const N = S.nego, sp = S.suspect, r = S.rng; if (!hostile()) return; if (!paInRange(u.x, u.y)) { log(`${u.name}: out of PA range.`, 'radio'); return; }
   if (o.mode === 'callout') { const C = NEGO_CFG.callout; N.attempts++;
-    let p = C.base + sp.talk / 100 * C.talk + (S.gasActive && S.gas[idx(sp.x, sp.y)] > 0.2 ? C.gas : 0) - (sp.agit > C.agitHigh ? C.agitPen : 0);
+    let p = C.base * (stypeCfg().calloutMul || 1) + sp.talk / 100 * C.talk + (S.gasActive && S.gas[idx(sp.x, sp.y)] > 0.2 ? C.gas : 0) - (sp.agit > C.agitHigh ? C.agitPen : 0);
     if (S.contain.length && S.contain.some(c => !c.covered)) p *= C.contain; N.lastCallout = p;
     log(`${u.name} (PA): "POLICE! COME OUT WITH YOUR HANDS EMPTY!"`, 'radio');
     if (r.chance(p)) { negHist('Call-out: he shouts that he is coming out.', 'good'); walkout('callout'); return; }
@@ -199,8 +199,8 @@ function protocolNow(spot) {
     if (u.kind === 'cruiser' && u.occ.length && dist(u.x, u.y, x, y) <= 14) { P.cover = true; P.who.push(u.name + ' cover'); }
     if (!onFoot(u) || roomAt(u.x, u.y) >= 0) continue; if (dist(u.x, u.y, x, y) > 14 || !los(u.x, u.y, x, y)) continue;
     const l = losEx(x, y, u.x, u.y, true); const nearCar = S.units.some(c => c.kind === 'cruiser' && cheb(c.x, c.y, u.x, u.y) <= 2);
-    if (l.cov >= 1 || nearCar) { P.cover = true; P.who.push(u.name + ' cover'); if (u.kind === 'team' && u.equip.shield > 0) P.shield = true; }
-    else if (u.kind === 'team' && u.equip.shield > 0) { P.shield = true; } }
+    if (l.cov >= 1 || nearCar) { P.cover = true; P.who.push(u.name + ' cover'); if (u.kind === 'team' && hasShield(u)) P.shield = true; }
+    else if (u.kind === 'team' && hasShield(u)) { P.shield = true; } }
   if (paUnits(x, y).length) P.commands = true;
   P.score = ['cover', 'shield', 'overwatch', 'commands'].filter(k => P[k]).length; return P;
 }
@@ -232,8 +232,8 @@ function ambushNow(T) {
   S.units.forEach(u => u.detain = false); S.stats.shots++; N.ambush = { turn: S.turn + 1, score: P.score || 0, hit: false };
   fx('muzzle', sp.x, sp.y, { suspect: true }); fx('shot', sp.x, sp.y, { tx: T.x, ty: T.y }); sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn };
   log('AMBUSH — he pulls a hidden handgun on the arrest team!', 'bad'); N.outcome = 'Walk-out ambush';
-  let p = NEGO_CFG.ambushHit * (P.commands ? 0.5 : 1) * (T.kind === 'team' && T.equip.shield > 0 ? 0.5 : 1) * (T_HIT[targetClass(T, sp.x, sp.y)] || 1);
-  if (r.chance(p)) { N.ambush.hit = true; officerDown(T); } else log(`Rounds miss ${T.name}.`, 'alert');
+  let p = NEGO_CFG.ambushHit * (P.commands ? 0.5 : 1) * (T_HIT[targetClass(T, sp.x, sp.y)] || 1);
+  if (r.chance(p)) { N.ambush.hit = true; shotOfficer(T, 'pistol', dist(T.x, T.y, sp.x, sp.y), sp.x, sp.y, 'walk-out spot'); } else log(`Rounds miss ${T.name}.`, 'alert');
   const resp = S.units.filter(u => unitAlive(u) && (onFoot(u) || u.perch) && weaponOf(u) && los(u.x, u.y, sp.x, sp.y) && dist(u.x, u.y, sp.x, sp.y) <= WEAPONS[weaponOf(u)].range)
     .sort((a, b) => !!b.perch - !!a.perch);
   for (const u of resp.slice(0, 3)) { const q = u.perch ? 0.7 : P.cover ? 0.55 : 0.3; fx('muzzle', u.x, u.y, { friendly: true }); fx('shot', u.x, u.y, { tx: sp.x, ty: sp.y, friendly: true }); S.stats.ofShots++;

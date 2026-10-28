@@ -27,10 +27,10 @@ const staged0 = S => S.officers.filter(o => o.status === 'staged').length;
 // 4) formations
 { const S = Core.newGame(31, Career.quickOpts(100)); S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; o.eta = 0; });
   const t = Core.formTeam(S.officers.slice(0, 6).map(o => o.id)).team; const f = Core.formationFor(t);
-  ok(f.pts.length === 6, `one dot per member (${f.pts.length})`); ok(['cover', 'line', 'stack', 'column', 'fan'].includes(f.kind), `outside kind ${f.kind}`);
+  ok(f.pts.length === 6, `one dot per member (${f.pts.length})`); ok(['cover', 'line', 'stack', 'column', 'fan', 'wall'].includes(f.kind), `outside kind ${f.kind}`);
   const d = S.doors.find(x => x.name === 'Front Door'); const kinds = new Set([f.kind]);
   // inside a room → fan; next to a door → stack
-  const r = S.rooms.find(r => r.w >= 3 && r.h >= 3); if (r) { t.x = r.x + Math.floor(r.w / 2); t.y = r.y + Math.floor(r.h / 2); const g = Core.formationFor(t); kinds.add(g.kind); ok(g.kind === 'fan' || g.kind === 'column', `inside room → ${g.kind}`); }
+  const r = S.rooms.find(r => r.w >= 3 && r.h >= 3); if (r) { t.x = r.x + Math.floor(r.w / 2); t.y = r.y + Math.floor(r.h / 2); const g = Core.formationFor(t); kinds.add(g.kind); ok(g.kind === 'wall' || g.kind === 'fan' || g.kind === 'column', `inside room → ${g.kind}`); }
   if (d) { const [[a0, a1], [b0, b1]] = d.cells[0]; const out = Core.roomAt(a0, a1) < 0 ? [a0, a1] : [b0, b1]; t.x = out[0]; t.y = out[1]; const g = Core.formationFor(t); kinds.add(g.kind); ok(g.kind === 'stack', `at front door → ${g.kind}`); }
   ok(kinds.size >= 2, 'formation adapts to context'); t.members.slice(2).forEach(id => { S.officers.find(o => o.id === id).status = 'down'; }); ok(Core.formationFor(t).pts.length === 2, 'dots follow active members'); }
 // 5) Work Corner: availability, 45° cuts, reveal, stop on threat
