@@ -31,7 +31,7 @@ for (const seed of [11, 23, 57, 101, 314]) {
   ok(Core.impairAcc(T) < 1 && Core.impairAcc(T) > 0.85 && Core.impairVis(T) < 1, 'mask has a small accuracy/vision penalty');
   const U = { kind: 'team', name: 'U', x: P.x, y: P.y, mask: 'off', status: 'ok', orders: [], members: [] }; Core.gasExpose(U); ok(U.impair > 0.5 && U.mask === 'donning', 'unmasked SWAT impaired and starts donning'); }
 // gas order → masks on that turn
-{ let found = false; for (let seed = 1; seed < 40 && !found; seed++) { const S = Core.newGame(seed); S.officers.forEach(o => { o.status = 'staged'; });
+{ let found = false; for (let seed = 1; seed < 40 && !found; seed++) { const S = Core.newGame(seed); S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; });
     const r = Core.formTeam(S.officers.slice(0, 4).map(o => o.id)); const t = r.team; Core.deployTeam && Core.deployTeam(t.uid); t.deployed = true;
     const q = Core.queueOrder(t.uid, { type: 'gas', room: S.suspect.room }); if (!q.ok) continue; found = true;
     Core.execute(); ok(t.mask === 'donning', 'gas queued → team donning masks at execute'); ok(S.log.some(l => /Gas! Masks on/.test(l.text)), 'log says "Gas! Masks on"');
@@ -59,7 +59,7 @@ for (const seed of [11, 23, 57, 101, 314]) {
   ok(Core.breachCan(t, 'charge') !== true, 'charge requires a breacher');
 }
 // full in-game charge: hang → standoff → detonate; safety & noise
-{ let done = false; for (let seed = 1; seed < 40 && !done; seed++) { const S = Core.newGame(seed); S.officers.forEach(o => { o.status = 'staged'; });
+{ let done = false; for (let seed = 1; seed < 40 && !done; seed++) { const S = Core.newGame(seed); S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; });
     const br = S.officers.find(o => o.spec === 'breacher'); if (!br) continue; const ids = [br.id, ...S.officers.filter(o => o !== br && o.spec !== 'marksman').slice(0, 3).map(o => o.id)];
     const t = Core.formTeam(ids).team; t.deployed = true; const d = S.doors.find(x => x.name === 'Front Door');
     const q = Core.queueOrder(t.uid, { type: 'breach', door: d.id, method: 'charge' }); if (!q.ok) { console.log('  charge q', q.reason); continue; }
@@ -69,7 +69,7 @@ for (const seed of [11, 23, 57, 101, 314]) {
     const [mx, my] = Core.doorMid(d); ok(Core.dist(t.x, t.y, mx, my) >= Core.CHARGE_SAFE, `team stood off ≥${Core.CHARGE_SAFE} cells (${Core.dist(t.x, t.y, mx, my).toFixed(1)})`);
     ok(S.suspect.mode !== 'barricaded', 'blast alerted the suspect'); done = true; } ok(done, 'ran a charge breach'); }
 // hang only → team backs off to the standoff and waits; Detonate order blows it; return fire is a snap shot
-{ let done = false; for (let seed = 1; seed < 40 && !done; seed++) { const S = Core.newGame(seed); S.officers.forEach(o => { o.status = 'staged'; });
+{ let done = false; for (let seed = 1; seed < 40 && !done; seed++) { const S = Core.newGame(seed); S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; });
     const br = S.officers.find(o => o.spec === 'breacher'); if (!br) continue; const ids = [br.id, ...S.officers.filter(o => o !== br && o.spec !== 'marksman').slice(0, 3).map(o => o.id)];
     const t = Core.formTeam(ids).team; t.deployed = true; const d = S.doors.find(x => x.name === 'Front Door');
     if (!Core.queueOrder(t.uid, { type: 'breach', door: d.id, method: 'charge', hangOnly: true }).ok) continue;
@@ -110,13 +110,13 @@ for (const seed of [11, 23, 57, 101, 314]) {
 { let bad = 0, n = 0; for (let seed = 1; seed <= 25; seed++) { Core.newGame(seed * 31); n++; if (Core.validateContain().length) bad++; } ok(bad === 0, `containment posts validated on ${n} seeds (shielded from every window & door, reachable, no overlap)`); }
 { const S = Core.newGame(77); ok(S.contain.every(c => Core.shieldAt(c.x, c.y, { static: true }).q !== 'open' && (c.q === 'hard' || c.q === 'conceal')) || S.contain.every(c => c.q === 'cruiser' ? /^Front/.test(c.name) : Core.shieldAt(c.x, c.y, { static: true }).q !== 'open'), 'every post is hard cover, concealment or cruiser cover');
   ok(S.units.filter(u => u.kind === 'patrol' && !u.inCar && !u.badPos && u.status === 'ok').every(u => Core.shieldAt(u.x, u.y).q !== 'open'), 'patrol officers start in cover (unless placed badly / down)'); }
-// move to an open spot: snaps to cover if any nearby, otherwise warns
+// v8: move anywhere — an open spot is never snapped, it is flagged/warned instead
 { let snapped = 0, warned = 0, tried = 0; for (let seed = 1; seed <= 6; seed++) { const S = Core.newGame(seed * 13); const p = S.units.find(u => u.kind === 'patrol' && !u.inCar); if (!p) continue;
     for (let y = 0; y < Core.MAP_H; y += 4) for (let x = 0; x < Core.MAP_W; x += 4) { const c = Core.idx(x, y); if (S.block[c] || S.room[c] >= 0 || S.dyn[c] || Core.coverInfo(x, y).level !== 'open' || tried > 150) continue;
       p.orders = []; const o = { type: 'move', x, y }; const r = Core.queueOrder(p.uid, o); if (!r.ok) continue; tried++;
       if (o.cover === 'open') { warned++; ok(S.log.slice(-3).some(l => /no cover/i.test(l.t || l.msg || l.text || '')), 'open-spot move logs a warning'); }
-      else { snapped++; if (Core.coverInfo(o.x, o.y).level === 'open') { ok(false, 'snapped move lands in cover'); } } } }
-  ok(tried > 50 && snapped > 0, `exposed move orders snap to cover (${snapped}/${tried} snapped, ${warned} warned)`); }
+      else if (o.x !== x || o.y !== y) snapped++; else warned++; } }
+  ok(tried > 50 && snapped === 0 && warned === tried, `open-spot moves go exactly where ordered, with a warning (${snapped}/${tried} snapped, ${warned} warned)`); }
 // hard cover cuts hit odds far more than concealment
 { const H = Core.T_HIT || null; const S = Core.newGame(5); const t = Core.targetClass ? null : null;
   if (Core.T_HIT) ok(Core.T_HIT.covered < Core.T_HIT.concealed && Core.T_HIT.concealed > 0.6, `concealment barely reduces hit chance (${Core.T_HIT.concealed}), hard cover does (${Core.T_HIT.covered})`);

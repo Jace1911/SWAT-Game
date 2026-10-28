@@ -37,7 +37,7 @@ function teamResponses() {
       const comply = ((outside ? NEGO_CFG.outsideChallenge : 1) * 0.05 + S.units.filter(q => q.kind === 'team' && q.vis && q.vis.includes(idx(sp.x, sp.y))).length * 0.05) * (outside ? 1 : 0.45) + sp.talk / 250 - sp.agit / 300;
       if (S.rng.chance(comply)) { if (outside) { log(`${u.name}: "POLICE! DROP IT AND COME OUT!" — he shouts that he is coming out.`, 'good'); walkout('callout'); break; }
         surrender(`${u.name}: "POLICE! DROP IT!" — suspect drops the weapon and gets on the ground.`); u.detain = true; continue; }
-      if (u.equip.lesslethal > 0 && u.stance !== 'hold' && d <= 11 && !(u.llcd > S.tick)) { u.llcd = S.tick + 3; /* single-shot launcher: re-load before the next round */ const p = (0.3 + (hasSpec(u, 'marksman') ? 0.15 : 0) + teamSkill(u) * 0.15) * (sp.ambush ? 0.45 : 1);
+      if (u.equip.lesslethal > 0 && u.stance !== 'hold' && d <= 11 && !(u.llcd > S.tick)) { u.llcd = S.tick + 3; /* single-shot launcher: re-load before the next round */ const llo = useItem(u, 'lesslethal'); if (llo && invOf(llo).ll <= 0) log(`${llo.name}: 40mm launcher is out of rounds.`, 'radio'); const p = (0.3 + (hasSpec(u, 'marksman') ? 0.15 : 0) + teamSkill(u) * 0.15) * (sp.ambush ? 0.45 : 1);
         if (S.rng.chance(p)) { sp.mode = 'incapacitated'; fx('ll', sp.x, sp.y, { fromX: u.x, fromY: u.y }); log(`${u.name}: less-lethal round — suspect incapacitated, weapon dropped.`, 'good'); u.detain = true; continue; }
         else log(`${u.name}: less-lethal round missed.`, 'radio'); }
       else if (sp.cd > 0) { sp.cd += 1; if (u.duckLog !== S.turn) { u.duckLog = S.turn; log(`${u.name}: "POLICE! DROP THE WEAPON!" — suspect ducks into cover.`, 'radio'); } }
@@ -65,7 +65,7 @@ function withdraw() { if (S.phase === 'over') return { ok: false, reason: 'Missi
   S.result = { win: false, title: 'OPERATION WITHDRAWN', text: `Command ended the operation after ${tMin(S.turn)} without taking the suspect into custody${sp.mode === 'incapacitated' ? ' (suspect down but not secured)' : ''}. Scene handed over.` };
   log('Command: withdraw — all units pull back to the perimeter.', 'bad'); finishMission(); return { ok: true }; }
 function endTurn() {
-  S.turn++; S.phase = 'planning'; S.tick = 0; S.peek = [];
+  S.turn++; S.phase = 'planning'; S.tick = 0; S.peek = []; syncAll(); // weapons become ready again
   for (const u of S.units) { u.orders = u.orders.filter(o => o.type !== 'hold' && o.type !== 'shoot'); u.holding = false; u.waiting = false; u.exiting = null;
     if ((u.kind === 'drone' || u.kind === 'robot') && unitAlive(u)) { u.battery--; if (u.battery <= 0) { u.status = 'down'; log(`${u.name}: battery depleted.`); } } }
   gasTurn(); suspectGasTurn(); casualtyTurn(); negoTurn(); sceneTurn();

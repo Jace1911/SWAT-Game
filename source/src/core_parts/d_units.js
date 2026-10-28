@@ -27,7 +27,13 @@ function setupUnits(r) {
         status: 'enroute', eta: e[Math.min(k - 1, e.length - 1)] + Math.floor((k - 1) / e.length), team: null, stable: false, dog: sp === 'k9' ? q.pick(['Rex', 'Bruno', 'Koda', 'Max', 'Nova']) : null, quals: [] }; });
     const cand = q.shuffle(S.officers.filter(o => !['leader', 'marksman'].includes(o.spec))); cand.slice(0, Math.max(O.spotters != null ? O.spotters : 2, 0)).forEach(o => o.quals.push('spotter')); }
   if (O.gear) for (const k in O.gear) if (k in S.armory) S.armory[k] = O.gear[k];
-  S.teamMax = O.teamMax || 5;
+  S.teamMax = O.teamMax || 5; S.llRounds = O.llRounds || ITEM_CFG.lesslethal.rounds;
+  // v8: separate rng (map stays identical) — less-lethal specialists and the 70/30 split between the two staging areas
+  const q8 = makeRng((S.seed * 31 + S.officers.length * 7 + 5) >>> 0);
+  S.officers.forEach(o => { if (o.spec === 'marksman' && !o.quals.includes('ll')) o.quals.push('ll'); });
+  const llc = q8.shuffle(S.officers.filter(o => ['point', 'leader', 'breacher', 'medic'].includes(o.spec) && !o.quals.includes('ll'))); if (llc[0]) llc[0].quals.push('ll');
+  const rest = q8.shuffle(S.officers.filter(o => o.spec !== 'leader')), nSec = Math.round(S.officers.length * STAGE_CFG.secondary);
+  S.officers.forEach(o => { o.stage = 'primary'; }); rest.slice(0, nSec).forEach(o => { o.stage = 'secondary'; });
   rebuildDyn(); setupRoadblocks(r); // three cruisers at the ends of the block, keeping traffic out
   const pn = r.shuffle(PATROL.slice()), rifle = r.int(0, 3);
   for (let i = 0; i < 4; i++) S.units.push({ uid: 'P' + (i + 1), kind: 'patrol', name: 'Ofc. ' + pn[i], num: i + 1, x: 0, y: 0, dir: -Math.PI / 2, skill: 0.35, panic: 0, status: 'ok', orders: [], vis: [],
@@ -43,8 +49,8 @@ function teamSkill(t) { const m = teamOk(t); if (!m.length) return 0; let s = m.
 function unitAlive(u) { return u.status === 'ok'; }
 function suspectActive() { return S.suspect && !['detained', 'escaped'].includes(S.suspect.mode); }
 function hostile() { return S.suspect && ['barricaded', 'alert', 'fleeing'].includes(S.suspect.mode); }
-function onFoot(u) { return unitAlive(u) && (u.kind === 'patrol' ? !u.inCar : u.kind === 'team' ? u.deployed : false); }
-function weaponOf(u) { if (u.kind === 'patrol') return u.weapon; if (u.kind === 'team') return hasSpec(u, 'marksman') ? 'sniper' : 'rifle'; return null; }
+function onFoot(u) { return unitAlive(u) && (u.kind === 'patrol' ? !u.inCar : u.kind === 'team' ? u.deployed && !u.inCar : false); }
+function weaponOf(u) { if (u.kind === 'patrol') return u.weapon; if (u.kind === 'team') { const w = teamWeapon(u); return w ? w.k : null; } return null; }
 function skillOf(u) { return u.kind === 'team' ? teamSkill(u) : u.kind === 'patrol' ? u.skill : 0.3; }
 
 function log(text, kind = 'radio') { S.log.push({ turn: S.turn, tick: S.tick || 0, text, kind }); S.events.push({ type: 'log', kind }); }
@@ -73,6 +79,17 @@ function footprint(c, x = c.x, y = c.y, ax = carAxis(c)) { return ax === 'h' ? [
 function rebuildDyn() { if (!S.dyn) S.dyn = new Uint8Array(MAP_W * MAP_H); S.dyn.fill(0); for (const u of S.units || []) if (u.kind === 'cruiser') for (const [x, y] of footprint(u)) if (inb(x, y)) S.dyn[idx(x, y)] = u.num; }
 function carClash(x, y, self) { for (const u of S.units) { if (u.kind !== 'cruiser' || u.uid === self) continue; for (const [fx_, fy] of footprint(u)) if (cheb(fx_, fy, x, y) <= 2) return true; } return false; }
 function carAt(x, y) { const n = inb(x, y) ? S.dyn[idx(x, y)] : 0; return n ? S.units.find(u => u.kind === 'cruiser' && u.num === n) : null; }
+/* v8 vehicles: a car is only driven through an occupant (patrol officer or team). Empty vehicles are static cover props. */
+const CAR_SEATS = { cruiser: 2, armored: 10 };
+function carSeats(c) { return c.armored ? CAR_SEATS.armored : CAR_SEATS.cruiser; }
+function seatsUsed(c) { return c.occ.reduce((a, id) => { const q = unit(id); return a + (!q ? 0 : q.kind === 'team' ? Math.max(1, teamOk(q).length) : 1); }, 0); }
+function seatsNeeded(u) { return u.kind === 'team' ? Math.max(1, teamOk(u).length) : 1; }
+const STAGE_CFG = { secondary: 0.3 };
+/** Secondary (on-foot) staging at the other end of the street: low exposure, reachable. No equipment there. */
+function setupStaging2() { const st = S.ext.staging, tx = MAP_W - 1 - st.x, D = reach(st.x, st.y, { outdoor: true }, 1e6); let best = null, bs = 1e9;
+  for (let y = Math.max(1, st.y - 6); y <= Math.min(MAP_H - 2, st.y + 4); y++) for (let x = Math.max(2, tx - 12); x <= Math.min(MAP_W - 3, tx + 12); x++) { const c = idx(x, y);
+    if (D[c] >= 1e9 || S.block[c] || roomAt(x, y) >= 0 || carAt && carAt(x, y)) continue; const s = expoAt(x, y) * 40 + Math.abs(x - tx) * 0.4 + Math.abs(y - st.y) * 0.3; if (s < bs) { bs = s; best = [x, y]; } }
+  S.ext.staging2 = best ? { x: best[0], y: best[1] } : { x: st.x, y: st.y }; }
 function boardCar(p, c) { p.inCar = c.uid; p.x = c.x; p.y = c.y; if (!c.occ.includes(p.uid)) c.occ.push(p.uid); p.orders = []; }
 function houseCenter() { const H = S.house; return [(H.x0 + H.x1) / 2, (H.y0 + H.y1) / 2]; }
 /** Which side of the car faces the house: 'driver' (left of heading) or 'passenger'. */

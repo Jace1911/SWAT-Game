@@ -15,9 +15,16 @@ function targetClass(u, px, py) {
 }
 const T_PRIO = { slice: 1.2, open: 3, car: 2, concealed: 1.3, covered: 1, perched: 0.6 };
 const T_TRY = { slice: 0.85 * 0.6, open: 0.85, car: 0.6, concealed: 0.3, covered: 0.25, perched: 0.15 }; // concealment: he can barely see you, so he fires less
+/* v8: per-opportunity chance he pulls the trigger. Out of the house (window / doorway at someone outside) it is low;
+   at a team inside the house with him it is high. Flashbang daze and CS gas cut both the chance and his accuracy. */
+const FIRE_CFG = { outside: 0.40, indoor: 0.80, indoorAmbush: 0.92, bangDaze: 24, bangMul: 0.45, gasCut: 0.65, accBang: 0.55, accGas: 0.6 };
+/** Multiplier (0..1) on his fire chance from flashbang daze (ticks left) and gas impairment (coughing, eyes streaming). */
+function fireImpair() { const sp = S.suspect; return (sp.daze > 0 ? FIRE_CFG.bangMul : 1) * (1 - FIRE_CFG.gasCut * clamp(sp.impair || 0, 0, 1)); }
+function accImpair() { const sp = S.suspect; return (sp.daze > 0 ? FIRE_CFG.accBang : 1) * (1 - FIRE_CFG.accGas * clamp(sp.impair || 0, 0, 1)); }
 const T_HIT = { slice: 0.4, open: 1, concealed: 0.85, covered: 0.2, perched: 0.12 }; // …but rounds go through a hedge; hard cover stops them
 function suspectTick() {
   const sp = S.suspect; if (!suspectActive()) return;
+  if (sp.daze > 0) sp.daze--;
   if (sp.stun > 0) { sp.stun--; return; }
   if (sp.cd > 0) sp.cd--;
   if (sp.mode === 'fleeing') { fleeStep(); if (!suspectActive()) return; }
@@ -40,8 +47,10 @@ function suspectTick() {
   if (best.px !== sp.x || best.py !== sp.y) { // reposition toward the window first
     const p = findPath(sp.x, sp.y, (x, y) => x === best.px && y === best.py, { suspect: true }); if (p && p.length) { sp.x = p[0][0]; sp.y = p[0][1]; sp.atWindow = winCellSet().has(idx(sp.x, sp.y)); } return; }
   if (sp.cd > 0) return;
-  let tryP = T_TRY[best.cls] * (sp.mode === 'barricaded' ? 0.55 : 1) * (0.6 + sp.agit / 125) * (sp.ambush ? 1.3 : 1) * (1 - 0.5 * (sp.impair || 0)) * (contactLive() && !sp.ambush ? NEGO_CFG.talkingFire : 1);
-  if (best.u.kind === 'team' && roomAt(best.u.x, best.u.y) >= 0) tryP = Math.max(tryP, sp.ambush ? 0.9 : 0.7);
+  const indoor = (best.u.kind === 'team' || best.u.kind === 'robot') && roomAt(best.u.x, best.u.y) >= 0;
+  let tryP = indoor ? (sp.ambush ? FIRE_CFG.indoorAmbush : FIRE_CFG.indoor)
+    : FIRE_CFG.outside * (T_TRY[best.cls] / T_TRY.open) * (0.75 + sp.agit / 200) * (sp.ambush ? 1.3 : 1) * (contactLive() && !sp.ambush ? NEGO_CFG.talkingFire : 1);
+  tryP *= fireImpair(); best.indoor = indoor;
   if (!S.rng.chance(clamp(tryP, 0, 0.95))) return;
   suspectFire(best);
 }
@@ -51,13 +60,15 @@ function suspectFire(b) {
   fx('muzzle', sp.x, sp.y, { suspect: true }); fx('shot', sp.x, sp.y, { tx: T.x, ty: T.y });
   sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn }; S.intel.located = true; S.intel.threat = 1;
   const where = sp.room >= 0 ? (sp.atWindow ? `${S.rooms[sp.room].name} window` : S.rooms[sp.room].name) : 'yard';
-  let p = sw.base * (1 - 0.6 * b.d / sw.range) * (b.l === 2 ? 0.85 : 1) * (sp.ambush ? 1.3 : 1) * (1 - 0.6 * (sp.impair || 0)) * (b.u.impair ? 1.15 : 1);
+  let p = sw.base * (1 - 0.6 * b.d / sw.range) * (b.l === 2 ? 0.85 : 1) * (sp.ambush ? 1.3 : 1) * accImpair() * (b.u.impair ? 1.15 : 1);
   if (T.kind === 'cruiser' && T.armored) { T.hits++; fx('impact', T.x, T.y, { car: T.uid }); log(`SHOTS FIRED from the ${where} — rounds stop against the armored ${T.name}. Crew unhurt.`, 'alert'); returnFire(); return; }
   if (T.kind === 'cruiser') { // through the car body — windshield is the weak spot
     const v = Math.atan2(sp.y - T.y, sp.x - T.x), c = Math.abs(Math.cos(v - T.dir)), glass = c > 0.7;
     p *= (glass ? 0.55 : 0.3) * (T.moved === S.tick ? 0.75 : 1); p = clamp(p, 0.02, 0.45);
     T.hits++; T.marks.push({ dx: S.rng() * 2 - 1, dy: S.rng() * 0.6 - 0.3, t: S.turn }); fx('impact', T.x, T.y, { car: T.uid });
-    if (S.rng.chance(p) && T.occ.length) { const drv = unit(T.occ[0]); T.occ.shift(); drv.inCar = null; const ec = exitCell(T, 'safe') || [T.x, T.y]; drv.x = ec[0]; drv.y = ec[1]; officerDown(drv, `${T.name} driver down — ${drv.name} hit through the ${glass ? 'windshield' : 'door'}.`); T.orders = []; }
+    const hitIn = S.rng.chance(p) && T.occ.length;
+    if (hitIn && unit(T.occ[0]).kind === 'team') { const tm = unit(T.occ[0]); officerDown(tm); T.orders = []; if (tm.status !== 'ok') { T.occ.shift(); tm.inCar = null; } }
+    else if (hitIn) { const drv = unit(T.occ[0]); T.occ.shift(); drv.inCar = null; const ec = exitCell(T, 'safe') || [T.x, T.y]; drv.x = ec[0]; drv.y = ec[1]; officerDown(drv, `${T.name} driver down — ${drv.name} hit through the ${glass ? 'windshield' : 'door'}.`); T.orders = []; }
     else log(`SHOTS FIRED from the ${where} — rounds strike ${T.name}${glass ? ' (windshield)' : ''}. Crew unhurt.`, 'alert');
     returnFire(); return;
   }

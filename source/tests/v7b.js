@@ -25,7 +25,7 @@ const staged0 = S => S.officers.filter(o => o.status === 'staged').length;
 { const a = Core.newGame(4321, Career.quickOpts(1)), A = JSON.stringify(a.doors.map(d => d.cells)); const b = Core.newGame(4321, Career.quickOpts(100));
   ok(A === JSON.stringify(b.doors.map(d => d.cells)), 'same seed → same map at any level'); }
 // 4) formations
-{ const S = Core.newGame(31, Career.quickOpts(100)); S.officers.forEach(o => { o.status = 'staged'; o.eta = 0; });
+{ const S = Core.newGame(31, Career.quickOpts(100)); S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; o.eta = 0; });
   const t = Core.formTeam(S.officers.slice(0, 6).map(o => o.id)).team; const f = Core.formationFor(t);
   ok(f.pts.length === 6, `one dot per member (${f.pts.length})`); ok(['cover', 'line', 'stack', 'column', 'fan'].includes(f.kind), `outside kind ${f.kind}`);
   const d = S.doors.find(x => x.name === 'Front Door'); const kinds = new Set([f.kind]);
@@ -35,7 +35,7 @@ const staged0 = S => S.officers.filter(o => o.status === 'staged').length;
   ok(kinds.size >= 2, 'formation adapts to context'); t.members.slice(2).forEach(id => { S.officers.find(o => o.id === id).status = 'down'; }); ok(Core.formationFor(t).pts.length === 2, 'dots follow active members'); }
 // 5) Work Corner: availability, 45° cuts, reveal, stop on threat
 { let tried = 0, revealed = 0, threat = 0, cleared = 0;
-  for (const seed of [1234, 11, 23, 57, 101, 314, 777]) { const S = Core.newGame(seed); S.officers.forEach(o => { o.status = 'staged'; o.eta = 0; });
+  for (const seed of [1234, 11, 23, 57, 101, 314, 777]) { const S = Core.newGame(seed); S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; o.eta = 0; });
     const t = Core.formTeam(S.officers.slice(0, 4).map(o => o.id)).team; let spot = null;
     for (let y = 0; y < Core.MAP_H && !spot; y++) for (let x = 0; x < Core.MAP_W && !spot; x++) if (Core.roomAt(x, y) >= 0 && Core.cornerAt(x, y)) spot = [x, y];
     if (!spot) continue; tried++; t.x = spot[0]; t.y = spot[1]; Core.updateVision();

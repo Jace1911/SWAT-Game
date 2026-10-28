@@ -55,7 +55,7 @@ const Career = (() => {
     for (const k in LEVEL.gear) { const [at, lo, hi] = LEVEL.gear[k]; if (L < at) { gear[k] = 0; locked.push({ k, at, name: GEAR_NAME[k] || k }); continue; }
       gear[k] = Math.round(lerp(lo, hi, at >= LEVEL.max ? 1 : (L - at) / (LEVEL.max - at))); unlocked.push(k); }
     const counts = {}; specs.forEach(s => counts[s] = (counts[s] || 0) + 1);
-    return { level: L, staff, specs, counts, gear, unlocked, locked, teamMax: Math.round(lerp(LEVEL.teamMax[0], LEVEL.teamMax[1], t)), armored: L >= LEVEL.armoredAt,
+    return { level: L, staff, specs, counts, gear, unlocked, locked, teamMax: Math.round(lerp(LEVEL.teamMax[0], LEVEL.teamMax[1], t)), armored: L >= LEVEL.armoredAt, llRounds: Math.round(lerp(2, 6, t)),
       spotters: counts.marksman || 0, skill: +lerp(LEVEL.skill[0], LEVEL.skill[1], t).toFixed(2) };
   }
   function xpForLevel(L) { L = clampL(L); return Math.round(LEVEL.xpCurve[0] * Math.pow(L - 1, LEVEL.xpCurve[1])); }
@@ -65,7 +65,7 @@ const Career = (() => {
   function levelInfo(c) { const xp = validXp(c && c.teamXp) || 0, L = levelForXp(xp), a = xpForLevel(L), b = L < LEVEL.max ? xpForLevel(L + 1) : a;
     return { level: L, xp, cur: a, next: b, pct: L >= LEVEL.max ? 1 : (xp - a) / Math.max(1, b - a) }; }
   /** Options for a Quick Mission at a chosen level (no career roster, nothing recorded). */
-  function quickOpts(level) { const T = teamForLevel(level); return { level: T.level, specs: T.specs, gear: Object.assign({}, T.gear), teamMax: T.teamMax, armored: T.armored, spotters: T.spotters, skill: T.skill, career: false, mode: 'quick' }; }
+  function quickOpts(level) { const T = teamForLevel(level); return { level: T.level, specs: T.specs, gear: Object.assign({}, T.gear), teamMax: T.teamMax, armored: T.armored, llRounds: T.llRounds, spotters: T.spotters, skill: T.skill, career: false, mode: 'quick' }; }
   /** Hire rookies until the roster holds every specialty the level calls for. */
   function staffTo(c, L) { const T = teamForLevel(L), out = [];
     for (const s in T.counts) { let have = c.roster.filter(o => o.spec === s).length; while (have < T.counts[s]) { out.push(recruit(c, s, true)); have++; } } return out; }
@@ -136,7 +136,7 @@ const Career = (() => {
     const T = teamForLevel(levelOf(c)), gear = Object.assign({}, T.gear); let teamMax = T.teamMax, armored = T.armored;
     for (const k in c.unlocks) { const u = UNLOCKS[k]; if (!u) continue; if (u.gear) for (const g in u.gear) gear[g] = Math.max(gear[g] || 0, u.gear[g]); if (u.teamMax) teamMax = Math.max(teamMax, u.teamMax); if (k === 'armored') armored = true; }
     const roster = c.roster.filter(o => !(o.recover > 0)).map(o => ({ id: o.id, last: o.last, spec: o.spec, quals: o.quals.slice(), skill: o.skill, rank: o.rank, dog: o.dog }));
-    return { roster, gear, teamMax, armored, career: true, mode: 'career', level: T.level };
+    return { roster, gear, teamMax, armored, llRounds: T.llRounds, career: true, mode: 'career', level: T.level };
   }
   /** Random calls for the call-in screen. describe(seed) → Core.preview (scenario facts + a rough difficulty 1..3). */
   function makeCalls(c, describe, n = 3) { const L = levelOf(c), want = 1 + 2 * (L - 1) / 99, pool = [];

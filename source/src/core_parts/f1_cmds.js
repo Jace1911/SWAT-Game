@@ -21,7 +21,7 @@ function runCommand(key) {
     case 'blueprint': S.intel.blueprint = S.turn + 2; log('Records desk: blueprints requested, ETA 1 min.', 'intel'); break;
     case 'flyby': { S.intel.flybyReady = S.turn + 3; S.rooms.forEach(q => { if (S.windows.some(w => w.room === q.id)) q.known = true; });
       sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.threat = Math.max(S.intel.threat, 1); S.intel.located = true;
-      log(`Drone flyby: thermal signature in the ${S.rooms[sp.room].name}. Window rooms mapped.`, 'intel'); fx('flyby', S.house.x0, S.house.y0); break; }
+      log(`Drone flyby: thermal signature ${S.rooms[sp.room] ? 'in the ' + S.rooms[sp.room].name : 'near the house'}. Window rooms mapped.`, 'intel'); fx('flyby', S.house.x0, S.house.y0); break; }
     case 'call911': review911(); break;
     case 'status': statusCheck(); break;
     case 'family': { S.intel.family = true; const T = NEGO_CFG.temper[S.nego.temper]; S.nego.read = T.hint; log(`Family interview: "${T.hint}"`, 'intel');

@@ -63,7 +63,8 @@ const SPECS = {
   tech:       { name: 'Tech / Robot Op', icon: '⌬', desc: 'Operates drone & robot' },
 };
 /* Extra qualifications (shown in member detail). */
-const QUALS = { spotter: { name: 'Sniper Spotter', icon: '◆', desc: 'Trained observer: biggest hit-chance bonus when paired with a sniper, spots the suspect at windows sooner' } };
+const QUALS = { spotter: { name: 'Sniper Spotter', icon: '◆', desc: 'Trained observer: biggest hit-chance bonus when paired with a sniper, spots the suspect at windows sooner' },
+  ll: { name: 'Less-Lethal Specialist', icon: '◍', desc: 'Qualified on the 40mm less-lethal launcher (two hands, limited rounds)' } };
 /* Officer weapons. range = max effective cells; base = hit chance at point blank vs a fully exposed target. */
 const WEAPONS = {
   pistol: { name: 'Pistol',          short: 'Pistol', range: 18, base: 0.10 },

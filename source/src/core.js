@@ -63,7 +63,8 @@ const SPECS = {
   tech:       { name: 'Tech / Robot Op', icon: '⌬', desc: 'Operates drone & robot' },
 };
 /* Extra qualifications (shown in member detail). */
-const QUALS = { spotter: { name: 'Sniper Spotter', icon: '◆', desc: 'Trained observer: biggest hit-chance bonus when paired with a sniper, spots the suspect at windows sooner' } };
+const QUALS = { spotter: { name: 'Sniper Spotter', icon: '◆', desc: 'Trained observer: biggest hit-chance bonus when paired with a sniper, spots the suspect at windows sooner' },
+  ll: { name: 'Less-Lethal Specialist', icon: '◍', desc: 'Qualified on the 40mm less-lethal launcher (two hands, limited rounds)' } };
 /* Officer weapons. range = max effective cells; base = hit chance at point blank vs a fully exposed target. */
 const WEAPONS = {
   pistol: { name: 'Pistol',          short: 'Pistol', range: 18, base: 0.10 },
@@ -605,7 +606,7 @@ function validateWorld() {
              yet rounds go straight through.
    open    = at least one window/door has a clean line to the cell.
    ===================================================================== */
-const COVER_CFG = { range: 30, postSep: 5, search: 6, searchWide: 10, snapR: 4, snapWide: 7, doorPad: 2 };
+const COVER_CFG = { exposedAt: 0.15, range: 30, postSep: 5, search: 6, searchWide: 10, snapR: 4, snapWide: 7, doorPad: 2 };
 let COV_STATIC = false; // when true, cruisers are ignored as cover (they drive away)
 function shotPoints() {
   if (S._shotPts) return S._shotPts; const out = [];
@@ -793,7 +794,13 @@ function setupUnits(r) {
         status: 'enroute', eta: e[Math.min(k - 1, e.length - 1)] + Math.floor((k - 1) / e.length), team: null, stable: false, dog: sp === 'k9' ? q.pick(['Rex', 'Bruno', 'Koda', 'Max', 'Nova']) : null, quals: [] }; });
     const cand = q.shuffle(S.officers.filter(o => !['leader', 'marksman'].includes(o.spec))); cand.slice(0, Math.max(O.spotters != null ? O.spotters : 2, 0)).forEach(o => o.quals.push('spotter')); }
   if (O.gear) for (const k in O.gear) if (k in S.armory) S.armory[k] = O.gear[k];
-  S.teamMax = O.teamMax || 5;
+  S.teamMax = O.teamMax || 5; S.llRounds = O.llRounds || ITEM_CFG.lesslethal.rounds;
+  // v8: separate rng (map stays identical) — less-lethal specialists and the 70/30 split between the two staging areas
+  const q8 = makeRng((S.seed * 31 + S.officers.length * 7 + 5) >>> 0);
+  S.officers.forEach(o => { if (o.spec === 'marksman' && !o.quals.includes('ll')) o.quals.push('ll'); });
+  const llc = q8.shuffle(S.officers.filter(o => ['point', 'leader', 'breacher', 'medic'].includes(o.spec) && !o.quals.includes('ll'))); if (llc[0]) llc[0].quals.push('ll');
+  const rest = q8.shuffle(S.officers.filter(o => o.spec !== 'leader')), nSec = Math.round(S.officers.length * STAGE_CFG.secondary);
+  S.officers.forEach(o => { o.stage = 'primary'; }); rest.slice(0, nSec).forEach(o => { o.stage = 'secondary'; });
   rebuildDyn(); setupRoadblocks(r); // three cruisers at the ends of the block, keeping traffic out
   const pn = r.shuffle(PATROL.slice()), rifle = r.int(0, 3);
   for (let i = 0; i < 4; i++) S.units.push({ uid: 'P' + (i + 1), kind: 'patrol', name: 'Ofc. ' + pn[i], num: i + 1, x: 0, y: 0, dir: -Math.PI / 2, skill: 0.35, panic: 0, status: 'ok', orders: [], vis: [],
@@ -809,8 +816,8 @@ function teamSkill(t) { const m = teamOk(t); if (!m.length) return 0; let s = m.
 function unitAlive(u) { return u.status === 'ok'; }
 function suspectActive() { return S.suspect && !['detained', 'escaped'].includes(S.suspect.mode); }
 function hostile() { return S.suspect && ['barricaded', 'alert', 'fleeing'].includes(S.suspect.mode); }
-function onFoot(u) { return unitAlive(u) && (u.kind === 'patrol' ? !u.inCar : u.kind === 'team' ? u.deployed : false); }
-function weaponOf(u) { if (u.kind === 'patrol') return u.weapon; if (u.kind === 'team') return hasSpec(u, 'marksman') ? 'sniper' : 'rifle'; return null; }
+function onFoot(u) { return unitAlive(u) && (u.kind === 'patrol' ? !u.inCar : u.kind === 'team' ? u.deployed && !u.inCar : false); }
+function weaponOf(u) { if (u.kind === 'patrol') return u.weapon; if (u.kind === 'team') { const w = teamWeapon(u); return w ? w.k : null; } return null; }
 function skillOf(u) { return u.kind === 'team' ? teamSkill(u) : u.kind === 'patrol' ? u.skill : 0.3; }
 
 function log(text, kind = 'radio') { S.log.push({ turn: S.turn, tick: S.tick || 0, text, kind }); S.events.push({ type: 'log', kind }); }
@@ -839,6 +846,17 @@ function footprint(c, x = c.x, y = c.y, ax = carAxis(c)) { return ax === 'h' ? [
 function rebuildDyn() { if (!S.dyn) S.dyn = new Uint8Array(MAP_W * MAP_H); S.dyn.fill(0); for (const u of S.units || []) if (u.kind === 'cruiser') for (const [x, y] of footprint(u)) if (inb(x, y)) S.dyn[idx(x, y)] = u.num; }
 function carClash(x, y, self) { for (const u of S.units) { if (u.kind !== 'cruiser' || u.uid === self) continue; for (const [fx_, fy] of footprint(u)) if (cheb(fx_, fy, x, y) <= 2) return true; } return false; }
 function carAt(x, y) { const n = inb(x, y) ? S.dyn[idx(x, y)] : 0; return n ? S.units.find(u => u.kind === 'cruiser' && u.num === n) : null; }
+/* v8 vehicles: a car is only driven through an occupant (patrol officer or team). Empty vehicles are static cover props. */
+const CAR_SEATS = { cruiser: 2, armored: 10 };
+function carSeats(c) { return c.armored ? CAR_SEATS.armored : CAR_SEATS.cruiser; }
+function seatsUsed(c) { return c.occ.reduce((a, id) => { const q = unit(id); return a + (!q ? 0 : q.kind === 'team' ? Math.max(1, teamOk(q).length) : 1); }, 0); }
+function seatsNeeded(u) { return u.kind === 'team' ? Math.max(1, teamOk(u).length) : 1; }
+const STAGE_CFG = { secondary: 0.3 };
+/** Secondary (on-foot) staging at the other end of the street: low exposure, reachable. No equipment there. */
+function setupStaging2() { const st = S.ext.staging, tx = MAP_W - 1 - st.x, D = reach(st.x, st.y, { outdoor: true }, 1e6); let best = null, bs = 1e9;
+  for (let y = Math.max(1, st.y - 6); y <= Math.min(MAP_H - 2, st.y + 4); y++) for (let x = Math.max(2, tx - 12); x <= Math.min(MAP_W - 3, tx + 12); x++) { const c = idx(x, y);
+    if (D[c] >= 1e9 || S.block[c] || roomAt(x, y) >= 0 || carAt && carAt(x, y)) continue; const s = expoAt(x, y) * 40 + Math.abs(x - tx) * 0.4 + Math.abs(y - st.y) * 0.3; if (s < bs) { bs = s; best = [x, y]; } }
+  S.ext.staging2 = best ? { x: best[0], y: best[1] } : { x: st.x, y: st.y }; }
 function boardCar(p, c) { p.inCar = c.uid; p.x = c.x; p.y = c.y; if (!c.occ.includes(p.uid)) c.occ.push(p.uid); p.orders = []; }
 function houseCenter() { const H = S.house; return [(H.x0 + H.x1) / 2, (H.y0 + H.y1) / 2]; }
 /** Which side of the car faces the house: 'driver' (left of heading) or 'passenger'. */
@@ -991,6 +1009,143 @@ function updateVision() {
   } else if (sp) sp.visible = false;
   containStatus();
 }
+/* ===================== v8 INDIVIDUAL OFFICER INVENTORIES =====================
+   Each officer carries o.inv = { hands:[L,R], holster:[...], slung:[...], packed:{k:n}, vest:{k:n}, nr:{k:turn}, ll:rounds }.
+   Everyone has a holstered handgun + taser. Team-level u.equip is an AGGREGATE rebuilt by syncEquip()
+   (only what is usable), so the breach / gas / nego / medical / robot rules keep reading counts;
+   consumption goes through useItem(). Holster / sling / switch costs no time, but the weapon is
+   NOT READY for one full turn (no return fire, no attacks with it). */
+const ITEM_CFG = {
+  pistol:     { hands: 1, stow: 'holster', weapon: true },
+  taser:      { hands: 1, stow: 'holster', weapon: false },
+  rifle:      { hands: 2, oneHand: true, oneHandMul: 0.6, stow: 'slung', weapon: true },
+  sniper:     { hands: 2, stow: 'slung', weapon: true },
+  lesslethal: { hands: 2, stow: 'slung', qual: 'll', rounds: 4 },
+  shield:     { hands: 1, stow: null },              // cannot be slung or packed: always one hand
+  ram:        { hands: 1, useHands: 2, stow: null }, // carried one-handed; breach = both hands (pistol auto-holstered)
+  halligan:   { hands: 1, stow: 'packed' },
+  polecam:    { hands: 1, stow: 'packed' },
+  bullhorn:   { hands: 1, stow: 'packed' },
+  charge:     { where: 'vest', needFree: 1, drawTicks: 2 }, // drawing off the vest takes time; hanging needs a free hand
+  bang:       { where: 'packed', throwHands: 2 },
+  gas:        { where: 'packed', throwHands: 2 },
+  medkit:     { where: 'packed', useHands: 2 },
+  tphone:     { where: 'packed' },
+  drone:      { where: 'packed', spec: 'tech' },
+  robot:      { where: 'packed', spec: 'tech' },
+  mask:       { where: 'worn', donTurns: 1 },
+};
+const PERSONAL = ['pistol', 'taser', 'rifle', 'sniper', 'mask']; // issued, not drawn from the equipment pool
+const INV_CFG = { notReadyTurns: 1, drawRange: 4.5 };
+function newInv(o) { const prim = o.spec === 'marksman' ? 'sniper' : 'rifle';
+  return { hands: [prim, prim], holster: ['pistol', 'taser'], slung: [], packed: {}, vest: {}, worn: { mask: false }, mask: 'packed', nr: {}, ll: 0, prim }; }
+function invOf(o) { if (!o.inv) o.inv = newInv(o); return o.inv; }
+function setNotReady(o, k) { const inv = invOf(o); inv.nr[k] = S.phase === 'planning' ? S.turn : S.turn + 1; }
+function isReady(o, k) { const inv = invOf(o); return !(inv.nr[k] != null && inv.nr[k] >= S.turn); }
+function heldList(o) { const h = invOf(o).hands; return h[0] && h[0] === h[1] ? [h[0]] : h.filter(Boolean); }
+function freeHands(o) { return invOf(o).hands.filter(x => !x).length; }
+function holds(o, k) { return invOf(o).hands.includes(k); }
+function twoHanded(o, k) { const h = invOf(o).hands; return h[0] === k && h[1] === k; }
+function carries(o, k) { const inv = invOf(o); return holds(o, k) || inv.slung.includes(k) || inv.holster.includes(k) || (inv.packed[k] || 0) > 0 || (inv.vest[k] || 0) > 0; }
+function countOf(o, k) { const inv = invOf(o); return (holds(o, k) ? 1 : 0) + inv.slung.filter(x => x === k).length + (inv.packed[k] || 0) + (inv.vest[k] || 0); }
+/** Items an officer can use right now (aggregated into the team's equip). */
+function usableCount(o, k) { const c = ITEM_CFG[k] || {};
+  if (k === 'lesslethal') return holds(o, 'lesslethal') && (o.quals || []).includes('ll') && invOf(o).ll > 0 && isReady(o, 'lesslethal') ? 1 : 0;
+  if (c.spec && o.spec !== c.spec) return 0;
+  return countOf(o, k); }
+function syncEquip(t) { if (!t || t.kind !== 'team') return; const e = {}; for (const k in EQUIP) e[k] = 0;
+  for (const o of teamOk(t)) for (const k in EQUIP) e[k] += usableCount(o, k);
+  t.equip = e; }
+function syncAll() { for (const u of S.units) if (u.kind === 'team') syncEquip(u); }
+/** Remove one item from whoever on the team carries it (packed/vest first, then hands). Returns the officer. */
+function useItem(t, k, pref) { const m = teamOk(t).filter(o => countOf(o, k) > 0 && (k !== 'lesslethal' || usableCount(o, k)));
+  const o = (pref && m.find(pref)) || m.find(q => (invOf(q).packed[k] || 0) > 0 || (invOf(q).vest[k] || 0) > 0) || m[0]; if (!o) return null;
+  const inv = invOf(o); if (k === 'lesslethal') { inv.ll--; syncEquip(t); return o; }
+  if ((inv.vest[k] || 0) > 0) inv.vest[k]--; else if ((inv.packed[k] || 0) > 0) inv.packed[k]--; else if (holds(o, k)) inv.hands = inv.hands.map(x => x === k ? null : x); else { const i = inv.slung.indexOf(k); if (i >= 0) inv.slung.splice(i, 1); }
+  syncEquip(t); return o; }
+/** Stow whatever is in the hands except `keep` (auto-holster / auto-sling); returns the weapons stowed, to be redrawn. */
+function autoStow(o, keep) { const inv = invOf(o), out = [];
+  for (const k of heldList(o)) { if (k === keep) continue; const c = ITEM_CFG[k] || {}; if (!c.stow) continue;
+    if (c.stow === 'holster') inv.holster.push(k); else if (c.stow === 'slung') inv.slung.push(k); else inv.packed[k] = (inv.packed[k] || 0) + 1;
+    inv.hands = inv.hands.map(x => x === k ? null : x); out.push(k); }
+  return out; }
+/** Redraw after an auto-holster: weapon comes back to hand but is NOT READY for a full turn. */
+function autoRedraw(o, list) { for (const k of list || []) { if (!stowedHas(o, k)) continue; const c = ITEM_CFG[k]; const need = c.hands === 2 && !c.oneHand ? 2 : c.hands === 2 && freeHands(o) >= 2 ? 2 : 1; if (freeHands(o) < need) continue; takeFromStow(o, k); putInHands(o, k, need); setNotReady(o, k); } }
+function stowOne(o, k) { const inv = invOf(o), c = ITEM_CFG[k]; if (c.stow === 'holster') inv.holster.push(k); else if (c.stow === 'slung') inv.slung.push(k); else inv.packed[k] = (inv.packed[k] || 0) + 1; inv.hands = inv.hands.map(x => x === k ? null : x); }
+function stowedHas(o, k) { const inv = invOf(o); return inv.holster.includes(k) || inv.slung.includes(k) || (inv.packed[k] || 0) > 0; }
+function takeFromStow(o, k) { const inv = invOf(o); let i = inv.holster.indexOf(k); if (i >= 0) { inv.holster.splice(i, 1); return; } i = inv.slung.indexOf(k); if (i >= 0) { inv.slung.splice(i, 1); return; } if ((inv.packed[k] || 0) > 0) inv.packed[k]--; }
+function putInHands(o, k, n) { const inv = invOf(o); if (n >= 2) { inv.hands = [k, k]; return; } const i = inv.hands.indexOf(null); inv.hands[i] = k; }
+/** Hands an officer could free for a task (a shield or the ram cannot be put away in the stack). */
+/** Can this officer put both hands on the ram (other hand free or holding something that auto-holsters)? */
+function ramReady(o) { return holds(o, 'ram') && invOf(o).hands.filter(x => x !== 'ram').every(x => !x || (ITEM_CFG[x] || {}).stow); }
+function freeable(o) { return invOf(o).hands.filter(x => !x || (ITEM_CFG[x] || {}).stow).length; }
+/** Best member to do a two-handed task with item k (throw / treat). */
+function taskMember(t, k, hands) { const m = teamOk(t).filter(o => (!k || countOf(o, k) > 0) && freeable(o) >= hands && (!ITEM_CFG[k] || !ITEM_CFG[k].spec || o.spec === ITEM_CFG[k].spec));
+  return m.sort((a, b) => freeHands(b) - freeHands(a) || (a === teamOk(t)[0]) - (b === teamOk(t)[0]))[0] || null; }
+/** Perform a hands task: auto-stow, act, auto-redraw (weapons NOT READY for a turn). */
+function handsTask(t, k, hands, fn) { const o = taskMember(t, k, hands); if (!o) return null; const st = autoStow(o, hands >= 2 ? null : k); const r = fn(o); autoRedraw(o, st); syncEquip(t); return { o, r, stowed: st }; }
+/** Hands task by a specific officer (e.g. the medic). */
+function withHands(t, o, hands, fn) { if (!o || freeable(o) < hands) return null; const st = autoStow(o, null); const r = fn(o); autoRedraw(o, st); syncEquip(t); return { o, r, stowed: st }; }
+/** Team's best READY weapon in hand (return fire / attacks). null = nobody can shoot this turn. */
+function teamWeapon(t) { const m = teamOk(t); let best = null, one = false;
+  const rank = { sniper: 3, rifle: 2, pistol: 1 };
+  for (const o of m) for (const k of heldList(o)) { if (!rank[k] || !isReady(o, k)) continue; const oh = k === 'rifle' && !twoHanded(o, k); if (k === 'sniper' && !twoHanded(o, k)) continue;
+    const sc = rank[k] - (oh ? 0.5 : 0); if (!best || sc > best.sc) { best = { k, sc, oh, o }; } }
+  return best; }
+function invView(o) { const inv = invOf(o); const h = inv.hands; return { hands: h.slice(), two: !!(h[0] && h[0] === h[1]), holster: inv.holster.slice(), slung: inv.slung.slice(), packed: Object.assign({}, inv.packed), vest: Object.assign({}, inv.vest), ll: inv.ll, mask: inv.mask,
+  notReady: Object.keys(inv.nr).filter(k => !isReady(o, k)), free: freeHands(o) }; }
+function atEquipment(x, y) { return dist(x, y, S.ext.staging.x, S.ext.staging.y) <= INV_CFG.drawRange; }
+function offPos(o) { const t = o.team ? unit(o.team) : null; if (t) return [t.x, t.y]; const st = o.stage === 'secondary' && S.ext.staging2 ? S.ext.staging2 : S.ext.staging; return [st.x, st.y]; }
+/* ---- player loadout actions (planning phase). None costs a turn; weapons changed are NOT READY for a turn. ---- */
+function invAct(offId, act, k) {
+  if (S.phase !== 'planning') return { ok: false, reason: 'Change loadout during planning' };
+  const o = off(offId); if (!o || o.status === 'enroute' || o.status === 'down') return { ok: false, reason: 'Officer unavailable' };
+  const inv = invOf(o), c = ITEM_CFG[k] || {}, t = o.team ? unit(o.team) : null; if (t && t.inCar) return { ok: false, reason: 'Get out of the vehicle first' };
+  const done = r => { if (t) syncEquip(t); S.version++; return Object.assign({ ok: true }, r || {}); };
+  if (act === 'stow') { if (!holds(o, k)) return { ok: false, reason: 'Not in hand' }; if (!c.stow) return { ok: false, reason: k === 'shield' ? 'A shield cannot be slung or packed — it stays in one hand (hand it back at the equipment vehicle)' : `The ${EQUIP[k] ? EQUIP[k].short : k} cannot be stowed — hand it back at the equipment vehicle` };
+    stowOne(o, k); setNotReady(o, k); return done({ notReady: k }); }
+  if ((act === 'switch' || act === 'hold') && holds(o, k)) return { ok: false, reason: 'Already in hand' };
+  if (act === 'switch') { const need = c.hands === 2 && !c.oneHand ? 2 : c.hands || 1;
+    for (const h of heldList(o).slice().reverse()) { if (freeHands(o) >= need) break; if (h === k || !(ITEM_CFG[h] || {}).stow) continue; stowOne(o, h); setNotReady(o, h); }
+    if (freeHands(o) < need) return { ok: false, reason: 'Hands are full with items that cannot be put away here' }; act = 'hold'; }
+  if (act === 'hold') { if (holds(o, k)) return { ok: false, reason: 'Already in hand' }; if (!stowedHas(o, k)) return { ok: false, reason: 'Not carried' };
+    if (c.qual && !(o.quals || []).includes(c.qual)) return { ok: false, reason: 'Only a less-lethal specialist may use the 40mm launcher' };
+    const need = c.hands === 2 && !c.oneHand ? 2 : c.hands || 1; if (freeHands(o) < need) return { ok: false, reason: `Needs ${need} free hand${need > 1 ? 's' : ''} — stow something first` };
+    takeFromStow(o, k); putInHands(o, k, c.hands === 2 && freeHands(o) >= 2 ? 2 : need); setNotReady(o, k); return done({ notReady: k }); }
+  if (act === 'grip') { if (k !== 'rifle' || !holds(o, 'rifle')) return { ok: false, reason: 'Only a rifle changes grip' };
+    if (twoHanded(o, 'rifle')) inv.hands = ['rifle', null]; else { if (freeHands(o) < 1) return { ok: false, reason: 'Other hand is busy' }; inv.hands = ['rifle', 'rifle']; } return done(); }
+  if (act === 'draw' || act === 'return') { const [x, y] = offPos(o); if (!atEquipment(x, y)) return { ok: false, reason: 'Equipment is drawn at the equipment vehicle (primary staging) — move there first' };
+    if (!EQUIP[k]) return { ok: false, reason: 'Unknown item' };
+    if (act === 'return') { if (!countOf(o, k)) return { ok: false, reason: 'Not carried' }; const inv2 = inv; if ((inv2.vest[k] || 0) > 0) inv2.vest[k]--; else if ((inv2.packed[k] || 0) > 0) inv2.packed[k]--; else if (holds(o, k)) inv2.hands = inv2.hands.map(q => q === k ? null : q); else inv2.slung.splice(inv2.slung.indexOf(k), 1);
+      S.armory[k]++; if (k === 'lesslethal') inv.ll = 0; return done(); }
+    if (!(S.armory[k] > 0)) return { ok: false, reason: 'None left at the equipment vehicle' };
+    if (c.qual && !(o.quals || []).includes(c.qual)) return { ok: false, reason: 'Less-lethal launcher: specialist only' };
+    if (c.spec && o.spec !== c.spec) return { ok: false, reason: `${EQUIP[k].short}: ${SPECS[c.spec].name} only` };
+    if (c.where === 'vest') inv.vest[k] = (inv.vest[k] || 0) + 1;
+    else if (c.where === 'packed') inv.packed[k] = (inv.packed[k] || 0) + 1;
+    else { const need = c.hands === 2 ? 2 : 1; if (freeHands(o) < need) { if (c.stow) { if (c.stow === 'slung') inv.slung.push(k); else inv.packed[k] = (inv.packed[k] || 0) + 1; } else return { ok: false, reason: `${EQUIP[k].short} needs ${need} free hand${need > 1 ? 's' : ''} (it cannot be slung or packed) — stow something first` }; }
+      else putInHands(o, k, need); if (c.hands) setNotReady(o, k); }
+    S.armory[k]--; if (k === 'lesslethal') inv.ll = S.llRounds || ITEM_CFG.lesslethal.rounds; return done(); }
+  return { ok: false, reason: 'Unknown action' };
+}
+/** Default kit for a team formed at the equipment vehicle (from the pool, limited by team level). */
+function defaultKit(t) { const m = teamOk(t), take = k => { if (S.armory[k] > 0) { S.armory[k]--; return true; } return false; };
+  const by = sp => m.filter(o => o.spec === sp);
+  const pt = m[0], dfn = m[1];
+  if (pt && take('shield')) { const inv = invOf(pt); inv.slung.push(inv.prim); inv.hands = ['shield', 'pistol']; inv.holster = inv.holster.filter(k => k !== 'pistol'); }
+  const br = by('breacher'), brx = br.filter(o => o !== pt); const ramMan = brx[0] || m.find(o => o !== pt && o !== dfn && o.spec !== 'marksman') || null;
+  if (ramMan && take('ram')) { const inv = invOf(ramMan); inv.slung.push(inv.prim); inv.hands = ['ram', 'pistol']; inv.holster = inv.holster.filter(k => k !== 'pistol'); }
+  const hal = brx[1] || m.find(o => o !== pt && o !== ramMan && o !== dfn && o.spec !== 'marksman'); if (hal && take('halligan')) invOf(hal).packed.halligan = 1;
+  for (const b of br) for (let i = 0; i < 2; i++) if (take('charge')) invOf(b).vest.charge = (invOf(b).vest.charge || 0) + 1;
+  const throwers = m.filter(o => o !== pt).concat(pt ? [pt] : []); let ti = 0;
+  for (const k of ['bang', 'bang', 'gas']) { const o = throwers[ti++ % Math.max(1, throwers.length)]; if (o && take(k)) invOf(o).packed[k] = (invOf(o).packed[k] || 0) + 1; }
+  for (const o of by('tech')) { if (take('drone')) invOf(o).packed.drone = 1; if (take('robot')) invOf(o).packed.robot = 1; }
+  for (const o of by('medic')) if (take('medkit')) invOf(o).packed.medkit = 1;
+  const llo = m.find(o => (o.quals || []).includes('ll') && o.spec !== 'marksman' && o !== pt && o !== ramMan) || by('marksman').find(o => (o.quals || []).includes('ll'));
+  if (llo && take('lesslethal')) { const inv = invOf(llo); if (llo.spec === 'marksman') inv.slung.push('lesslethal'); else { inv.slung.push(inv.prim); inv.hands = ['lesslethal', 'lesslethal']; } inv.ll = S.llRounds || ITEM_CFG.lesslethal.rounds; }
+  for (const o of by('negotiator')) { if (take('tphone')) invOf(o).packed.tphone = 1; if (take('bullhorn')) invOf(o).packed.bullhorn = 1; }
+  const ld = by('leader')[0]; if (ld && !m.some(o => carries(o, 'bullhorn')) && take('bullhorn')) invOf(ld).packed.bullhorn = 1;
+  syncEquip(t); }
 
 /* =====================================================================
    SNIPER OVERWATCH
@@ -1141,6 +1296,8 @@ function breachMethods(u) { return Object.keys(BREACH).filter(k => breachCan(u, 
 function breachCan(u, m) { const B = BREACH[m]; if (!B) return 'Unknown method';
   if (B.eq && !(u.equip && u.equip[B.eq] > 0)) return `Needs a ${EQUIP[B.eq].name}`;
   if (m === 'charge' && !hasSpec(u, 'breacher')) return 'Only a Breacher can hang a charge';
+  if (m === 'charge' && u.kind === 'team' && !teamOk(u).some(o => o.spec === 'breacher' && countOf(o, 'charge') > 0 && freeable(o) >= ITEM_CFG.charge.needFree)) return 'The breacher with the charges has no free hand (shield / ram)';
+  if (m === 'ram' && u.kind === 'team' && !teamOk(u).some(ramReady)) return 'The ram carrier\'s other hand holds a shield — both hands are needed on the ram';
   return true; }
 function breachP(u, d, m, layer) { const B = BREACH[m]; let p = layer === 'storm' ? B.storm : B.p;
   if (layer !== 'storm' && d.barricaded) p *= B.barr;
@@ -1156,7 +1313,7 @@ function breachEst(u, d, m) {
   const stormK = d.storm && d.stormKnown && d.stormState === 'closed';
   const pMain = breachP(u, Object.assign({}, d, knownD), m, 'main'), pStorm = stormK ? breachP(u, d, m, 'storm') : 1;
   let ticks;
-  if (m === 'charge') ticks = 1 /*hang*/ + 2 /*stand off*/ + 1 /*detonate*/;
+  if (m === 'charge') ticks = ITEM_CFG.charge.drawTicks /*draw off the vest*/ + 1 /*hang*/ + 2 /*stand off*/ + 1 /*detonate*/;
   else ticks = B.every * (1 / pMain) + (stormK ? B.every * (1 / pStorm) : 0);
   return { method: m, name: B.name, ok, ticks: Math.round(ticks * 10) / 10, p: +pMain.toFixed(2), storm: stormK, pStorm: +pStorm.toFixed(2), noise: B.label,
     text: `${B.name}: ~${Math.round(ticks * 10) / 10} ticks, ${Math.round(pMain * 100)}% per attempt${stormK ? ` (+storm door ${Math.round(pStorm * 100)}%)` : ''}, ${B.label}` };
@@ -1172,9 +1329,12 @@ function standoffGoal(u, d) { const [mx, my] = doorMid(d);
 function breachTick(u, o, d, other) {
   const m = o.method || (o.method = defaultMethod(u, d)); const B = BREACH[m];
   if (o.type === 'detonate') return;
+  if (m === 'ram' && u.kind === 'team' && !u.ramGrip) { const rm = teamOk(u).find(ramReady); if (rm) { u.ramGrip = { oid: rm.id, st: autoStow(rm, 'ram'), order: o }; invOf(rm).hands = ['ram', 'ram']; if (u.ramGrip.st.length) log(`${rm.name}: pistol holstered — both hands on the ram.`); } }
   if (m === 'charge') {
     if (!d.charge) { if (!(u.equip.charge > 0)) { failOrders(u, 'no charge left'); return; }
-      u.equip.charge--; d.charge = { by: u.uid, turn: S.turn }; if (d.storm) d.stormKnown = true;
+      const bo = teamOk(u).find(o => o.spec === 'breacher' && countOf(o, 'charge') > 0 && freeable(o) >= 1);
+      if (bo && (o.drawT = (o.drawT || 0) + 1) <= ITEM_CFG.charge.drawTicks) { if (o.drawT === 1) log(`${bo.name}: drawing a charge off the vest…`); return; }
+      if (bo) { const st = freeHands(bo) ? [] : autoStow(bo, heldList(bo).find(k => !(ITEM_CFG[k] || {}).stow)); useItem(u, 'charge', q => q === bo); autoRedraw(bo, st); } else useItem(u, 'charge'); d.charge = { by: u.uid, turn: S.turn }; if (d.storm) d.stormKnown = true;
       log(`${u.name}: charge hung on ${d.name}${d.storm && d.stormState === 'closed' ? ' (storm door included)' : ''}.`, 'radio'); fx('text', other[0], other[1], { text: 'CHARGE SET', color: '#ffb020' });
       if (o.hangOnly) o.phase = 'standoff'; return; } // hang-only: back off to the standoff point, then wait for Detonate
     o.phase = 'standoff'; return; // standoff + detonate handled by unitAct (needs pathing)
@@ -1186,9 +1346,11 @@ function breachTick(u, o, d, other) {
     else { log(`${u.name}: ${B.name.toLowerCase()} on the storm door — still holding.`); noise(other[0], other[1], B.noise, 'ram'); fx('thud', other[0], other[1]); }
     return; }
   if (B.every > 1 && !(o.set = !o.set)) { log(`${u.name}: setting the Halligan on ${d.name}…`); return; }
-  if (S.rng.chance(breachP(u, d, m, 'main'))) { doBreach(u, d, m); popOrder(u); }
+  if (S.rng.chance(breachP(u, d, m, 'main'))) { doBreach(u, d, m); popOrder(u); ramRelease(u); }
   else { if (d.barricaded) d.barrKnown = true; log(`${u.name}: ${B.name.toLowerCase()} on ${d.name} — no give${d.barricaded ? ' (it\'s barricaded!)' : ''}.`); noise(other[0], other[1], B.noise, 'ram'); fx('thud', other[0], other[1]); }
 }
+/** After the ram: pistols come back out automatically (NOT READY for one full turn). */
+function ramRelease(u) { if (!u.ramGrip) return; const o = off(u.ramGrip.oid); if (o) { if (twoHanded(o, 'ram')) invOf(o).hands = ['ram', null]; autoRedraw(o, u.ramGrip.st); if (u.ramGrip.st.length) log(`${o.name}: ram down, pistol back out (not ready until next turn).`); } u.ramGrip = null; syncEquip(u); }
 function detonateCharge(u, d) {
   const [mx, my] = doorMid(d); const by = unit(d.charge.by) || u; d.charge = null;
   fx('blast', mx, my, { r: CHARGE_SAFE + 2 }); noise(mx, my, 60, 'blast'); // an explosive breach is heard house-wide
@@ -1196,7 +1358,7 @@ function detonateCharge(u, d) {
   else { log(`${by.name}: charge on ${d.name} fired but the door held — needs another breach.`, 'alert'); noise(mx, my, 18, 'breach'); d.barrKnown = d.barricaded; if (d.storm) d.stormState = 'breached'; }
   for (const q of S.units) { if (!onFoot(q) && q.kind !== 'team') continue; if (!unitAlive(q) || q.inCar) continue;
     const dd = dist(q.x, q.y, mx, my); if (dd < CHARGE_SAFE && los(q.x, q.y, Math.round(mx), Math.round(my))) { q.stun = 2; q.impair = Math.max(q.impair || 0, 0.5); log(`${q.name}: too close to the blast — dazed.`, 'alert'); fx('text', q.x, q.y, { text: 'DAZED', color: '#ffd080' }); } }
-  const sp = S.suspect; if (hostile()) { sp.agit = clamp(sp.agit + 15, 0, 100); if (dist(sp.x, sp.y, mx, my) < 4) { sp.stun = Math.max(sp.stun, 2); log('Suspect stunned by the blast.', 'good'); } }
+  const sp = S.suspect; if (hostile()) { sp.agit = clamp(sp.agit + 15, 0, 100); if (dist(sp.x, sp.y, mx, my) < 4) { sp.stun = Math.max(sp.stun, 2); sp.daze = Math.max(sp.daze || 0, 8); log('Suspect stunned by the blast.', 'good'); } }
 }
 
 /* =====================================================================
@@ -1299,7 +1461,9 @@ function planCas(u, o, sx, sy, assume) {
 /** First aid / stabilise. Medic with a medkit = full effect; others extend the countdown. */
 function applyAid(u, c, auto) {
   if (!casActive(c)) return false; const cfg = CAS_CFG; const medic = u.kind === 'team' && hasSpec(u, 'medic'); let t;
-  if (medic && u.equip.medkit > 0) { u.equip.medkit--; if (c.sev >= 3) { c.crit += cfg.medicSevere; c.aided = 2; t = `medic treats ${c.name} — severe, +${tDur(cfg.medicSevere)}; needs EMS.`; }
+  const medO = medic ? teamOk(u).find(o => o.spec === 'medic') : null, medHands = medO && freeable(medO) >= ITEM_CFG.medkit.useHands;
+  if (medic && u.equip.medkit > 0 && !medHands) log(`${u.name}: medic's hands are not free (shield / ram) — basic aid only.`, 'alert');
+  if (medic && u.equip.medkit > 0 && medHands) { withHands(u, medO, 2, () => useItem(u, 'medkit')); if (c.sev >= 3) { c.crit += cfg.medicSevere; c.aided = 2; t = `medic treats ${c.name} — severe, +${tDur(cfg.medicSevere)}; needs EMS.`; }
     else { c.stable = true; c.aided = 2; t = `medic stabilises ${c.name} — countdown stopped.`; } }
   else if (medic) { if (c.aided >= 1) return false; c.crit += cfg.medicNoKit; c.aided = 1; t = `medic (no medkit) packs ${c.name}'s injury — +${tDur(cfg.medicNoKit)}.`; }
   else { if (c.aided >= 1) { if (!auto) log(`${u.name}: ${c.name} already has first aid — needs a medic or EMS.`, 'radio'); return false; } c.crit += cfg.aidOther; c.aided = 1; t = `first aid on ${c.name} — +${tDur(cfg.aidOther)}.`; }
@@ -1489,7 +1653,7 @@ function paAct(u, o) {
 /** Throw-phone arrives in a room (team throw or robot drop). */
 function deliverPhone(u, room, via, doorway) {
   const N = S.nego, sp = S.suspect, r = S.rng, C = NEGO_CFG.throwPhone[via]; const rm = S.rooms[room];
-  if (via === 'team') { u.equip.tphone--; } N.attempts++;
+  if (via === 'team') { useItem(u, 'tphone'); } N.attempts++;
   if (r.chance(C.block)) { negHist(`${u.name}: throw-phone ${via === 'robot' ? 'snagged on furniture' : 'bounced off the frame'} — it did not get in. Failed.`, 'bad'); return; }
   if (hostile() && (sp.room === room || doorway) && r.chance(C.shoot + sp.agit / 500)) { fx('muzzle', sp.x, sp.y, { suspect: true }); S.stats.shots++; sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn };
     negHist(`Suspect shot the throw-phone${via === 'robot' ? ' — robot damaged' : ''}. Failed.`, 'alert'); if (via === 'robot' && r.chance(0.5)) { u.status = 'down'; u.orders = []; } sp.agit = clamp(sp.agit + 5, 0, 100); return; }
@@ -1517,7 +1681,7 @@ function robotPhoneGoal(room) {
 }
 /** Team / robot execution of a throw-phone order (called from unitAct). */
 function tphoneAct(u, o, speed) {
-  if (u.kind === 'team' && o.via === 'robot') { u.equip.robot--; u.equip.tphone--; const g = robotPhoneGoal(o.room);
+  if (u.kind === 'team' && o.via === 'robot') { useItem(u, 'robot'); useItem(u, 'tphone'); const g = robotPhoneGoal(o.room);
     const d = { uid: 'D' + (++S.devSeq), kind: 'robot', name: 'Robot ' + S.devSeq, num: S.devSeq, x: u.x, y: u.y, dir: u.dir, orders: [{ type: 'tphone', room: o.room, via: 'robot', doorway: g ? g.doorway : true }], battery: 10, owner: u.uid, status: 'ok', vis: [] };
     S.units.push(d); log(`${u.name}: ${d.name} rolling out with a throw-phone.`, 'radio'); popOrder(u); return; }
   if (u.kind === 'robot') { const g = robotPhoneGoal(o.room); if (!g) { failOrders(u, 'no open way in'); return; }
@@ -1956,7 +2120,7 @@ function nearestDrive(u, x, y) { let best = null, bs = 1e9; for (let dy = -4; dy
 function carAdjGoal(c) { const fp = footprint(c); return (x, y) => !S.dyn[idx(x, y)] && fp.some(([fx_, fy]) => cheb(fx_, fy, x, y) <= 1); }
 /** Shooting position check: in range and a line of sight to the target cell. */
 function shotReq(u, sx, sy, tx, ty) {
-  const wk = weaponOf(u); if (!wk) return 'This unit cannot fire'; const w = WEAPONS[wk], d = dist(sx, sy, tx, ty);
+  const wk = weaponOf(u); if (!wk) return u.kind === 'team' ? 'No READY weapon in hand — a weapon just drawn, slung or holstered is not ready until next turn' : 'This unit cannot fire'; const w = WEAPONS[wk], d = dist(sx, sy, tx, ty);
   if (d > w.range) return `Out of range — ${w.short} reaches ~${w.range} m (target ${Math.round(d)} m)`;
   if (!los(sx, sy, tx, ty)) return 'No line of sight to that spot from there';
   return null;
@@ -2007,7 +2171,7 @@ function planOrder(u, o, sx, sy, assume) {
   return { ok: false, reason: 'Unknown order' };
 }
 /** Start cell for planning: a patrol officer sitting in a cruiser plans from the cover-side door. */
-function planStart(u) { if (u.perch) return [u.x, u.y]; if (u.kind === 'patrol' && u.inCar) { const c = unit(u.inCar); const e = c && exitCell(c, 'safe'); if (e) return e; } return [u.x, u.y]; }
+function planStart(u) { if (u.perch) return [u.x, u.y]; if (u.inCar) { const c = unit(u.inCar); const e = c && exitCell(c, 'safe'); if (e) return e; } return [u.x, u.y]; }
 /** Preview: sequential plan of all queued orders for a unit. Each step gets exposure flags for red path tint. */
 function planFor(u) {
   const assume = plannedBreaches(); let [x, y] = planStart(u); const out = [];
@@ -2027,24 +2191,28 @@ function orderReq(u, o) {
     if (o.type === 'detonate') { const d = S.doors[o.door]; if (!d.charge && !u.orders.some(q => q.type === 'breach' && q.door === o.door && q.hangOnly)) return 'No charge hung on that door'; }
     if (o.type === 'bang' && pending('bang') >= (e.bang || 0)) return 'No flashbangs left on this team';
     if (o.type === 'gas' && pending('gas') >= (e.gas || 0)) return 'No CS gas on this team';
+    if ((o.type === 'bang' || o.type === 'gas') && !taskMember(u, o.type, 2)) return 'A throw needs BOTH hands — whoever carries it holds a shield or the ram (change loadout)';
     if (o.type === 'polecam' && !(e.polecam > 0)) return 'Team has no pole camera';
     if ((o.type === 'drone' || o.type === 'robot') && !(e[o.type] > 0)) return `Team carries no ${o.type}`;
     if ((o.type === 'drone' || o.type === 'robot') && !hasSpec(u, 'tech')) return 'Needs a Tech / Robot Op on the team';
-    if (o.type === 'board' || o.type === 'exit') return 'Only patrol officers ride in cruisers';
+    if (o.type === 'board') { const c = unit(o.car); if (!c || c.kind !== 'cruiser') return 'Tap a vehicle'; if (u.inCar) return 'Already in a vehicle'; if (c.disabled) return 'That vehicle is disabled'; if (seatsUsed(c) + seatsNeeded(u) > carSeats(c)) return `${c.name} has ${carSeats(c) - seatsUsed(c)} free seat(s) — team needs ${seatsNeeded(u)}`; }
+    if (o.type === 'exit' && !u.inCar) return 'Not in a vehicle';
+    if (u.inCar && !['exit', 'hold', 'move', 'pa'].includes(o.type)) return 'Get out of the vehicle first (Exit)';
     if (o.type === 'overwatch' && !hasSpec(u, 'marksman')) return 'Overwatch needs a Marksman / Sniper on the team';
     if (o.type === 'pa' && !(e.bullhorn > 0)) return 'No bullhorn on this team (cruiser PA works too)';
     if (o.type === 'tphone') { if (!(e.tphone > 0) || pending('tphone') >= e.tphone) return 'No throw-phone on this team';
       if (o.via === 'robot' && (!(e.robot > 0) || !hasSpec(u, 'tech'))) return 'Robot delivery needs a robot and a Tech on the team'; }
     if (u.carrying && !['evac', 'rescue', 'hold'].includes(o.type) && !u.orders.some(q => q.cas === u.carrying)) return 'Carrying a casualty — Evac or Rescue first';
   } else if (u.kind === 'patrol') {
-    if (!['move', 'hold', 'shoot', 'board', 'aid', 'rescue', 'evac', 'corner'].includes(o.type)) return 'Patrol officers can Move, Hold, Fire, work a corner, get in a cruiser, or help casualties';
+    if (!['move', 'hold', 'shoot', 'board', 'exit', 'aid', 'rescue', 'evac', 'corner'].includes(o.type)) return 'Patrol officers can Move, Hold, Fire, work a corner, get in a vehicle, or help casualties';
+    if (o.type === 'exit' && !u.inCar) return 'Not in a vehicle';
     if (['aid', 'rescue', 'evac'].includes(o.type) && u.inCar) return 'Get out of the cruiser first';
-    if (o.type === 'shoot' && u.inCar) return 'Get out of the cruiser first (select the cruiser → Exit)';
-    if (o.type === 'board') { const c = unit(o.car); if (!c || c.kind !== 'cruiser') return 'Tap a cruiser'; if (u.inCar) return 'Already in a cruiser'; if (c.occ.length >= 2) return 'Cruiser is full (2 seats)'; if (c.disabled) return 'That cruiser is disabled'; }
+    if (o.type === 'shoot' && u.inCar) return 'Get out of the vehicle first (Exit)';
+    if (o.type === 'board') { const c = unit(o.car); if (!c || c.kind !== 'cruiser') return 'Tap a cruiser'; if (u.inCar) return 'Already in a cruiser'; if (seatsUsed(c) + 1 > carSeats(c)) return `${c.name} is full (${carSeats(c)} seats)`; if (c.disabled) return 'That cruiser is disabled'; }
   } else if (u.kind === 'cruiser') {
     if (!['move', 'exit', 'hold', 'pa'].includes(o.type)) return 'Cruisers can Drive, Exit, Hold or use the PA';
     if (o.type === 'pa' && !u.occ.length) return 'Nobody in the cruiser to work the PA';
-    if (o.type === 'move' && !u.occ.length) return 'Nobody is in this cruiser — order a patrol officer to get in first';
+    if (!u.occ.length) return `${u.name} is empty — an officer or team must get in to drive it`;
     if (o.type === 'move' && u.disabled) return 'Cruiser is disabled';
     if (o.type === 'exit' && !u.occ.length && !u.orders.some(q => q.type === 'move')) return 'Cruiser is empty';
   }
@@ -2055,9 +2223,13 @@ function queueOrder(uid, o) {
   if (S.phase !== 'planning') return { ok: false, reason: 'Wait for the orders to resolve' };
   const u = unit(uid); if (!u || !unitAlive(u)) return { ok: false, reason: 'Unit unavailable' };
   if (o.type === 'overwatch' && (o.perch === undefined || o.perch === null)) { const pc = perchAt(o.x, o.y); o.perch = pc ? pc.id : null; if (!pc && S.block[idx(o.x, o.y)]) return { ok: false, reason: 'No usable vantage point in that building' }; }
+  if (o.type === 'drive') { if (!u.inCar) return { ok: false, reason: 'Not in a vehicle — Get In first' }; const c = unit(u.inCar); if (!c) return { ok: false, reason: 'No vehicle' }; // v8: drive through the occupant's own chip
+    const r = queueOrder(c.uid, { type: 'move', x: o.x, y: o.y }); if (r.ok) { o.x = r.at[0]; o.y = r.at[1]; } return Object.assign({ car: c.uid }, r); }
+  if (o.type === 'pa' && u.inCar) return queueOrder(u.inCar, o); // vehicle PA, worked by whoever is inside
   const req = orderReq(u, o); if (req) return { ok: false, reason: req };
   if (o.type === 'move' && u.kind === 'cruiser') { const nd = nearestDrive(u, o.x, o.y); if (!nd) return { ok: false, reason: 'Cruiser cannot park there (needs open road, driveway or lawn)' }; o.x = nd[0]; o.y = nd[1]; }
-  if (o.type === 'move' && (u.kind === 'patrol' || u.kind === 'team') && roomAt(o.x, o.y) < 0 && !o.exact) { o.req = [o.x, o.y]; const sc = snapCover(u, o.x, o.y); o.x = sc[0]; o.y = sc[1]; o.cover = sc[2]; o.snapped = sc[0] !== o.req[0] || sc[1] !== o.req[1]; if (sc[2] === 'open') log(`${u.name}: WARNING — no cover or concealment within ${COVER_CFG.snapWide} m of that spot. The position is exposed to the house.`, 'alert'); }
+  if (o.type === 'move' && (u.kind === 'patrol' || u.kind === 'team')) { o.req = [o.x, o.y]; o.snapped = false; // v8: move ANYWHERE — no snapping; just flag exposure
+    const ci = coverInfo(o.x, o.y); o.cover = ci.level === 'inside' ? 'inside' : ci.level === 'open' ? 'open' : ci.q; o.exposed = roomAt(o.x, o.y) < 0 && ci.level === 'open' && ci.expo >= COVER_CFG.exposedAt; }
   const last = u.orders[u.orders.length - 1];
   const replacing = last && last.type === 'move' && o.type === 'move';
   const prev = planFor(u); let [sx, sy] = planStart(u);
@@ -2069,8 +2241,12 @@ function queueOrder(uid, o) {
   if (o.type === 'overwatch') u.orders = u.orders.filter(q => q.type !== 'overwatch');
   if (o.type === 'shoot') { u.orders = u.orders.filter(q => q.type !== 'shoot'); o.est = hitChance(u, o.x, o.y, [sx, sy]).p; }
   if (replacing) u.orders[u.orders.length - 1] = o; else u.orders.push(o);
-  S.version++; return { ok: true, snapped: o.snapped, est: o.est, at: [o.x, o.y] };
+  if (o.type === 'move' && r.path) o.routeExposed = r.path.some(([px, py]) => roomAt(px, py) < 0 && expoAt(px, py) >= 0.6);
+  if (o.type === 'move' && o.cover === 'open') log(o.exposed ? `⚠ ${u.name}: no cover at that spot — EXPOSED to the house (allowed)` : `${u.name}: no cover at that spot, but out of his line of fire`);
+  S.version++; return { ok: true, snapped: o.snapped, est: o.est, at: [o.x, o.y], exposed: !!o.exposed, routeExposed: !!o.routeExposed };
 }
+/** Orders that END exposed (or cross an exposed stretch) — shown on the preview and beside EXECUTE. Moves are still allowed. */
+function exposedOrders() { const out = []; for (const u of S.units) { if (!unitAlive(u) || u.kind === 'cruiser') continue; for (const o of u.orders) if (o.type === 'move' && (o.exposed || o.routeExposed)) out.push({ uid: u.uid, name: u.name, end: !!o.exposed, route: !!o.routeExposed }); } return out; }
 function undoOrder(uid) { const u = unit(uid); if (u && u.orders.length && S.phase === 'planning') { u.orders.pop(); S.version++; } }
 function clearOrders(uid) { const u = unit(uid); if (u && S.phase === 'planning') { u.orders = []; S.version++; } }
 function setStance(uid, st) { const u = unit(uid); if (!u || !STANCES[st]) return { ok: false }; u.stance = st; S.version++; return { ok: true }; }
@@ -2087,6 +2263,7 @@ function hitChance(u, tx, ty, from, opt) {
   const l = los(sx, sy, tx, ty); if (!l) return { p: 0, why: 'no line of sight', weapon: w.short, d: Math.round(d), parts };
   const add = (k, v, t) => { parts.push({ k, v: +v.toFixed(2), t }); return v; };
   let p = add('base', w.base, w.name);
+  if (u.kind === 'team') { const tw = teamWeapon(u); if (tw && tw.oh) { p *= add('grip', ITEM_CFG.rifle.oneHandMul, 'rifle fired one-handed'); notes.push('one-handed'); } }
   p *= add('range', 1 - 0.55 * d / w.range, Math.round(d) + ' m of ' + w.range);
   const sp = S.suspect, inside = roomAt(tx, ty) >= 0, atWin = winCellSet().has(idx(tx, ty));
   let cm, ct; if (!inside) { cm = 1.4; ct = 'in the open'; } else if (atWin) { cm = wk === 'sniper' ? 1.25 : 1.0; ct = 'at window (frame + glass)'; } else if (l === 2) { cm = 0.45; ct = 'deep in room behind glass'; } else { cm = 0.6; ct = 'through doorway / walls'; }
@@ -2124,7 +2301,7 @@ function runCommand(key) {
     case 'blueprint': S.intel.blueprint = S.turn + 2; log('Records desk: blueprints requested, ETA 1 min.', 'intel'); break;
     case 'flyby': { S.intel.flybyReady = S.turn + 3; S.rooms.forEach(q => { if (S.windows.some(w => w.room === q.id)) q.known = true; });
       sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.threat = Math.max(S.intel.threat, 1); S.intel.located = true;
-      log(`Drone flyby: thermal signature in the ${S.rooms[sp.room].name}. Window rooms mapped.`, 'intel'); fx('flyby', S.house.x0, S.house.y0); break; }
+      log(`Drone flyby: thermal signature ${S.rooms[sp.room] ? 'in the ' + S.rooms[sp.room].name : 'near the house'}. Window rooms mapped.`, 'intel'); fx('flyby', S.house.x0, S.house.y0); break; }
     case 'call911': review911(); break;
     case 'status': statusCheck(); break;
     case 'family': { S.intel.family = true; const T = NEGO_CFG.temper[S.nego.temper]; S.nego.read = T.hint; log(`Family interview: "${T.hint}"`, 'intel');
@@ -2148,7 +2325,7 @@ function execute() {
   if (S.units.some(u => u.kind === 'team' && unitAlive(u) && u.orders.some(o => o.type === 'gas'))) donMasks('CS gas going in');
   computeExpo();
   // officers left standing in a line of fire with nothing to do get behind something
-  if (hostile()) for (const u of S.units) if (onFoot(u) && !u.orders.length && roomAt(u.x, u.y) < 0 && expoAt(u.x, u.y) >= 0.6) seekCover(u, 'exposed to the house windows');
+  if (hostile()) for (const u of S.units) if (onFoot(u) && !u.orders.length && !u.stayPut && roomAt(u.x, u.y) < 0 && expoAt(u.x, u.y) >= 0.6) seekCover(u, 'exposed to the house windows');
   updateVision(); return true;
 }
 function stepTick() {
@@ -2215,6 +2392,9 @@ function driveCar(c, o) {
 }
 function unitAct(u) {
   if (u.kind === 'drone' || u.kind === 'robot') { if (u.battery <= 0) return; }
+  if (u.ramGrip && u.orders[0] !== u.ramGrip.order) ramRelease(u);
+  if (u.inCar && u.orders[0] && u.orders[0].type === 'exit') { const o = u.orders[0], c = unit(u.inCar); if (c && o.side === 'safe' && houseSideOf(c) === 'driver' && c.occ[0] === u.uid && !o.slid) { o.slid = true; log(`${u.name}: sliding across to the far-side door…`); return; } exitCar(u, o.side || 'safe'); popOrder(u); return; }
+  if (u.kind === 'team' && u.inCar) { const o = u.orders[0]; if (o && o.type === 'move') exitCar(u, 'safe'); else return; }
   if (u.kind === 'patrol' && u.inCar) { const o = u.orders[0]; if (o && o.type === 'move') { const c = unit(u.inCar); if (c && houseSideOf(c) === 'driver' && c.occ[0] === u.uid && !o.slid) { o.slid = true; log(`${u.name}: sliding across to the far-side door…`); return; } exitCar(u, 'safe'); } return; }
   if ((u.kind === 'team' || u.kind === 'patrol' && !u.inCar) && u.detain && suspectActive()) { const sp = S.suspect;
     stepAlong(u, null, (x, y) => cheb(x, y, sp.x, sp.y) <= 1 && !(x === sp.x && y === sp.y)); return; }
@@ -2242,20 +2422,20 @@ function unitAct(u) {
   if (o.type === 'corner') return cornerTick(u, o);
   if (o.type === 'move' || o.type === 'clear') {
     const r = stepAlong(u, o, (x, y) => x === o.x && y === o.y, speed);
-    if (r === null) failOrders(u, 'route blocked'); else if (r) { popOrder(u); if (o.type === 'clear') { const rm = S.rooms[o.room];
+    if (r === null) failOrders(u, 'route blocked'); else if (r) { popOrder(u); if (o.type === 'move') u.stayPut = !!o.exposed; if (o.type === 'clear') { const rm = S.rooms[o.room];
       if (!(S.suspect.room === o.room && suspectActive())) { log(`${u.name}: ${rm.name} CLEAR.`, 'good'); xpAct('clear', u, rm.name); fx('text', u.x, u.y, { text: 'CLEAR', color: '#3ef0a0' }); } } }
     return;
   }
-  if (o.type === 'board') { const c = unit(o.car); if (!c || c.occ.length >= 2) { failOrders(u, 'cruiser full'); return; }
+  if (o.type === 'board') { const c = unit(o.car); if (!c || seatsUsed(c) + seatsNeeded(u) > carSeats(c)) { failOrders(u, 'vehicle full'); return; }
     const g = carAdjGoal(c); if (!g(u.x, u.y)) { const r = stepAlong(u, o, g, speed); if (r === null) failOrders(u, 'cannot reach the cruiser'); if (!r) return; }
-    boardCar(u, c); log(`${u.name}: in ${c.name}.`); return; }
+    boardCar(u, c); u.stayPut = false; log(`${u.name}: in ${c.name}.`); return; }
   if (o.type === 'shoot') { if (!u.perch || !u.perch.entry) faceTo(u, o.x, o.y); else u.dir = Math.atan2(o.y - u.y, o.x - u.x); u.holding = true; const every = o.mode === 'suppress' ? 2 : 3; if (S.tick % every === 1) fireAt(u, o.x, o.y, o.mode); return; }
   if (o.type === 'aid' || o.type === 'rescue' || o.type === 'evac') return casAct(u, o, speed);
   if (o.type === 'pa') { popOrder(u); paAct(u, o); return; }
   if (o.type === 'tphone') return tphoneAct(u, o, speed);
   if (o.type === 'mask') { u.mask = o.on ? 'on' : 'off'; log(`${u.name}: masks ${o.on ? 'on' : 'off'}.`, 'radio'); popOrder(u); return; }
   if (o.type === 'hold') { if (o.x !== undefined) faceTo(u, o.x, o.y); u.holding = true; return; }
-  if (o.type === 'drone' || o.type === 'robot') { u.equip[o.type]--; const d = { uid: 'D' + (++S.devSeq), kind: o.type, name: (o.type === 'drone' ? 'Drone ' : 'Robot ') + S.devSeq, num: S.devSeq,
+  if (o.type === 'drone' || o.type === 'robot') { useItem(u, o.type); const d = { uid: 'D' + (++S.devSeq), kind: o.type, name: (o.type === 'drone' ? 'Drone ' : 'Robot ') + S.devSeq, num: S.devSeq,
       x: u.x, y: u.y, dir: u.dir, orders: [{ type: 'move', x: o.x, y: o.y }], battery: o.type === 'drone' ? 6 : 10, owner: u.uid, status: 'ok', vis: [] };
     S.units.push(d); log(`${u.name}: ${d.name} deployed.`, 'radio'); popOrder(u); return; }
   if (o.type === 'detonate' && S.doors[o.door].charge) { detonateCharge(u, S.doors[o.door]); popOrder(u); return; }
@@ -2283,9 +2463,11 @@ function unitAct(u) {
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = u.x + dx, ny = u.y + dy; if (roomAt(nx, ny) !== o.room) continue; const e = edge(u.x, u.y, nx, ny);
       if (e.t === 'D' && e.d.state === 'closed' && !e.d.locked && !e.d.barricaded) { e.d.state = 'open'; break; } if (e.t === 'W' && !e.w.broken && !canSeeRoom(u, o.room)) { e.w.broken = true; noise(nx, ny, 6, 'glass'); break; } }
     const rm = S.rooms[o.room]; const tc = roomTargetCell(o.room);
-    faceTo(u, tc[0], tc[1]); u.equip[o.type]--; popOrder(u);
+    faceTo(u, tc[0], tc[1]); const th = handsTask(u, o.type, ITEM_CFG[o.type].throwHands, q => useItem(u, o.type, x => x === q));
+    if (!th) { failOrders(u, 'nobody can free both hands to throw (shield / ram)'); return; }
+    if (th.stowed.length) log(`${th.o.name}: ${th.stowed.map(k => WEAPONS[k] ? WEAPONS[k].short.toLowerCase() : k).join(' + ')} put away for the two-handed throw — back in hand, not ready until next turn.`); popOrder(u);
     if (o.type === 'bang') { fx('flash', tc[0], tc[1], { fromX: u.x, fromY: u.y }); log(`${u.name}: BANG OUT — flashbang into ${rm.known ? rm.name : 'room'}.`, 'radio'); noise(tc[0], tc[1], 10, 'bang');
-      if (S.suspect.room === o.room && hostile()) { S.suspect.stun = 5; S.suspect.ambush = false; xpAct('bang', u); log('Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
+      if (S.suspect.room === o.room && hostile()) { S.suspect.stun = 5; S.suspect.daze = FIRE_CFG.bangDaze; S.suspect.ambush = false; xpAct('bang', u); log('Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
     else { gasDeploy(o.room); fx('gas', tc[0], tc[1], { room: o.room, fromX: u.x, fromY: u.y }); log(`${u.name}: CS gas deployed into ${rm.known ? rm.name : 'room'}.`, 'radio'); aggressive(15); }
     return;
   }
@@ -2324,9 +2506,16 @@ function targetClass(u, px, py) {
 }
 const T_PRIO = { slice: 1.2, open: 3, car: 2, concealed: 1.3, covered: 1, perched: 0.6 };
 const T_TRY = { slice: 0.85 * 0.6, open: 0.85, car: 0.6, concealed: 0.3, covered: 0.25, perched: 0.15 }; // concealment: he can barely see you, so he fires less
+/* v8: per-opportunity chance he pulls the trigger. Out of the house (window / doorway at someone outside) it is low;
+   at a team inside the house with him it is high. Flashbang daze and CS gas cut both the chance and his accuracy. */
+const FIRE_CFG = { outside: 0.40, indoor: 0.80, indoorAmbush: 0.92, bangDaze: 24, bangMul: 0.45, gasCut: 0.65, accBang: 0.55, accGas: 0.6 };
+/** Multiplier (0..1) on his fire chance from flashbang daze (ticks left) and gas impairment (coughing, eyes streaming). */
+function fireImpair() { const sp = S.suspect; return (sp.daze > 0 ? FIRE_CFG.bangMul : 1) * (1 - FIRE_CFG.gasCut * clamp(sp.impair || 0, 0, 1)); }
+function accImpair() { const sp = S.suspect; return (sp.daze > 0 ? FIRE_CFG.accBang : 1) * (1 - FIRE_CFG.accGas * clamp(sp.impair || 0, 0, 1)); }
 const T_HIT = { slice: 0.4, open: 1, concealed: 0.85, covered: 0.2, perched: 0.12 }; // …but rounds go through a hedge; hard cover stops them
 function suspectTick() {
   const sp = S.suspect; if (!suspectActive()) return;
+  if (sp.daze > 0) sp.daze--;
   if (sp.stun > 0) { sp.stun--; return; }
   if (sp.cd > 0) sp.cd--;
   if (sp.mode === 'fleeing') { fleeStep(); if (!suspectActive()) return; }
@@ -2349,8 +2538,10 @@ function suspectTick() {
   if (best.px !== sp.x || best.py !== sp.y) { // reposition toward the window first
     const p = findPath(sp.x, sp.y, (x, y) => x === best.px && y === best.py, { suspect: true }); if (p && p.length) { sp.x = p[0][0]; sp.y = p[0][1]; sp.atWindow = winCellSet().has(idx(sp.x, sp.y)); } return; }
   if (sp.cd > 0) return;
-  let tryP = T_TRY[best.cls] * (sp.mode === 'barricaded' ? 0.55 : 1) * (0.6 + sp.agit / 125) * (sp.ambush ? 1.3 : 1) * (1 - 0.5 * (sp.impair || 0)) * (contactLive() && !sp.ambush ? NEGO_CFG.talkingFire : 1);
-  if (best.u.kind === 'team' && roomAt(best.u.x, best.u.y) >= 0) tryP = Math.max(tryP, sp.ambush ? 0.9 : 0.7);
+  const indoor = (best.u.kind === 'team' || best.u.kind === 'robot') && roomAt(best.u.x, best.u.y) >= 0;
+  let tryP = indoor ? (sp.ambush ? FIRE_CFG.indoorAmbush : FIRE_CFG.indoor)
+    : FIRE_CFG.outside * (T_TRY[best.cls] / T_TRY.open) * (0.75 + sp.agit / 200) * (sp.ambush ? 1.3 : 1) * (contactLive() && !sp.ambush ? NEGO_CFG.talkingFire : 1);
+  tryP *= fireImpair(); best.indoor = indoor;
   if (!S.rng.chance(clamp(tryP, 0, 0.95))) return;
   suspectFire(best);
 }
@@ -2360,13 +2551,15 @@ function suspectFire(b) {
   fx('muzzle', sp.x, sp.y, { suspect: true }); fx('shot', sp.x, sp.y, { tx: T.x, ty: T.y });
   sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn }; S.intel.located = true; S.intel.threat = 1;
   const where = sp.room >= 0 ? (sp.atWindow ? `${S.rooms[sp.room].name} window` : S.rooms[sp.room].name) : 'yard';
-  let p = sw.base * (1 - 0.6 * b.d / sw.range) * (b.l === 2 ? 0.85 : 1) * (sp.ambush ? 1.3 : 1) * (1 - 0.6 * (sp.impair || 0)) * (b.u.impair ? 1.15 : 1);
+  let p = sw.base * (1 - 0.6 * b.d / sw.range) * (b.l === 2 ? 0.85 : 1) * (sp.ambush ? 1.3 : 1) * accImpair() * (b.u.impair ? 1.15 : 1);
   if (T.kind === 'cruiser' && T.armored) { T.hits++; fx('impact', T.x, T.y, { car: T.uid }); log(`SHOTS FIRED from the ${where} — rounds stop against the armored ${T.name}. Crew unhurt.`, 'alert'); returnFire(); return; }
   if (T.kind === 'cruiser') { // through the car body — windshield is the weak spot
     const v = Math.atan2(sp.y - T.y, sp.x - T.x), c = Math.abs(Math.cos(v - T.dir)), glass = c > 0.7;
     p *= (glass ? 0.55 : 0.3) * (T.moved === S.tick ? 0.75 : 1); p = clamp(p, 0.02, 0.45);
     T.hits++; T.marks.push({ dx: S.rng() * 2 - 1, dy: S.rng() * 0.6 - 0.3, t: S.turn }); fx('impact', T.x, T.y, { car: T.uid });
-    if (S.rng.chance(p) && T.occ.length) { const drv = unit(T.occ[0]); T.occ.shift(); drv.inCar = null; const ec = exitCell(T, 'safe') || [T.x, T.y]; drv.x = ec[0]; drv.y = ec[1]; officerDown(drv, `${T.name} driver down — ${drv.name} hit through the ${glass ? 'windshield' : 'door'}.`); T.orders = []; }
+    const hitIn = S.rng.chance(p) && T.occ.length;
+    if (hitIn && unit(T.occ[0]).kind === 'team') { const tm = unit(T.occ[0]); officerDown(tm); T.orders = []; if (tm.status !== 'ok') { T.occ.shift(); tm.inCar = null; } }
+    else if (hitIn) { const drv = unit(T.occ[0]); T.occ.shift(); drv.inCar = null; const ec = exitCell(T, 'safe') || [T.x, T.y]; drv.x = ec[0]; drv.y = ec[1]; officerDown(drv, `${T.name} driver down — ${drv.name} hit through the ${glass ? 'windshield' : 'door'}.`); T.orders = []; }
     else log(`SHOTS FIRED from the ${where} — rounds strike ${T.name}${glass ? ' (windshield)' : ''}. Crew unhurt.`, 'alert');
     returnFire(); return;
   }
@@ -2473,7 +2666,7 @@ function teamResponses() {
       const comply = ((outside ? NEGO_CFG.outsideChallenge : 1) * 0.05 + S.units.filter(q => q.kind === 'team' && q.vis && q.vis.includes(idx(sp.x, sp.y))).length * 0.05) * (outside ? 1 : 0.45) + sp.talk / 250 - sp.agit / 300;
       if (S.rng.chance(comply)) { if (outside) { log(`${u.name}: "POLICE! DROP IT AND COME OUT!" — he shouts that he is coming out.`, 'good'); walkout('callout'); break; }
         surrender(`${u.name}: "POLICE! DROP IT!" — suspect drops the weapon and gets on the ground.`); u.detain = true; continue; }
-      if (u.equip.lesslethal > 0 && u.stance !== 'hold' && d <= 11 && !(u.llcd > S.tick)) { u.llcd = S.tick + 3; /* single-shot launcher: re-load before the next round */ const p = (0.3 + (hasSpec(u, 'marksman') ? 0.15 : 0) + teamSkill(u) * 0.15) * (sp.ambush ? 0.45 : 1);
+      if (u.equip.lesslethal > 0 && u.stance !== 'hold' && d <= 11 && !(u.llcd > S.tick)) { u.llcd = S.tick + 3; /* single-shot launcher: re-load before the next round */ const llo = useItem(u, 'lesslethal'); if (llo && invOf(llo).ll <= 0) log(`${llo.name}: 40mm launcher is out of rounds.`, 'radio'); const p = (0.3 + (hasSpec(u, 'marksman') ? 0.15 : 0) + teamSkill(u) * 0.15) * (sp.ambush ? 0.45 : 1);
         if (S.rng.chance(p)) { sp.mode = 'incapacitated'; fx('ll', sp.x, sp.y, { fromX: u.x, fromY: u.y }); log(`${u.name}: less-lethal round — suspect incapacitated, weapon dropped.`, 'good'); u.detain = true; continue; }
         else log(`${u.name}: less-lethal round missed.`, 'radio'); }
       else if (sp.cd > 0) { sp.cd += 1; if (u.duckLog !== S.turn) { u.duckLog = S.turn; log(`${u.name}: "POLICE! DROP THE WEAPON!" — suspect ducks into cover.`, 'radio'); } }
@@ -2501,7 +2694,7 @@ function withdraw() { if (S.phase === 'over') return { ok: false, reason: 'Missi
   S.result = { win: false, title: 'OPERATION WITHDRAWN', text: `Command ended the operation after ${tMin(S.turn)} without taking the suspect into custody${sp.mode === 'incapacitated' ? ' (suspect down but not secured)' : ''}. Scene handed over.` };
   log('Command: withdraw — all units pull back to the perimeter.', 'bad'); finishMission(); return { ok: true }; }
 function endTurn() {
-  S.turn++; S.phase = 'planning'; S.tick = 0; S.peek = [];
+  S.turn++; S.phase = 'planning'; S.tick = 0; S.peek = []; syncAll(); // weapons become ready again
   for (const u of S.units) { u.orders = u.orders.filter(o => o.type !== 'hold' && o.type !== 'shoot'); u.holding = false; u.waiting = false; u.exiting = null;
     if ((u.kind === 'drone' || u.kind === 'robot') && unitAlive(u)) { u.battery--; if (u.battery <= 0) { u.status = 'down'; log(`${u.name}: battery depleted.`); } } }
   gasTurn(); suspectGasTurn(); casualtyTurn(); negoTurn(); sceneTurn();
@@ -2569,41 +2762,55 @@ function careerSummary() {
     stateTakeover: !!S.stats.stateTeam, actions: (S.xpLog || []).map(x => ({ key: x.key, label: x.label, xp: x.xp, ids: x.ids.slice(), by: x.by, detail: x.detail, turn: x.turn })), level: (S.opts && S.opts.level) || null };
 }
 /* ---------- team management (planning phase only) ---------- */
-const nearStaging = (x, y) => dist(x, y, S.ext.staging.x, S.ext.staging.y) <= 4.5;
-function formTeam(ids) {
+const nearStaging = (x, y) => atEquipment(x, y);
+function stagePos(stage) { return stage === 'secondary' && S.ext.staging2 ? S.ext.staging2 : S.ext.staging; }
+/** Form a team from officers waiting at ONE staging area. opts.point / opts.defense pick the point and his defense (cover) man;
+    `ids` order is the stack order (formation slots follow it). Teams formed at the equipment vehicle get a default kit from the pool. */
+function formTeam(ids, opts) {
+  opts = opts || {};
   if (S.phase !== 'planning') return { ok: false, reason: 'Busy' };
-  ids = (ids || S.officers.filter(o => o.status === 'staged' && !o.team).map(o => o.id)).slice(0, S.teamMax || 5);
+  if (!ids) { const free = S.officers.filter(o => o.status === 'staged' && !o.team); const pri = free.filter(o => (o.stage || 'primary') === 'primary'); ids = (pri.length ? pri : free).map(o => o.id); }
+  ids = ids.filter((id, i) => ids.indexOf(id) === i && off(id) && off(id).status === 'staged' && !off(id).team);
+  if (opts.point && ids.includes(opts.point)) ids = [opts.point].concat(ids.filter(i => i !== opts.point));
+  if (opts.defense && ids.includes(opts.defense) && opts.defense !== ids[0]) ids = [ids[0], opts.defense].concat(ids.slice(1).filter(i => i !== opts.defense));
+  ids = ids.slice(0, S.teamMax || 5);
   if (!ids.length) return { ok: false, reason: 'No unassigned officers at staging' };
-  const n = ++S.teamSeq; const st = S.ext.staging;
+  const stage = off(ids[0]).stage || 'primary'; if (ids.some(id => (off(id).stage || 'primary') !== stage)) return { ok: false, reason: 'Officers must be at the same staging area to form a team' };
+  const n = ++S.teamSeq; const st = stagePos(stage);
   const t = { uid: 'T' + n, kind: 'team', name: TEAM_NAMES[(n - 1) % TEAM_NAMES.length], num: n, members: [], x: st.x + ((n - 1) % 3) - 1, y: st.y - 1 - Math.floor((n - 1) / 3), dir: -Math.PI / 2, equip: {}, orders: [], status: 'ok', vis: [], deployed: true, detain: false, stance: 'return', perch: null, mask: 'off', impair: 0, stun: 0 };
+  if (!inb(t.x, t.y) || S.block[idx(t.x, t.y)] || roomAt(t.x, t.y) >= 0) { t.x = st.x; t.y = st.y; }
   for (const k in EQUIP) t.equip[k] = 0;
   S.units.push(t); ids.forEach(id => assign(id, t.uid));
-  const kit = { ram: 1, halligan: 1, bang: 2, shield: 1, gas: 1 };
-  if (t.members.some(id => off(id).spec === 'breacher')) kit.charge = 2;
-  if (t.members.some(id => off(id).spec === 'tech')) { kit.drone = 1; kit.robot = 1; }
-  if (t.members.some(id => off(id).spec === 'medic')) kit.medkit = 1;
-  if (t.members.some(id => off(id).spec === 'marksman')) kit.lesslethal = 1;
-  if (t.members.some(id => off(id).spec === 'negotiator')) { kit.tphone = 1; kit.bullhorn = 1; }
-  if (t.members.some(id => off(id).spec === 'leader')) kit.bullhorn = 1;
-  for (const k in kit) for (let i = 0; i < kit[k]; i++) if (S.armory[k] > 0) { S.armory[k]--; t.equip[k]++; }
-  log(`${t.name} team formed (${t.members.length} officers).`, 'system'); S.version++; return { ok: true, team: t };
+  t.point = t.members[0] || null; t.defense = t.members[1] || null;
+  if (stage === 'primary' && opts.kit !== false) defaultKit(t); else syncEquip(t);
+  log(`${t.name} team formed (${t.members.length} officers) at ${stage === 'primary' ? 'primary staging (equipment vehicle)' : 'secondary staging — no equipment drawn yet'}. Point: ${off(t.members[0]).name}${t.defense ? ', defense: ' + off(t.defense).name : ''}.`, 'system'); S.version++; return { ok: true, team: t };
 }
+/** Re-order a team's stack: ids is the new member order (point first, then his defense man, then the rest). */
+function setTeamOrder(uid, ids) { const t = unit(uid); if (!t || t.kind !== 'team') return { ok: false, reason: 'No team' };
+  if (S.phase !== 'planning') return { ok: false, reason: 'Busy' };
+  if (!ids || ids.length !== t.members.length || ids.some(id => !t.members.includes(id))) return { ok: false, reason: 'Order must list every member once' };
+  t.members = ids.slice(); t.point = ids[0]; t.defense = ids[1] || null; S.version++; return { ok: true }; }
 function assign(offId, teamUid) {
   const o = off(offId); if (!o || o.status !== 'staged' && o.status !== 'ok') return { ok: false, reason: 'Officer unavailable' };
   const from = o.team ? unit(o.team) : null, to = teamUid ? unit(teamUid) : null;
-  const pos = from ? from : S.ext.staging; const tpos = to ? to : S.ext.staging;
+  const pos = from ? from : stagePos(o.stage); let tpos = to ? to : stagePos(o.stage);
+  if (!to && from) { const near = ['primary', 'secondary'].find(sg => S.ext[sg === 'primary' ? 'staging' : 'staging2'] && dist(from.x, from.y, stagePos(sg).x, stagePos(sg).y) <= 3.5); if (!near) return { ok: false, reason: 'Officers can only leave a team at a staging area' }; o.stage = near; tpos = stagePos(near); }
   if (dist(pos.x, pos.y, tpos.x, tpos.y) > 3.5) return { ok: false, reason: 'Units must be together (within 3 m) to swap members' };
   if (from) from.members = from.members.filter(id => id !== offId);
   o.team = to ? to.uid : null; o.status = to ? 'ok' : 'staged'; if (to) to.members.push(offId);
-  if (from && !from.members.length) { S.units = S.units.filter(u => u !== from); for (const k in from.equip) S.armory[k] += from.equip[k]; }
+  if (from && !from.members.length) S.units = S.units.filter(u => u !== from); // gear stays with each officer
+  if (from) { from.point = from.members[0] || null; from.defense = from.members[1] || null; syncEquip(from); } if (to) syncEquip(to);
   S.version++; return { ok: true };
 }
+/** Compatibility: team-level ± at the equipment vehicle, routed to the member best placed to carry it. */
 function equip(teamUid, item, delta) {
   const t = unit(teamUid); if (!t) return { ok: false };
-  if (!nearStaging(t.x, t.y)) return { ok: false, reason: 'Team must be at staging (SWAT truck) to re-equip' };
-  if (delta > 0 && S.armory[item] <= 0) return { ok: false, reason: 'None left in armory' };
-  if (delta < 0 && t.equip[item] <= 0) return { ok: false, reason: 'None to return' };
-  S.armory[item] -= delta; t.equip[item] += delta; S.version++; return { ok: true };
+  if (!atEquipment(t.x, t.y)) return { ok: false, reason: 'Team must be at the equipment vehicle (primary staging) to draw or return equipment' };
+  const m = teamOk(t); if (delta < 0) { const o = m.slice().reverse().find(q => countOf(q, item) > 0); if (!o) return { ok: false, reason: 'None to return' }; return invAct(o.id, 'return', item); }
+  if (!(S.armory[item] > 0)) return { ok: false, reason: 'None left in armory' };
+  let last = { ok: false, reason: 'Nobody can carry it' }; const c = ITEM_CFG[item] || {};
+  const pref = m.slice().sort((a, b) => (c.spec ? (b.spec === c.spec) - (a.spec === c.spec) : 0) + (c.qual ? ((b.quals || []).includes(c.qual) - (a.quals || []).includes(c.qual)) : 0) || freeHands(b) - freeHands(a));
+  for (const o of pref) { last = invAct(o.id, 'draw', item); if (last.ok) return Object.assign({ by: o.id }, last); } return last;
 }
 function renameTeam(uid, name) { const t = unit(uid); if (t && name && name.trim()) { t.name = name.trim().slice(0, 14); S.version++; } }
 
@@ -2640,14 +2847,14 @@ function newGame(seed, opts) {
   if (S.genErrors.length) { console.warn("generation fallback", S.genErrors); }
   if (!S.officers) { throw new Error("generation failed: " + JSON.stringify(S.genErrors)); }
   if (S.opts.armored) { // career unlock: armored rescue vehicle, parked empty at staging
-    const X = S.ext; let best = null; for (let d = 0; d < 14 && !best; d++) for (const dx of [d, -d]) { const x = X.staging.x + dx, y = S.geo.ST + 4; if (S.drive[idx(x, y)] && !carClash(x, y, null)) { best = [x, y]; break; } }
+    const X = S.ext; let best = null; for (let d = 7; d < 22 && !best; d++) for (const dx of [-d, d]) { const x = X.staging.x + dx, y = S.geo.ST + 4; if (S.drive[idx(x, y)] && !carClash(x, y, null)) { best = [x, y]; break; } }
     if (best) { S.units.push({ uid: 'C4', kind: 'cruiser', name: 'BearCat', num: 4, x: best[0], y: best[1], dir: 0, occ: [], orders: [], status: 'ok', hits: 0, marks: [], vis: [], disabled: false, armored: true }); rebuildDyn(); } }
-  S.ems = defaultEMS(); initNego(seed); makeBrief();
+  setupStaging2(); S.ems = defaultEMS(); initNego(seed); makeBrief();
   updateVision();
   log(`${S.opName} — seed ${seed}. ${S.house.archName}, ${S.geo.name}.`, 'system');
   const B = S.brief; log(`Dispatch ${B.time}: ${B.type} at ${B.addr}. ${B.shots ? 'Shots fired. ' : ''}Adult male barricaded inside. Patrol cruisers blocking traffic at both ends of the block.`, 'alert');
   if (S.scene.injury) { const c = casById(S.scene.injury.cas), mate = S.units.find(u => u.kind === 'patrol' && u.status === 'ok' && !u.inCar);
-    log(c.state === 'kia' ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit in the front yard — he's not moving. We can't get to him!"` : c.state === 'mobile' ? `${c.name}: "I'm hit — I can move. I'm in the open out front, need cover!"` : c.sev === 3 ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit out front, he's losing a lot of blood — we need help NOW!"` : `${c.name}: "I'm hit — I can't move. Front yard. Somebody get me out of here!"`, 'bad'); }
+    log(c.state === 'kia' ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit in the front yard — he's not moving. We can't get to him!"` : c.state === 'mobile' ? `${c.name}: "I'm hit — I can move. I'm in the open out front, need cover!"` : c.sev === 3 ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit out front, his condition is critical — we need help NOW!"` : `${c.name}: "I'm hit — I can't move. Front yard. Somebody get me out of here!"`, 'bad'); }
   log('SWAT team paged. Set containment from cover while the team responds.', 'system');
   const A = initialArrivals(); S.brief.arrival = A;
   if (A) log(A.mode === 'all' ? `SWAT: FULL TEAM ON SCENE — ${A.why}` : `SWAT: ${A.count} of ${A.of} on scene at staging — ${A.why}${A.count < A.of ? ' The rest are paged and en route.' : ''}`, A.mode === 'all' ? 'good' : 'system');
@@ -2657,6 +2864,6 @@ function newGame(seed, opts) {
 
 return { newGame, get state() { return S; }, MAP_W, MAP_H, TICKS, LOSE_DOWN, SCORE, withdraw, forceLeft, updateVision, computeVis, checkEnd, EQUIP, SPECS, QUALS, WEAPONS, SUSPECT_WEAPONS, STANCES, COVER_NAMES, COMMANDS, idx, roomAt, edge, los, losEx, findPath, planFor, queueOrder, undoOrder, clearOrders,
   setCommand, execute, stepTick, formTeam, assign, equip, renameTeam, intelInfo, unit, off, teamOk, hasSpec, teamSkill, nearStaging, orderReq, setStance, BREACH, CHARGE_SAFE, breachEst, breachMethods, breachCan, defaultMethod, doorMid, gasAt, gasTurn, gasDeploy, gasCond, gasExpose, suspectGas, suspectGasTurn, masked, impairAcc, impairVis, donMasks, detonateCharge, dist, hitChance, coverInfo, expoAt, computeExpo,
-  validateHouse, validateWorld, footprint, carAxis, houseSideOf, exitCell, spotterOf, perchAt, owCone, weaponOf, onFoot, skillOf, houseCenter, carAt, snapCover, shieldAt, validateContain, COVER_CFG, TURN_SEC, missionScore, careerSummary, ACT_XP, xpAct, xpSummary, callState, preview, cornerAt, cornerAvail, CORNER_CFG, formationFor, FORM_CFG, initialArrivals, ARRIVE_CFG, mmss, tDur, tMin, clockAt, elapsedAt, sideWatch, watchAt, houseSides, statusCheck, review911, roadblockHeld, withVirtualCar, SCENE_CFG, VARIANT_TXT, setupScene, sceneDebrief, T_HIT, T_TRY,
+  validateHouse, validateWorld, footprint, carAxis, houseSideOf, exitCell, spotterOf, perchAt, owCone, weaponOf, onFoot, skillOf, houseCenter, carAt, snapCover, shieldAt, validateContain, COVER_CFG, exposedOrders, ITEM_CFG, INV_CFG, invAct, invView, invOf, isReady, teamWeapon, syncEquip, setTeamOrder, atEquipment, stagePos, CAR_SEATS, carSeats, seatsUsed, TURN_SEC, missionScore, careerSummary, ACT_XP, xpAct, xpSummary, callState, preview, cornerAt, cornerAvail, CORNER_CFG, FIRE_CFG, fireImpair, formationFor, FORM_CFG, initialArrivals, ARRIVE_CFG, mmss, tDur, tMin, clockAt, elapsedAt, sideWatch, watchAt, houseSides, statusCheck, review911, roadblockHeld, withVirtualCar, SCENE_CFG, VARIANT_TXT, setupScene, sceneDebrief, T_HIT, T_TRY,
   CAS_CFG, NEGO_CFG, TALK_KEYS, TALK_NAMES, casById, casActive, casKnow, sevWord, casLabel, setEMS, emsCheck, ccpFor, setSurrenderSpot, surrSpot, setTalk, talkAvail, negoSummary, negOnScene, paCapable, paInRange, paUnits, protocolNow, ambushChance, ambushRisk, walkout, addCasualty, officerDown, suspectHit, robotPhoneGoal, defaultEMS, hostile, contactTry, runTalk, paAct, casualtyTurn, applyAid };
 })();

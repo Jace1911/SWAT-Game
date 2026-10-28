@@ -111,6 +111,17 @@ button.on{background:linear-gradient(180deg,#1f6fd0,#124a8e);border-color:var(--
 .calls{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.callc{display:flex;flex-direction:column;gap:3px;text-align:left;font-size:12px;color:#bcd0e6;padding:10px;font-weight:400}
 @media (max-height:560px) and (min-width:761px){.mm .mmb{min-height:40px;padding:6px 10px}.mmq{gap:3px;padding:6px}.mmt{min-height:0}.calls{grid-template-columns:repeat(3,1fr)}}
 .dlg.wide{width:min(860px,100%)}
+button.mini{padding:5px 8px;font-size:11px;min-height:30px;min-width:30px}button.mini.on{background:rgba(56,200,255,.25);border-color:var(--cyan2);color:#fff}
+.ord{display:inline-block;min-width:18px;font-weight:800;color:var(--cyan2)}
+.frow{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap}.frow.on{background:rgba(56,200,255,.07)}
+.fchk{display:flex;align-items:center;gap:4px;min-width:44px;min-height:34px;cursor:pointer}.fchk input{width:22px;height:22px}.fchk span{font-weight:800;color:var(--cyan2);min-width:12px}
+.fnm{flex:1;min-width:120px;display:flex;flex-direction:column}.fnm small{color:var(--dim);font-size:10.5px}.fbtn{display:flex;gap:4px;flex-wrap:wrap}
+.hands{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}.hand{border:2px solid var(--cyan2);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:3px;background:rgba(56,200,255,.07)}
+.hand.empty{border-style:dashed;border-color:var(--line2);background:none;color:var(--dim)}.hand.nrb{border-color:var(--amber)}.hand b{font-size:15px;color:#fff}.hand small{font-size:10px;color:var(--dim);letter-spacing:.06em}.hb{display:flex;gap:4px;flex-wrap:wrap;margin-top:2px}
+.nr{font-size:10px;font-weight:800;color:#1a1000;background:var(--amber);border-radius:4px;padding:1px 5px;align-self:flex-start}.rd{font-size:10px;font-weight:800;color:#06210f;background:var(--green);border-radius:4px;padding:1px 5px;align-self:flex-start}
+.srow{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);flex-wrap:wrap}.srow .wh{font-size:9.5px;color:var(--dim);min-width:62px;letter-spacing:.05em}.srow .sp{flex:1}.srow small{color:var(--dim);font-size:10.5px}
+.pool{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:2px 10px}.prow{display:flex;align-items:center;gap:6px}.prow span:first-child{flex:1;font-size:12px}.prow small{color:var(--dim);font-size:10px}.prow .q{min-width:18px;text-align:center;font-weight:700}
+button.ld{margin-top:3px;font-size:10.5px}
 .tr{display:grid;grid-template-columns:62px 78px 1fr;gap:6px;padding:4px 6px;border-radius:5px;font-size:12.5px}.tr .tt{color:var(--dim);font-variant-numeric:tabular-nums}.tr .who{font-weight:800;color:var(--cyan2)}.tr.c .who{color:var(--amber)}.tr.n{color:var(--dim);font-style:italic}.tr.n .who{color:var(--dim)}.tr.on{background:rgba(43,140,255,.18)}
 .tl{border-left:2px solid var(--line2);margin:4px 0 4px 6px;padding-left:10px;font-size:12px}.tl div{margin:3px 0}.tl b{color:#fff;font-variant-numeric:tabular-nums}
 .warnbox{border:1px solid var(--red);background:rgba(255,60,60,.1);border-radius:6px;padding:7px 10px;margin:8px 0;font-size:12.5px}
@@ -184,6 +195,11 @@ kbd{font:600 10.5px ui-monospace,monospace;background:#0b1b33;border:1px solid v
   #ovw{height:120px}
   #aimbox{top:calc(96px + var(--sat))}
 }
+/* v8: plain main-menu screen — no scenario behind it */
+#exec.warn{box-shadow:0 0 0 2px #ff3b4e inset}#exec.warn small{color:#ffb3bb}
+body.nogame{background:radial-gradient(ellipse at 50% 30%,#13233b 0%,#0a1220 60%,#060b14 100%)}
+body.nogame>*:not(.modal):not(#toast):not(script){display:none!important}
+body.nogame .modal{background:transparent}
 </style>
 </head>
 <body>
@@ -220,6 +236,8 @@ kbd{font:600 10.5px ui-monospace,monospace;background:#0b1b33;border:1px solid v
   <button id="exec">EXECUTE<small id="exec-sub">0 ORDERS QUEUED</small></button>
 </div>
 <div class="modal" id="m-team"><div class="panel dlg" id="team-dlg"></div></div>
+<div class="modal" id="m-form"><div class="panel dlg" id="form-dlg"></div></div>
+<div class="modal" id="m-load"><div class="panel dlg" id="load-dlg"></div></div>
 <div class="modal" id="m-intel"><div class="panel dlg" id="intel-dlg"></div></div>
 <div class="modal" id="m-end"><div class="panel dlg" id="end-dlg"></div></div>
 <div class="modal" id="m-brief"><div class="panel dlg" id="brief-dlg"></div></div>

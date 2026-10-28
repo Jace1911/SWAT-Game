@@ -10,7 +10,7 @@
              yet rounds go straight through.
    open    = at least one window/door has a clean line to the cell.
    ===================================================================== */
-const COVER_CFG = { range: 30, postSep: 5, search: 6, searchWide: 10, snapR: 4, snapWide: 7, doorPad: 2 };
+const COVER_CFG = { exposedAt: 0.15, range: 30, postSep: 5, search: 6, searchWide: 10, snapR: 4, snapWide: 7, doorPad: 2 };
 let COV_STATIC = false; // when true, cruisers are ignored as cover (they drive away)
 function shotPoints() {
   if (S._shotPts) return S._shotPts; const out = [];

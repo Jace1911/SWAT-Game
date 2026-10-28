@@ -31,7 +31,7 @@ function nearestDrive(u, x, y) { let best = null, bs = 1e9; for (let dy = -4; dy
 function carAdjGoal(c) { const fp = footprint(c); return (x, y) => !S.dyn[idx(x, y)] && fp.some(([fx_, fy]) => cheb(fx_, fy, x, y) <= 1); }
 /** Shooting position check: in range and a line of sight to the target cell. */
 function shotReq(u, sx, sy, tx, ty) {
-  const wk = weaponOf(u); if (!wk) return 'This unit cannot fire'; const w = WEAPONS[wk], d = dist(sx, sy, tx, ty);
+  const wk = weaponOf(u); if (!wk) return u.kind === 'team' ? 'No READY weapon in hand — a weapon just drawn, slung or holstered is not ready until next turn' : 'This unit cannot fire'; const w = WEAPONS[wk], d = dist(sx, sy, tx, ty);
   if (d > w.range) return `Out of range — ${w.short} reaches ~${w.range} m (target ${Math.round(d)} m)`;
   if (!los(sx, sy, tx, ty)) return 'No line of sight to that spot from there';
   return null;
@@ -82,7 +82,7 @@ function planOrder(u, o, sx, sy, assume) {
   return { ok: false, reason: 'Unknown order' };
 }
 /** Start cell for planning: a patrol officer sitting in a cruiser plans from the cover-side door. */
-function planStart(u) { if (u.perch) return [u.x, u.y]; if (u.kind === 'patrol' && u.inCar) { const c = unit(u.inCar); const e = c && exitCell(c, 'safe'); if (e) return e; } return [u.x, u.y]; }
+function planStart(u) { if (u.perch) return [u.x, u.y]; if (u.inCar) { const c = unit(u.inCar); const e = c && exitCell(c, 'safe'); if (e) return e; } return [u.x, u.y]; }
 /** Preview: sequential plan of all queued orders for a unit. Each step gets exposure flags for red path tint. */
 function planFor(u) {
   const assume = plannedBreaches(); let [x, y] = planStart(u); const out = [];
@@ -102,24 +102,28 @@ function orderReq(u, o) {
     if (o.type === 'detonate') { const d = S.doors[o.door]; if (!d.charge && !u.orders.some(q => q.type === 'breach' && q.door === o.door && q.hangOnly)) return 'No charge hung on that door'; }
     if (o.type === 'bang' && pending('bang') >= (e.bang || 0)) return 'No flashbangs left on this team';
     if (o.type === 'gas' && pending('gas') >= (e.gas || 0)) return 'No CS gas on this team';
+    if ((o.type === 'bang' || o.type === 'gas') && !taskMember(u, o.type, 2)) return 'A throw needs BOTH hands — whoever carries it holds a shield or the ram (change loadout)';
     if (o.type === 'polecam' && !(e.polecam > 0)) return 'Team has no pole camera';
     if ((o.type === 'drone' || o.type === 'robot') && !(e[o.type] > 0)) return `Team carries no ${o.type}`;
     if ((o.type === 'drone' || o.type === 'robot') && !hasSpec(u, 'tech')) return 'Needs a Tech / Robot Op on the team';
-    if (o.type === 'board' || o.type === 'exit') return 'Only patrol officers ride in cruisers';
+    if (o.type === 'board') { const c = unit(o.car); if (!c || c.kind !== 'cruiser') return 'Tap a vehicle'; if (u.inCar) return 'Already in a vehicle'; if (c.disabled) return 'That vehicle is disabled'; if (seatsUsed(c) + seatsNeeded(u) > carSeats(c)) return `${c.name} has ${carSeats(c) - seatsUsed(c)} free seat(s) — team needs ${seatsNeeded(u)}`; }
+    if (o.type === 'exit' && !u.inCar) return 'Not in a vehicle';
+    if (u.inCar && !['exit', 'hold', 'move', 'pa'].includes(o.type)) return 'Get out of the vehicle first (Exit)';
     if (o.type === 'overwatch' && !hasSpec(u, 'marksman')) return 'Overwatch needs a Marksman / Sniper on the team';
     if (o.type === 'pa' && !(e.bullhorn > 0)) return 'No bullhorn on this team (cruiser PA works too)';
     if (o.type === 'tphone') { if (!(e.tphone > 0) || pending('tphone') >= e.tphone) return 'No throw-phone on this team';
       if (o.via === 'robot' && (!(e.robot > 0) || !hasSpec(u, 'tech'))) return 'Robot delivery needs a robot and a Tech on the team'; }
     if (u.carrying && !['evac', 'rescue', 'hold'].includes(o.type) && !u.orders.some(q => q.cas === u.carrying)) return 'Carrying a casualty — Evac or Rescue first';
   } else if (u.kind === 'patrol') {
-    if (!['move', 'hold', 'shoot', 'board', 'aid', 'rescue', 'evac', 'corner'].includes(o.type)) return 'Patrol officers can Move, Hold, Fire, work a corner, get in a cruiser, or help casualties';
+    if (!['move', 'hold', 'shoot', 'board', 'exit', 'aid', 'rescue', 'evac', 'corner'].includes(o.type)) return 'Patrol officers can Move, Hold, Fire, work a corner, get in a vehicle, or help casualties';
+    if (o.type === 'exit' && !u.inCar) return 'Not in a vehicle';
     if (['aid', 'rescue', 'evac'].includes(o.type) && u.inCar) return 'Get out of the cruiser first';
-    if (o.type === 'shoot' && u.inCar) return 'Get out of the cruiser first (select the cruiser → Exit)';
-    if (o.type === 'board') { const c = unit(o.car); if (!c || c.kind !== 'cruiser') return 'Tap a cruiser'; if (u.inCar) return 'Already in a cruiser'; if (c.occ.length >= 2) return 'Cruiser is full (2 seats)'; if (c.disabled) return 'That cruiser is disabled'; }
+    if (o.type === 'shoot' && u.inCar) return 'Get out of the vehicle first (Exit)';
+    if (o.type === 'board') { const c = unit(o.car); if (!c || c.kind !== 'cruiser') return 'Tap a cruiser'; if (u.inCar) return 'Already in a cruiser'; if (seatsUsed(c) + 1 > carSeats(c)) return `${c.name} is full (${carSeats(c)} seats)`; if (c.disabled) return 'That cruiser is disabled'; }
   } else if (u.kind === 'cruiser') {
     if (!['move', 'exit', 'hold', 'pa'].includes(o.type)) return 'Cruisers can Drive, Exit, Hold or use the PA';
     if (o.type === 'pa' && !u.occ.length) return 'Nobody in the cruiser to work the PA';
-    if (o.type === 'move' && !u.occ.length) return 'Nobody is in this cruiser — order a patrol officer to get in first';
+    if (!u.occ.length) return `${u.name} is empty — an officer or team must get in to drive it`;
     if (o.type === 'move' && u.disabled) return 'Cruiser is disabled';
     if (o.type === 'exit' && !u.occ.length && !u.orders.some(q => q.type === 'move')) return 'Cruiser is empty';
   }
@@ -130,9 +134,13 @@ function queueOrder(uid, o) {
   if (S.phase !== 'planning') return { ok: false, reason: 'Wait for the orders to resolve' };
   const u = unit(uid); if (!u || !unitAlive(u)) return { ok: false, reason: 'Unit unavailable' };
   if (o.type === 'overwatch' && (o.perch === undefined || o.perch === null)) { const pc = perchAt(o.x, o.y); o.perch = pc ? pc.id : null; if (!pc && S.block[idx(o.x, o.y)]) return { ok: false, reason: 'No usable vantage point in that building' }; }
+  if (o.type === 'drive') { if (!u.inCar) return { ok: false, reason: 'Not in a vehicle — Get In first' }; const c = unit(u.inCar); if (!c) return { ok: false, reason: 'No vehicle' }; // v8: drive through the occupant's own chip
+    const r = queueOrder(c.uid, { type: 'move', x: o.x, y: o.y }); if (r.ok) { o.x = r.at[0]; o.y = r.at[1]; } return Object.assign({ car: c.uid }, r); }
+  if (o.type === 'pa' && u.inCar) return queueOrder(u.inCar, o); // vehicle PA, worked by whoever is inside
   const req = orderReq(u, o); if (req) return { ok: false, reason: req };
   if (o.type === 'move' && u.kind === 'cruiser') { const nd = nearestDrive(u, o.x, o.y); if (!nd) return { ok: false, reason: 'Cruiser cannot park there (needs open road, driveway or lawn)' }; o.x = nd[0]; o.y = nd[1]; }
-  if (o.type === 'move' && (u.kind === 'patrol' || u.kind === 'team') && roomAt(o.x, o.y) < 0 && !o.exact) { o.req = [o.x, o.y]; const sc = snapCover(u, o.x, o.y); o.x = sc[0]; o.y = sc[1]; o.cover = sc[2]; o.snapped = sc[0] !== o.req[0] || sc[1] !== o.req[1]; if (sc[2] === 'open') log(`${u.name}: WARNING — no cover or concealment within ${COVER_CFG.snapWide} m of that spot. The position is exposed to the house.`, 'alert'); }
+  if (o.type === 'move' && (u.kind === 'patrol' || u.kind === 'team')) { o.req = [o.x, o.y]; o.snapped = false; // v8: move ANYWHERE — no snapping; just flag exposure
+    const ci = coverInfo(o.x, o.y); o.cover = ci.level === 'inside' ? 'inside' : ci.level === 'open' ? 'open' : ci.q; o.exposed = roomAt(o.x, o.y) < 0 && ci.level === 'open' && ci.expo >= COVER_CFG.exposedAt; }
   const last = u.orders[u.orders.length - 1];
   const replacing = last && last.type === 'move' && o.type === 'move';
   const prev = planFor(u); let [sx, sy] = planStart(u);
@@ -144,8 +152,12 @@ function queueOrder(uid, o) {
   if (o.type === 'overwatch') u.orders = u.orders.filter(q => q.type !== 'overwatch');
   if (o.type === 'shoot') { u.orders = u.orders.filter(q => q.type !== 'shoot'); o.est = hitChance(u, o.x, o.y, [sx, sy]).p; }
   if (replacing) u.orders[u.orders.length - 1] = o; else u.orders.push(o);
-  S.version++; return { ok: true, snapped: o.snapped, est: o.est, at: [o.x, o.y] };
+  if (o.type === 'move' && r.path) o.routeExposed = r.path.some(([px, py]) => roomAt(px, py) < 0 && expoAt(px, py) >= 0.6);
+  if (o.type === 'move' && o.cover === 'open') log(o.exposed ? `⚠ ${u.name}: no cover at that spot — EXPOSED to the house (allowed)` : `${u.name}: no cover at that spot, but out of his line of fire`);
+  S.version++; return { ok: true, snapped: o.snapped, est: o.est, at: [o.x, o.y], exposed: !!o.exposed, routeExposed: !!o.routeExposed };
 }
+/** Orders that END exposed (or cross an exposed stretch) — shown on the preview and beside EXECUTE. Moves are still allowed. */
+function exposedOrders() { const out = []; for (const u of S.units) { if (!unitAlive(u) || u.kind === 'cruiser') continue; for (const o of u.orders) if (o.type === 'move' && (o.exposed || o.routeExposed)) out.push({ uid: u.uid, name: u.name, end: !!o.exposed, route: !!o.routeExposed }); } return out; }
 function undoOrder(uid) { const u = unit(uid); if (u && u.orders.length && S.phase === 'planning') { u.orders.pop(); S.version++; } }
 function clearOrders(uid) { const u = unit(uid); if (u && S.phase === 'planning') { u.orders = []; S.version++; } }
 function setStance(uid, st) { const u = unit(uid); if (!u || !STANCES[st]) return { ok: false }; u.stance = st; S.version++; return { ok: true }; }
@@ -162,6 +174,7 @@ function hitChance(u, tx, ty, from, opt) {
   const l = los(sx, sy, tx, ty); if (!l) return { p: 0, why: 'no line of sight', weapon: w.short, d: Math.round(d), parts };
   const add = (k, v, t) => { parts.push({ k, v: +v.toFixed(2), t }); return v; };
   let p = add('base', w.base, w.name);
+  if (u.kind === 'team') { const tw = teamWeapon(u); if (tw && tw.oh) { p *= add('grip', ITEM_CFG.rifle.oneHandMul, 'rifle fired one-handed'); notes.push('one-handed'); } }
   p *= add('range', 1 - 0.55 * d / w.range, Math.round(d) + ' m of ' + w.range);
   const sp = S.suspect, inside = roomAt(tx, ty) >= 0, atWin = winCellSet().has(idx(tx, ty));
   let cm, ct; if (!inside) { cm = 1.4; ct = 'in the open'; } else if (atWin) { cm = wk === 'sniper' ? 1.25 : 1.0; ct = 'at window (frame + glass)'; } else if (l === 2) { cm = 0.45; ct = 'deep in room behind glass'; } else { cm = 0.6; ct = 'through doorway / walls'; }

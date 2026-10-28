@@ -116,7 +116,9 @@ function bakeGround() {
   for (const l of X.lamps) { const px = (l.x + 0.5) * k, py = (l.y + 0.5) * k; g.fillStyle = '#20252c'; g.beginPath(); g.arc(px, py, k * 0.18, 0, 7); g.fill(); g.strokeStyle = '#59606b'; g.lineWidth = 1.5; g.stroke(); }
   // staging marker
   const st = X.staging; g.save(); g.strokeStyle = 'rgba(56,200,255,.6)'; g.setLineDash([6, 5]); g.lineWidth = 2; rr(g, (st.x - 3) * k, (st.y - 1.5) * k, 7 * k, 3.4 * k, 8); g.stroke(); g.setLineDash([]);
-  g.fillStyle = 'rgba(56,200,255,.06)'; g.fill(); g.fillStyle = 'rgba(127,227,255,.8)'; g.font = `700 ${k * 0.5}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'left'; g.fillText('STAGING · ARMORY', (st.x - 2.8) * k, (st.y + 1.6) * k); g.restore();
+  g.fillStyle = 'rgba(56,200,255,.06)'; g.fill(); g.fillStyle = 'rgba(127,227,255,.8)'; g.font = `700 ${k * 0.5}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'left'; g.fillText('PRIMARY STAGING · EQUIPMENT', (st.x - 2.8) * k, (st.y + 1.6) * k); g.restore();
+  const s2 = X.staging2; if (s2) { g.save(); g.strokeStyle = 'rgba(150,230,170,.6)'; g.setLineDash([6, 5]); g.lineWidth = 2; rr(g, (s2.x - 2.5) * k, (s2.y - 1.5) * k, 6 * k, 3.4 * k, 8); g.stroke(); g.setLineDash([]);
+    g.fillStyle = 'rgba(120,220,150,.06)'; g.fill(); g.fillStyle = 'rgba(170,240,190,.85)'; g.font = `700 ${k * 0.5}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'left'; g.fillText('SECONDARY STAGING · ON FOOT', (s2.x - 2.3) * k, (s2.y + 1.6) * k); g.restore(); }
   L.ground = c;
 }
 function fenceSeg(g, x1, y1, x2, y2, k) { g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = k * 0.24; g.beginPath(); g.moveTo(x1 + 2, y1 + 3); g.lineTo(x2 + 2, y2 + 3); g.stroke();
@@ -314,6 +316,13 @@ function syncFx() { const S = Core.state; for (const f of S.fx) if (f.id > seenF
    ===================================================================== */
 const ICON = { move: '➜', clear: '▣', breach: '✸', polecam: '◉', bang: '✦', gas: '☁', hold: '■', drone: '✈', robot: '⛭', shoot: '⊕', overwatch: '◎', board: '⇲', exit: '⇱', detonate: '✹', mask: 'M' };
 function wpx(c) { return (c + 0.5) * CS; }
+// staging labels stay readable when zoomed out (the ground-layer text gets too small)
+function drawStageTags(g) { const S = Core.state, X = S && S.ext; if (!X || !X.staging || CS * 0.5 * cam.z >= 9) return;
+  const tags = [[X.staging, 'PRIMARY STAGING', 'rgba(127,227,255,.95)', -3], [X.staging2, 'SECONDARY STAGING', 'rgba(170,240,190,.95)', -2.5]];
+  g.save(); g.font = '700 9px system-ui,Segoe UI,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'top';
+  for (const [p, txt, col] of tags) { if (!p) continue; const [sx, sy] = toScreen(p.x + 0.5, p.y + 2); const w = g.measureText(txt).width + 8; const cx = Math.max(w / 2 + (VW > 600 ? 78 : 6), Math.min(VW - w / 2 - 4, sx));
+    g.fillStyle = 'rgba(5,10,18,.75)'; g.fillRect(cx - w / 2, sy, w, 13); g.fillStyle = col; g.fillText(txt, cx, sy + 2); }
+  g.restore(); }
 function frame(now) {
   const S = Core.state; if (!S || !cv) return;
   if (builtSeed !== S.seed) { rebake(); }
@@ -338,7 +347,7 @@ function frame(now) {
   worldFx(g, now);
   g.restore();
   // ---- screen space ----
-  drawContain(g, now); drawPerches(g, now); drawPlans(g, now); drawAim(g, now); drawMarkers(g, now); drawUnits(g, now); screenFx(g, now);
+  drawContain(g, now); drawPerches(g, now); drawPlans(g, now); drawAim(g, now); drawMarkers(g, now); drawStageTags(g); drawUnits(g, now); screenFx(g, now);
   const vg = g.createRadialGradient(VW / 2, VH / 2, Math.min(VW, VH) * 0.35, VW / 2, VH / 2, Math.max(VW, VH) * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.5)'); g.fillStyle = vg; g.fillRect(0, 0, VW, VH);
 }
 function glow(g, x, y, rad, col, a) { const rg = g.createRadialGradient(x, y, 0, x, y, rad); rg.addColorStop(0, col.replace('A', a)); rg.addColorStop(1, col.replace('A', 0)); g.fillStyle = rg; g.fillRect(x - rad, y - rad, rad * 2, rad * 2); }
@@ -378,8 +387,9 @@ function lights(g, now, layer) {
 /** Patrol cruisers: dynamic, movable, take hits (marks), occupants badge. */
 function drawCruisers(g, now) { const S = Core.state, blink = Math.floor(now / 260) % 2;
   for (const c of S.units) { if (c.kind !== 'cruiser') continue; const [ux, uy] = posOf(c.uid, c.x, c.y); const d = dirOf(c.uid, c.dir || 0); const px = wpx(ux), py = wpx(uy);
-    const Ln = CS * 2.85, Wd = CS * 1.45, sel = view.sel === c.uid;
+    const Ln = CS * (c.armored ? 3.5 : 2.85), Wd = CS * (c.armored ? 1.9 : 1.45), sel = view.sel === c.uid;
     g.save(); g.translate(px, py); g.rotate(d);
+    if (c.armored) drawBearCat(g, c, Ln, Wd, blink); else {
     g.shadowColor = 'rgba(0,0,0,.75)'; g.shadowBlur = CS * 0.5; g.shadowOffsetX = CS * 0.12; g.shadowOffsetY = CS * 0.22;
     g.fillStyle = c.disabled ? '#2a2c30' : '#e6e9ee'; rr(g, -Ln / 2, -Wd / 2, Ln, Wd, CS * 0.32); g.fill(); g.shadowColor = 'transparent';
     g.fillStyle = c.disabled ? '#1a1b1e' : '#13161c'; rr(g, -Ln * 0.22, -Wd / 2 + 2, Ln * 0.42, Wd - 4, 6); g.fill(); // black doors band
@@ -387,12 +397,27 @@ function drawCruisers(g, now) { const S = Core.state, blink = Math.floor(now / 2
     g.fillStyle = 'rgba(190,220,255,.18)'; g.fillRect(Ln * 0.1, -Wd / 2 + 6, Ln * 0.05, Wd - 12);
     g.fillStyle = c.disabled ? '#333' : blink ? '#ff4458' : '#3a7bff'; g.fillRect(-CS * 0.08, -Wd * 0.38, CS * 0.16, Wd * 0.36); g.fillStyle = c.disabled ? '#333' : blink ? '#3a7bff' : '#ff4458'; g.fillRect(-CS * 0.08, Wd * 0.02, CS * 0.16, Wd * 0.36);
     g.fillStyle = 'rgba(255,250,220,.85)'; g.fillRect(Ln / 2 - 4, -Wd / 2 + 4, 3, 6); g.fillRect(Ln / 2 - 4, Wd / 2 - 10, 3, 6);
-    g.fillStyle = 'rgba(20,30,60,.9)'; g.font = `800 ${CS * 0.26}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('POLICE', -Ln * 0.38 + CS * 0.05, 0);
+    g.fillStyle = 'rgba(20,30,60,.9)'; g.font = `800 ${CS * 0.26}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('POLICE', -Ln * 0.38 + CS * 0.05, 0); }
     // impact marks (abstract dents/sparks, no injuries depicted)
     for (const m of c.marks || []) { const mx = m.dx * CS * 0.9, my = m.dy * CS * 0.5; g.strokeStyle = 'rgba(30,30,30,.85)'; g.lineWidth = 1.5; g.beginPath(); for (let k = 0; k < 4; k++) { const a = k * 0.785 + (m.t || 0); g.moveTo(mx, my); g.lineTo(mx + Math.cos(a) * 5, my + Math.sin(a) * 5); } g.stroke(); g.fillStyle = '#1a1a1a'; g.beginPath(); g.arc(mx, my, 2, 0, 7); g.fill(); }
     g.restore();
     if (sel) { g.strokeStyle = '#ffffff'; g.lineWidth = 2 / cam.z; g.setLineDash([6 / cam.z, 4 / cam.z]); g.beginPath(); g.ellipse(px, py, Ln * 0.62, Ln * 0.62, 0, 0, 7); g.stroke(); g.setLineDash([]); }
   } }
+/** Top-down navy-blue BearCat: boxy armored hull, sloped hood, roof hatch with a rotating turret ring, short ram and a shield port. Bigger than a cruiser. */
+function drawBearCat(g, c, Ln, Wd, blink) { const dis = c.disabled;
+  g.fillStyle = dis ? '#1c2230' : '#1d2f5c'; rr(g, -Ln / 2, -Wd / 2, Ln, Wd, CS * 0.14); g.fill(); g.shadowColor = 'transparent'; // hull
+  g.strokeStyle = dis ? '#2a3040' : '#0c1630'; g.lineWidth = 2; rr(g, -Ln / 2 + 2, -Wd / 2 + 2, Ln - 4, Wd - 4, CS * 0.1); g.stroke();
+  g.fillStyle = dis ? '#232a38' : '#28427a'; g.beginPath(); g.moveTo(Ln * 0.2, -Wd / 2 + 3); g.lineTo(Ln / 2 - 3, -Wd * 0.36); g.lineTo(Ln / 2 - 3, Wd * 0.36); g.lineTo(Ln * 0.2, Wd / 2 - 3); g.closePath(); g.fill(); // sloped hood
+  g.strokeStyle = 'rgba(10,18,40,.9)'; g.lineWidth = 1.2; for (let k = -2; k <= 2; k++) { g.beginPath(); g.moveTo(Ln * 0.3, k * Wd * 0.12); g.lineTo(Ln * 0.44, k * Wd * 0.12); g.stroke(); } // grille louvres
+  g.fillStyle = 'rgba(90,130,180,.55)'; g.fillRect(Ln * 0.13, -Wd * 0.38, Ln * 0.06, Wd * 0.76); // narrow armored windshield
+  g.fillStyle = '#9aa3ad'; g.fillRect(Ln / 2 - 1, -Wd * 0.3, CS * 0.32, Wd * 0.6); g.fillStyle = '#6b737c'; g.fillRect(Ln / 2 + CS * 0.22, -Wd * 0.42, CS * 0.12, Wd * 0.84); // push bar / ram
+  g.fillStyle = dis ? '#2a3040' : '#15244a'; rr(g, -Ln * 0.42, -Wd * 0.4, Ln * 0.5, Wd * 0.8, 4); g.fill(); // raised roof
+  g.fillStyle = 'rgba(12,20,40,.9)'; g.fillRect(-Ln * 0.44, -Wd * 0.47, Ln * 0.08, Wd * 0.2); g.fillRect(-Ln * 0.44, Wd * 0.27, Ln * 0.08, Wd * 0.2); // rear doors / shield ports
+  const tr = Wd * 0.27; g.fillStyle = dis ? '#333a48' : '#2e4b8c'; g.beginPath(); g.arc(-Ln * 0.12, 0, tr, 0, 7); g.fill(); g.strokeStyle = '#0a1226'; g.lineWidth = 2; g.stroke(); // roof hatch turret ring
+  g.fillStyle = '#0a1226'; g.beginPath(); g.arc(-Ln * 0.12, 0, tr * 0.45, 0, 7); g.fill(); g.fillStyle = '#8a95a3'; g.fillRect(-Ln * 0.12 + tr * 0.4, -CS * 0.06, tr * 1.35, CS * 0.12); // hatch + short barrel/port
+  g.fillStyle = dis ? '#333' : blink ? '#ff4458' : '#3a7bff'; g.fillRect(Ln * 0.07, -Wd * 0.46, CS * 0.12, CS * 0.12); g.fillStyle = dis ? '#333' : blink ? '#3a7bff' : '#ff4458'; g.fillRect(Ln * 0.07, Wd * 0.46 - CS * 0.12, CS * 0.12, CS * 0.12);
+  g.fillStyle = 'rgba(255,250,220,.85)'; g.fillRect(Ln / 2 - 5, -Wd / 2 + 3, 3, 5); g.fillRect(Ln / 2 - 5, Wd / 2 - 8, 3, 5);
+  g.fillStyle = 'rgba(220,230,255,.9)'; g.font = `800 ${CS * 0.24}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SWAT', -Ln * 0.34, 0); }
 /** Overwatch sight-line cones for perched marksmen. */
 function drawCones(g, now) { const S = Core.state;
   for (const u of S.units) { if (u.kind !== 'team' || u.status !== 'ok' || !u.perch) continue; const c = Core.owCone(u); if (!c) continue; const [ux, uy] = posOf(u.uid, c.x, c.y);
@@ -474,18 +499,7 @@ function drawContain(g, now) {
   for (const c of S.contain) if (c.q === 'cruiser' && c.car && !c.covered) { // ghost cruiser outline: where a car must be parked to screen this post
     const [gx, gy] = toScreen(c.car.x + 0.5, c.car.y + 0.5), L = 3 * CS * cam.z, W = 1.5 * CS * cam.z; g.save(); g.translate(gx, gy); g.strokeStyle = c.screened ? 'rgba(62,240,160,.7)' : 'rgba(127,227,255,' + (0.55 + 0.3 * Math.sin(now / 350)) + ')'; g.lineWidth = 1.6; g.setLineDash([5, 4]);
     rr(g, -L / 2, -W / 2, L, W, 4 * s); g.stroke(); g.setLineDash([]); if (cam.z > 0.4) { g.fillStyle = 'rgba(127,227,255,.85)'; g.font = `700 ${7.5 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('PARK CRUISER', 0, 0); } g.restore(); }
-  for (const c of S.contain) { const [x, y] = toScreen(c.x + 0.5, c.y + 0.5); const r = 9 * s, cru = c.q === 'cruiser', hard = c.q === 'hard' || (cru && c.screened);
-    g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.strokeStyle = c.covered ? 'rgba(62,240,160,.9)' : 'rgba(255,176,32,.85)'; g.lineWidth = 2; g.setLineDash(c.covered ? [] : [4, 3]); g.strokeRect(-r / 1.4, -r / 1.4, r * 1.41, r * 1.41); g.setLineDash([]); g.restore();
-    // cover-quality badge: solid shield = hard cover (stops rounds), leaf = concealment (hides, rounds pass)
-    const bx = x + r * 0.95, by = y - r * 0.95, bw = 5.5 * s;
-    g.save(); g.fillStyle = 'rgba(8,12,18,.8)'; g.beginPath(); g.arc(bx, by, bw * 1.25, 0, 7); g.fill();
-    if (cru) { g.fillStyle = c.screened ? '#7fe3ff' : 'rgba(127,227,255,.35)'; rr(g, bx - bw * 0.9, by - bw * 0.45, bw * 1.8, bw * 0.9, 2); g.fill(); }
-    else if (hard) { shieldPath(g, bx, by + 0.5 * s, bw * 0.85, bw * 0.95); g.fillStyle = '#3ef0a0'; g.fill(); }
-    else { g.fillStyle = '#9fd86b'; g.beginPath(); g.ellipse(bx, by, bw * 0.45, bw * 0.95, Math.PI / 4, 0, 7); g.fill(); g.strokeStyle = 'rgba(8,12,18,.9)'; g.lineWidth = 1; g.beginPath(); g.moveTo(bx - bw * 0.5, by + bw * 0.5); g.lineTo(bx + bw * 0.45, by - bw * 0.45); g.stroke(); }
-    g.restore();
-    if (cam.z > 0.35) { g.textAlign = 'center'; g.font = `600 ${10 * s}px system-ui,sans-serif`;
-      if (!c.covered) { g.fillStyle = 'rgba(255,176,32,.9)'; g.fillText('CONTAIN', x, y + r + 11 * s); }
-      if (cam.z > 0.6 || !c.covered) { g.font = `600 ${8.5 * s}px system-ui,sans-serif`; g.fillStyle = cru ? 'rgba(127,227,255,.95)' : hard ? 'rgba(62,240,160,.95)' : 'rgba(170,220,120,.95)'; g.fillText((cru ? 'CRUISER COVER' + (c.screened ? '' : ' · NO CAR YET') : hard ? 'HARD COVER' : 'CONCEALMENT') + (cam.z > 0.6 && c.by && !cru ? ' · ' + c.by : ''), x, y + r + (c.covered ? 11 : 21) * s); } } }
+  // v8: no contain-post markers on the map (status lives in the Building Info panel and the Status Check)
 }
 /** Sniper perches (neighbor rooftops / windows) shown while choosing an overwatch spot. */
 function drawPerches(g, now) { const S = Core.state; if (view.mode !== 'overwatch' || !view.sel || S.phase !== 'planning') return; const s = sz();
@@ -514,8 +528,8 @@ function drawPlans(g, now) {
       const r = 10 * s; g.fillStyle = p.ok ? 'rgba(6,18,34,.92)' : 'rgba(60,8,14,.92)'; g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.arc(ex, ey, r, 0, 7); g.fill(); g.stroke();
       g.fillStyle = p.ok ? '#e6f7ff' : '#ffd0d5'; g.font = `700 ${11 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(ICON[o.type] || '•', ex, ey + 0.5);
       g.fillStyle = col; g.font = `700 ${9 * s}px system-ui,sans-serif`; g.fillText(String(i + 1), ex + r + 4 * s, ey - r + 2 * s);
-      if (o.type === 'move' && o.cover === 'open') { g.fillStyle = '#ff3b4e'; g.beginPath(); g.moveTo(ex + r * 0.9, ey - r * 1.9); g.lineTo(ex + r * 1.9, ey - r * 0.2); g.lineTo(ex - r * 0.1, ey - r * 0.2); g.closePath(); g.fill(); g.fillStyle = '#fff'; g.font = `900 ${9 * s}px system-ui`; g.fillText('!', ex + r * 0.9, ey - r * 0.75); g.fillStyle = '#ff8b97'; g.font = `800 ${10 * s}px system-ui,sans-serif`; g.fillText('⚠ NO COVER', ex, ey - r - 12 * s); }
-      if (p.ok && p.expo && p.expo.some(e => e >= 0.6) && selected) { g.fillStyle = '#ff8b97'; g.font = `700 ${10 * s}px system-ui,sans-serif`; g.fillText('EXPOSED ROUTE', ex, ey + r + 10 * s); }
+      if (o.type === 'move' && o.exposed) { g.fillStyle = '#ff3b4e'; g.beginPath(); g.moveTo(ex + r * 0.9, ey - r * 1.9); g.lineTo(ex + r * 1.9, ey - r * 0.2); g.lineTo(ex - r * 0.1, ey - r * 0.2); g.closePath(); g.fill(); g.fillStyle = '#fff'; g.font = `900 ${9 * s}px system-ui`; g.fillText('!', ex + r * 0.9, ey - r * 0.75); g.fillStyle = '#ff8b97'; g.font = `800 ${10 * s}px system-ui,sans-serif`; g.fillText('⚠ EXPOSED', ex, ey - r - 12 * s); }
+      if (p.ok && p.expo && p.expo.some(e => e >= 0.6) && (selected || o.routeExposed) && !o.exposed) { g.fillStyle = '#ff8b97'; g.font = `700 ${10 * s}px system-ui,sans-serif`; g.fillText('EXPOSED ROUTE', ex, ey + r + 10 * s); }
       if (!p.ok && selected) { g.fillStyle = '#ff8b97'; g.font = `600 ${11 * s}px system-ui,sans-serif`; g.fillText(p.reason || 'invalid', ex, ey + r + 10 * s); } }); }
 }
 /** Aim preview: line from the shooter to the hovered target with the hit-chance readout. */
@@ -572,19 +586,22 @@ function tuck(u, ux, uy) { if (u.kind !== 'team' && u.kind !== 'patrol') return 
 const formCache = new Map();
 function formOf(u) { const S = Core.state, key = `${S.seed}|${u.x},${u.y}|${(u.dir || 0).toFixed(2)}|${S.version}|${S.tick}|${S.phase}|${u.perch ? 1 : 0}`; const c = formCache.get(u.uid); if (c && c.key === key) return c.f;
   const f = Core.formationFor ? Core.formationFor(u) : null; formCache.set(u.uid, { key, f }); return f; }
-function teamShield(u) { const s = sz(); let [ux, uy] = posOf(u.uid, u.x, u.y); [ux, uy] = tuck(u, ux, uy); const [x, y] = toScreen(ux + 0.5, uy + 0.5); const lift = cam.z < 0.4 ? 26 : 40; return { x, y, sx: x, sy: y - lift * s, s }; }
+function teamShield(u) { const s = sz(); let [ux, uy] = posOf(u.uid, u.x, u.y); [ux, uy] = u.inCar && inCarPos(u) ? inCarPos(u) : tuck(u, ux, uy); const [x, y] = toScreen(ux + 0.5, uy + 0.5); const lift = cam.z < 0.4 ? 26 : 40; return { x, y, sx: x, sy: y - lift * s, s }; }
+/** v8: an occupant's chip rides on its vehicle (offset by seat) — the chip is how the vehicle is commanded. */
+function inCarPos(u) { const c = Core.unit(u.inCar); if (!c) return null; const i = Math.max(0, c.occ.indexOf(u.uid)), n = c.occ.length; const [cx, cy] = posOf(c.uid, c.x, c.y);
+  return [cx + (i - (n - 1) / 2) * 1.1, cy - (u.kind === 'team' ? 0.2 : 0)]; }
 function onFootVisible(u) { return !(u.kind === 'patrol' && u.inCar) && !(u.kind === 'team' && !u.deployed && false); }
 function drawUnits(g, now) {
   const S = Core.state, s = sz(), plan = S.phase === 'planning';
-  for (const u of S.units) { if (u.kind === 'team' || u.kind === 'cruiser') continue; if (u.kind === 'patrol' && u.inCar) continue;
-    let [ux, uy] = posOf(u.uid, u.x, u.y); [ux, uy] = tuck(u, ux, uy); const [x, y] = toScreen(ux + 0.5, uy + 0.5); const sel = view.sel === u.uid; const down = u.status !== 'ok';
+  for (const u of S.units) { if (u.kind === 'team' || u.kind === 'cruiser') continue; if (u.kind === 'patrol' && u.inCar && !inCarPos(u)) continue;
+    let [ux, uy] = posOf(u.uid, u.x, u.y); [ux, uy] = u.inCar ? inCarPos(u) : tuck(u, ux, uy); const [x, y] = toScreen(ux + 0.5, uy + 0.5); const sel = view.sel === u.uid; const down = u.status !== 'ok';
     if (u.kind === 'patrol' && down) continue; // shown as a casualty marker instead
     if (u.kind === 'patrol') { const r = 11 * s; if (sel) { g.strokeStyle = '#ffffff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r + 5, 0, 7); g.stroke(); }
       g.save(); g.shadowColor = 'rgba(159,183,208,.7)'; g.shadowBlur = down ? 0 : 10; g.fillStyle = down ? '#3a1a20' : '#1d2a3a'; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.restore();
       g.strokeStyle = down ? '#ff3b4e' : u.panic > 0 ? '#ffb020' : COL.patrol; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke();
       if (!down) { const d = dirOf(u.uid, u.dir || 0); g.fillStyle = COL.patrol; g.beginPath(); g.moveTo(x + Math.cos(d) * (r + 6), y + Math.sin(d) * (r + 6)); g.lineTo(x + Math.cos(d + 0.4) * (r + 1), y + Math.sin(d + 0.4) * (r + 1)); g.lineTo(x + Math.cos(d - 0.4) * (r + 1), y + Math.sin(d - 0.4) * (r + 1)); g.fill(); }
       g.fillStyle = '#e6eef7'; g.font = `700 ${10 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('P' + u.num, x, y + 0.5);
-      if (!down) { coverBadge(g, x + r + 2, y + r - 2, Core.coverInfo(u.x, u.y), s); if ((u.impair || 0) > 0.05) badge(g, x - r - 2, y - r, '☁', '#cfe8b0', '#1a2a10', s); }
+      if (!down && !u.inCar) { coverBadge(g, x + r + 2, y + r - 2, Core.coverInfo(u.x, u.y), s); if ((u.impair || 0) > 0.05) badge(g, x - r - 2, y - r, '☁', '#cfe8b0', '#1a2a10', s); }
       if (!down && cam.z > 0.3) { const tag = u.panic > 0 ? 'PANIC' : (u.impair || 0) > 0.3 ? 'COUGHING' : u.retreating ? 'FALLING BACK' : ''; if (tag) { g.fillStyle = u.panic > 0 ? '#ffb020' : '#cfe8b0'; g.font = `700 ${9 * s}px system-ui,sans-serif`; g.fillText(tag, x, y - r - 9 * s); } } }
     else { if (down) continue; const r = 9 * s; g.save(); g.shadowColor = COL.violet; g.shadowBlur = 12; g.fillStyle = '#1e1636'; g.strokeStyle = COL.violet; g.lineWidth = 2;
       if (u.kind === 'drone') { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); for (const a of [0.785, 2.356, 3.927, 5.498]) { g.beginPath(); g.arc(x + Math.cos(a) * r * 1.2, y + Math.sin(a) * r * 1.2, r * 0.45, 0, 7); g.stroke(); } }
@@ -594,11 +611,11 @@ function drawUnits(g, now) {
       if (sel) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r + 7, 0, 7); g.stroke(); } } }
   // cruiser occupant badges
   for (const c of S.units) { if (c.kind !== 'cruiser') continue; const [ux, uy] = posOf(c.uid, c.x, c.y); const [x, y] = toScreen(ux + 0.5, uy + 0.5); const n = (c.occ || []).length;
-    if (cam.z > 0.25) { const t = c.name.toUpperCase() + (n ? ` · ${n} IN` : ' · EMPTY') + (c.disabled ? ' · DISABLED' : ''); g.font = `700 ${9 * s}px system-ui,sans-serif`; const tw = g.measureText(t).width + 10; g.fillStyle = 'rgba(4,12,24,.85)'; rr(g, x - tw / 2, y + 22 * s * Math.max(1, cam.z), tw, 14 * s, 4); g.fill(); g.fillStyle = c.disabled ? '#ff8b97' : '#cfe0f0'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, x, y + 22 * s * Math.max(1, cam.z) + 7 * s); }
-    if (n) badge(g, x, y, String(n), '#ffffff', '#1d2a3a', s); }
+    if (cam.z > 0.25) { const t = c.name.toUpperCase() + (n ? '' : ' · EMPTY · COVER') + (c.disabled ? ' · DISABLED' : ''); g.font = `700 ${9 * s}px system-ui,sans-serif`; const tw = g.measureText(t).width + 10; g.fillStyle = 'rgba(4,12,24,.85)'; rr(g, x - tw / 2, y + 22 * s * Math.max(1, cam.z), tw, 14 * s, 4); g.fill(); g.fillStyle = c.disabled ? '#ff8b97' : '#cfe0f0'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, x, y + 22 * s * Math.max(1, cam.z) + 7 * s); }
+  }
   const teams = S.units.filter(u => u.kind === 'team'); teams.sort((a, b) => (view.sel === a.uid) - (view.sel === b.uid));
   for (const u of teams) { if (!u.deployed && u.status === 'ok' && !Core.teamOk(u).length) continue; const T = teamShield(u), { x, y, sx, sy } = T; const sel = view.sel === u.uid; const down = u.status !== 'ok'; const n = Core.teamOk(u).length; const col = down ? '#ff3b4e' : sel ? '#7fe3ff' : u.perch ? '#3ef0a0' : '#38c8ff';
-    const F = down ? null : formOf(u);
+    const F = down || u.inCar ? null : formOf(u);
     if (F && F.pts.length) { // one blue dot per team member, laid out in the context formation (stack / column / fan / cover line)
       const rd = Math.max(3.2, Math.min(7, 0.14 * CS * cam.z)), k = CS * cam.z; g.save(); g.shadowColor = col; g.shadowBlur = 6;
       F.pts.forEach(([dx, dy], i) => { const px = x + dx * k, py = y + dy * k; g.fillStyle = i === 0 ? '#bff1ff' : col; g.beginPath(); g.arc(px, py, rd, 0, 7); g.fill(); g.lineWidth = 1; g.strokeStyle = '#06203f'; g.stroke(); });
@@ -636,12 +653,14 @@ function screenFx(g, now) {
    ===================================================================== */
 function pickUnit(sx, sy) {
   const S = Core.state; let best = null, bd = 1e9;
-  for (const u of S.units) { if (u.status !== 'ok' && u.kind !== 'team') continue; if (u.kind === 'patrol' && u.inCar) continue;
+  for (const u of S.units) { if (u.status !== 'ok' && u.kind !== 'team') continue; if (u.kind === 'cruiser') continue; // v8: vehicles are not selectable — command them through an occupant's chip
     if (u.kind === 'team') { const T = teamShield(u); const d1 = Math.hypot(sx - T.sx, sy - T.sy), d2 = Math.hypot(sx - T.x, sy - T.y); const d = Math.min(d1 < 22 * T.s ? d1 : 1e9, d2 < 14 * T.s ? d2 : 1e9); if (d < bd) { bd = d; best = u.uid; } }
     else if (u.kind === 'cruiser') { const [x, y] = toScreen(u.x + 0.5, u.y + 0.5); const d = Math.hypot(sx - x, sy - y) + 6; if (d < Math.max(22 * sz(), 1.5 * CS * cam.z) && d < bd) { bd = d; best = u.uid; } }
-    else { let [ux, uy] = posOf(u.uid, u.x, u.y); [ux, uy] = tuck(u, ux, uy); const [x, y] = toScreen(ux + 0.5, uy + 0.5); const d = Math.hypot(sx - x, sy - y); if (d < 18 * sz() && d < bd) { bd = d; best = u.uid; } } }
+    else { let [ux, uy] = posOf(u.uid, u.x, u.y); if (u.inCar && !inCarPos(u)) continue; [ux, uy] = u.inCar ? inCarPos(u) : tuck(u, ux, uy); const [x, y] = toScreen(ux + 0.5, uy + 0.5); const d = Math.hypot(sx - x, sy - y); if (d < 18 * sz() && d < bd) { bd = d; best = u.uid; } } }
   return best;
 }
+/** Vehicle under a tap (Get In target only — vehicles themselves are never selected). */
+function pickCar(sx, sy) { const S = Core.state; let best = null, bd = 1e9; for (const u of S.units) { if (u.kind !== 'cruiser') continue; const [x, y] = toScreen(u.x + 0.5, u.y + 0.5); const d = Math.hypot(sx - x, sy - y); if (d < Math.max(26 * sz(), (u.armored ? 1.9 : 1.5) * CS * cam.z) && d < bd) { bd = d; best = u.uid; } } return best; }
 function pickDoor(cx, cy) { const S = Core.state; let best = null, bd = 1e9;
   for (const d of S.doors) { if (!doorVisible(d)) continue; const [mx, my] = doorMidCell(d); const dd = Math.hypot(cx - mx, cy - my);
     if (dd < (d.kind === 'garage' ? 2.2 : 1.2) && dd < bd) { bd = dd; best = d.id; } }
@@ -661,13 +680,13 @@ function drawMini(c) {
   if (gasAny) { g.globalAlpha = 0.8; g.drawImage(L.gas, ox, oy, Core.MAP_W * k, Core.MAP_H * k); g.globalAlpha = 1; }
   const sp = S.suspect; const spot = sp.visible ? sp : sp.heat; if (spot) { g.fillStyle = sp.visible ? '#ff3b4e' : '#ff8a3a'; g.beginPath(); g.arc(ox + (spot.x + 0.5) * k, oy + (spot.y + 0.5) * k, 3.5, 0, 7); g.fill(); }
   for (const u of S.units) { if (u.status !== 'ok') continue; if (u.kind === 'patrol' && u.inCar) continue; const px = ox + (u.x + 0.5) * k, py = oy + (u.y + 0.5) * k;
-    if (u.kind === 'cruiser') { g.fillStyle = '#e6e9ee'; g.save(); g.translate(px, py); g.rotate(u.dir || 0); g.fillRect(-1.5 * k, -0.7 * k, 3 * k, 1.4 * k); g.restore(); continue; }
+    if (u.kind === 'cruiser') { const A = u.armored ? 1.25 : 1; g.fillStyle = u.armored ? '#3a5ca8' : '#e6e9ee'; g.save(); g.translate(px, py); g.rotate(u.dir || 0); g.fillRect(-1.5 * k * A, -0.7 * k * A, 3 * k * A, 1.4 * k * A); g.restore(); continue; }
     g.fillStyle = u.kind === 'team' ? (u.perch ? '#3ef0a0' : '#7fe3ff') : u.kind === 'patrol' ? '#c9d6e4' : '#b48cff'; g.beginPath(); g.arc(px, py, u.kind === 'team' ? 3 : 2.2, 0, 7); g.fill(); if (view.sel === u.uid) { g.strokeStyle = '#fff'; g.lineWidth = 1.2; g.beginPath(); g.arc(px, py, 5, 0, 7); g.stroke(); } }
   if (S.ems) { g.fillStyle = '#f2f5f8'; g.fillRect(ox + S.ems.x * k - 2.5, oy + S.ems.y * k - 2, 5, 4); g.fillStyle = '#1f6fd6'; g.fillRect(ox + S.ems.x * k - 0.6, oy + S.ems.y * k - 2, 1.2, 4); }
   for (const c of S.cas || []) { if (c.who === 'suspect' || !(Core.casActive(c) || c.state === 'kia' || c.state === 'lost')) continue; const px = ox + (c.x + 0.5) * k, py = oy + (c.y + 0.5) * k;
     if (!Core.casActive(c)) { g.fillStyle = '#8d97a6'; g.fillRect(px - 2, py - 1.5, 4, 3); continue; } g.fillStyle = !c.known ? '#9aa6b5' : c.stable ? '#3ef0a0' : '#ffb020'; g.fillRect(px - 0.8, py - 2.8, 1.6, 5.6); g.fillRect(px - 2.8, py - 0.8, 5.6, 1.6); }
   for (const b of S.roadblocks || []) { const px = ox + (b.side === 'W' ? b.x - 2.6 : b.x + 3.6) * k, held = Core.roadblockHeld(b); g.fillStyle = held ? '#e8401c' : 'rgba(255,176,32,.5)'; g.fillRect(px - 1.2, oy + S.geo.ST * k, 2.4, (S.geo.SB - S.geo.ST + 1) * k); }
-  for (const c of S.contain) { const px = ox + (c.x + 0.5) * k, py = oy + (c.y + 0.5) * k; if (c.q === 'cruiser' && c.car && !c.screened) { g.strokeStyle = 'rgba(127,227,255,.8)'; g.lineWidth = 1; g.strokeRect(ox + (c.car.x - 1) * k, oy + c.car.y * k, 3 * k, 1.4 * k); } g.save(); g.translate(px, py); g.rotate(Math.PI / 4); g.strokeStyle = c.covered ? '#3ef0a0' : '#ffb020'; g.lineWidth = 1.2; g.strokeRect(-2.2, -2.2, 4.4, 4.4); if (c.q === 'hard') { g.fillStyle = c.covered ? 'rgba(62,240,160,.6)' : 'rgba(255,176,32,.55)'; g.fillRect(-2.2, -2.2, 4.4, 4.4); } g.restore(); }
+  for (const c of S.contain) { const px = ox + (c.x + 0.5) * k, py = oy + (c.y + 0.5) * k; if (c.q === 'cruiser' && c.car && !c.screened) { g.strokeStyle = 'rgba(127,227,255,.8)'; g.lineWidth = 1; g.strokeRect(ox + (c.car.x - 1) * k, oy + c.car.y * k, 3 * k, 1.4 * k); } }
   const v = viewRect(); g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.strokeRect(ox + v.x * k, oy + v.y * k, v.w * k, v.h * k); g.fillStyle = 'rgba(255,255,255,.06)'; g.fillRect(ox + v.x * k, oy + v.y * k, v.w * k, v.h * k);
 }
 /** Jump the camera so the overview point (canvas px) becomes the view centre. */
@@ -675,5 +694,5 @@ function ovwJump(c, px, py) { const { k, ox, oy } = ovwGeom(c); centerOn((px - o
 
 function init(canvas) { cv = canvas; ctx = cv.getContext('2d'); resize(); }
 function invalidate() { compKey = ''; dynVer = -1; planVer = -1; L.expoVer = null; }
-return { init, resize, frame, fit, pan, zoomAt, toCell, toScreen, setSafe, snapshot, endAnim, pickUnit, pickDoor, pickRoom, pickPerch, drawMini, ovwJump, centerOn, viewRect, view, cam, invalidate, CS, get animating() { return animating; } };
+return { init, resize, frame, fit, pan, zoomAt, toCell, toScreen, setSafe, snapshot, endAnim, pickUnit, pickCar, pickDoor, pickRoom, pickPerch, drawMini, ovwJump, centerOn, viewRect, view, cam, invalidate, CS, get animating() { return animating; } };
 })();

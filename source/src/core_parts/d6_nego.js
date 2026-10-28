@@ -133,7 +133,7 @@ function paAct(u, o) {
 /** Throw-phone arrives in a room (team throw or robot drop). */
 function deliverPhone(u, room, via, doorway) {
   const N = S.nego, sp = S.suspect, r = S.rng, C = NEGO_CFG.throwPhone[via]; const rm = S.rooms[room];
-  if (via === 'team') { u.equip.tphone--; } N.attempts++;
+  if (via === 'team') { useItem(u, 'tphone'); } N.attempts++;
   if (r.chance(C.block)) { negHist(`${u.name}: throw-phone ${via === 'robot' ? 'snagged on furniture' : 'bounced off the frame'} — it did not get in. Failed.`, 'bad'); return; }
   if (hostile() && (sp.room === room || doorway) && r.chance(C.shoot + sp.agit / 500)) { fx('muzzle', sp.x, sp.y, { suspect: true }); S.stats.shots++; sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn };
     negHist(`Suspect shot the throw-phone${via === 'robot' ? ' — robot damaged' : ''}. Failed.`, 'alert'); if (via === 'robot' && r.chance(0.5)) { u.status = 'down'; u.orders = []; } sp.agit = clamp(sp.agit + 5, 0, 100); return; }
@@ -161,7 +161,7 @@ function robotPhoneGoal(room) {
 }
 /** Team / robot execution of a throw-phone order (called from unitAct). */
 function tphoneAct(u, o, speed) {
-  if (u.kind === 'team' && o.via === 'robot') { u.equip.robot--; u.equip.tphone--; const g = robotPhoneGoal(o.room);
+  if (u.kind === 'team' && o.via === 'robot') { useItem(u, 'robot'); useItem(u, 'tphone'); const g = robotPhoneGoal(o.room);
     const d = { uid: 'D' + (++S.devSeq), kind: 'robot', name: 'Robot ' + S.devSeq, num: S.devSeq, x: u.x, y: u.y, dir: u.dir, orders: [{ type: 'tphone', room: o.room, via: 'robot', doorway: g ? g.doorway : true }], battery: 10, owner: u.uid, status: 'ok', vis: [] };
     S.units.push(d); log(`${u.name}: ${d.name} rolling out with a throw-phone.`, 'radio'); popOrder(u); return; }
   if (u.kind === 'robot') { const g = robotPhoneGoal(o.room); if (!g) { failOrders(u, 'no open way in'); return; }
