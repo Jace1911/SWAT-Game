@@ -361,6 +361,14 @@ function drawStageTags(g) { const S = Core.state, X = S && S.ext; if (!X || !X.s
   for (const [p, txt, col] of tags) { if (!p) continue; const [sx, sy] = toScreen(p.x + 0.5, p.y + 2); const w = g.measureText(txt).width + 8; const cx = Math.max(w / 2 + (VW > 600 ? 78 : 6), Math.min(VW - w / 2 - 4, sx));
     g.fillStyle = 'rgba(5,10,18,.75)'; g.fillRect(cx - w / 2, sy, w, 13); g.fillStyle = col; g.fillText(txt, cx, sy + 2); }
   g.restore(); }
+/** v15: house address labels in screen space (legible at any zoom / orientation): target address RED, duplex neighbour unit GREEN. */
+function drawAddrTags(g) { const S = Core.state; if (!S || !S.house || !Core.addrLabels) return; const L = Core.addrLabels(); if (!L.length) return;
+  const fs = Math.max(10, Math.min(15, CS * 0.36 * cam.z)); g.save(); g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const t of L) { g.font = `800 ${fs}px system-ui,Segoe UI,sans-serif`; const [sx, sy0] = toScreen(t.x + 0.5, t.box.y0 + 0.15), w = g.measureText(t.text).width + 14, h = fs + 8;
+    if (sx < -w || sx > VW + w || sy0 < -h || sy0 > VH + h) continue; const sy = Math.max(h / 2 + 2, Math.min(VH - h / 2 - 2, sy0));
+    g.fillStyle = t.target ? 'rgba(40,4,8,.88)' : 'rgba(4,30,14,.86)'; rr(g, sx - w / 2, sy - h / 2, w, h, 5); g.fill(); g.strokeStyle = t.color; g.lineWidth = t.target ? 2 : 1.5; g.stroke();
+    g.fillStyle = t.color; g.fillText(t.text, sx, sy + 1); }
+  g.restore(); }
 function frame(now) { if (cv) { const [w, h] = viewportSize(); if (w !== VW || h !== VH || cv.width !== Math.round(w * Math.min(2, window.devicePixelRatio || 1))) resize(); } // self-heal a missed or stale rotate event
   const S = Core.state; if (!S || !cv) return;
   if (builtSeed !== S.seed || builtWV !== ((S.duplex && S.duplex.wallV) || 0)) { rebake(); }
@@ -385,7 +393,7 @@ function frame(now) { if (cv) { const [w, h] = viewportSize(); if (w !== VW || h
   worldFx(g, now);
   g.restore();
   // ---- screen space ----
-  drawContain(g, now); drawPerches(g, now); drawPlans(g, now); drawAim(g, now); drawMarkers(g, now); drawStageTags(g); drawUnits(g, now); screenFx(g, now);
+  drawContain(g, now); drawPerches(g, now); drawPlans(g, now); drawAim(g, now); drawMarkers(g, now); drawStageTags(g); drawAddrTags(g); drawUnits(g, now); screenFx(g, now);
   const vg = g.createRadialGradient(VW / 2, VH / 2, Math.min(VW, VH) * 0.35, VW / 2, VH / 2, Math.max(VW, VH) * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.5)'); g.fillStyle = vg; g.fillRect(0, 0, VW, VH);
 }
 function glow(g, x, y, rad, col, a) { const rg = g.createRadialGradient(x, y, 0, x, y, rad); rg.addColorStop(0, col.replace('A', a)); rg.addColorStop(1, col.replace('A', 0)); g.fillStyle = rg; g.fillRect(x - rad, y - rad, rad * 2, rad * 2); }

@@ -101,6 +101,7 @@ function formationFor(u) {
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const e = edge(u.x, u.y, u.x + dx, u.y + dy); if (e.t === 'D' && (e.d.state === 'closed' || (o && o.door === e.d.id) || !o)) { door = { dx, dy, d: e.d }; break; } }
   const moving = u.moved != null && S.phase === 'executing' && S.tick - u.moved <= 1;
   const pts = []; let kind;
+  { const rg = !moving && u.regroup ? regroupForm(u, n) : null; if (rg) return { kind: 'wallline', pts: rg }; }
   if (door && !moving) { kind = 'stack'; return { kind, pts: doorStack(u, door, n, okPos) }; }
   if (moving || (inside && hallLike(roomAt(u.x, u.y)))) { kind = 'column'; // staggered column hugging alternating walls
     const W = FORM_CFG.wall; for (let i = 0; i < n; i++) { const s = (i % 2 ? 1 : -1) * (moving && !inside ? FORM_CFG.stagger : W); pts.push(fit(fx_ * 0.2 - fx_ * i * FORM_CFG.gap + lx * s, fy_ * 0.2 - fy_ * i * FORM_CFG.gap + ly * s)); }

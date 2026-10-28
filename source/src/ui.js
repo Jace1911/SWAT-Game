@@ -332,7 +332,10 @@ $('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><b
  ${HB('Mission brief & 911 call', 'every mission opens with a brief of what happened before SWAT was activated: the 911 call, what the first patrol units did, and anything known about the suspect. <b>Listen to the 911 call</b> (📋 button, or Intel → Review 911 Call) shows the transcript with times and can read it aloud (mute / skip). The caller ID or a family caller may give you his phone number. Reviewing is instant.')}
  ${HB('Perimeter on arrival', 'patrol cruisers start at the ends of the block or at the nearest intersection, keeping traffic out (striped <b>TRAFFIC BLOCKED</b> markers on the map and minimap) — moving one opens the street. Patrol officers may already be in good positions, or may have left a side of the house unwatched by accident, or bunched up at the front. Run Intel → <b>Status Check</b> (instant) for a roll call: it reveals which sides are watched and flags any gap. An unwatched side is how he slips out.')}
  ${HB('Officer down on arrival', `about ${Math.round(Core.SCENE_CFG.injury * 100)}% of calls a patrol officer was hit before SWAT arrived: injured and mobile, immobile and bleeding out with a critical countdown, or killed. A downed officer in the front yard is in the line of fire — plan the rescue (shield, cover, medic) before the timer runs out.`)}
- ${HB('Patrol start positions', `patrol officers always start <b>off the suspect\'s lot</b>: on the street behind a car or cruiser, or behind hard cover beside or behind the house — at least ${Core.PATROL_CFG.minHouse} m from it, where he cannot see them from inside. That keeps them safe but means they often cannot see every window: check the gaps. Only a downed officer lies on the property — ${Math.round(Core.PATROL_CFG.downFront * 100)}% of the time in the front yard, otherwise beside or behind the house.`)}
+ ${HB('After this, the team will', 'when you finish a <b>Breach</b> (method chosen) or a <b>Flashbang / CS gas</b> throw (room tapped), a second menu asks what the team does once it resolves: <b>Hold position</b>, <b>Enter and clear</b>, <b>Limited penetration and hold</b> (a step or two inside, off the doorway line, then hold) or <b>Assess from doorway</b> (at the opening looking in, then hold). The follow-up runs the moment the action succeeds, in the same turn. Defaults: breach → assess, flashbang → enter and clear, CS → hold. <b>‹ Back</b> returns to the previous step, <b>✕ Cancel</b> removes the action. Keys: <kbd>1</kbd>–<kbd>4</kbd>, <kbd>Enter</kbd> = highlighted, <kbd>Esc</kbd> = cancel. If the breach fails, nothing follows.')}
+${HB('After a room is cleared', 'when a team clears a room and has nothing else queued it <b>stacks up shoulder to shoulder on the wall that holds the nearest door</b> of that room, without crossing any doorway, point man nearest the door frame. Nobody stands in the opening.')}
+${HB('Address labels', 'the suspect address is shown in <b style="color:#ff3b4e">RED</b> over the target house. In a <b>duplex</b> the other unit has its own address (two numbers apart, e.g. 412 and 414), shown in <b style="color:#3ddc84">GREEN</b> over that unit, so you can tell which door is the suspect\'s. Labels keep the same size at any zoom.')}
+${HB('Patrol start positions', `patrol officers always start <b>off the suspect\'s lot</b>: on the street behind a car or cruiser, or behind hard cover beside or behind the house — at least ${Core.PATROL_CFG.minHouse} m from it, where he cannot see them from inside. That keeps them safe but means they often cannot see every window: check the gaps. Only a downed officer lies on the property — ${Math.round(Core.PATROL_CFG.downFront * 100)}% of the time in the front yard, otherwise beside or behind the house.`)}
  ${HB('Vehicle cover', `a car, van, cruiser or BearCat body blocks sight and fire. Someone <b>right behind it (within ${Core.VEH_CFG.lean} m)</b> can lean out and fire over or past it; anyone farther back cannot see or shoot through any part of the vehicle — this applies to him as well, so he cannot hit officers tucked behind a car from a distance either.`)}
  ${HB('Cover', 'every spot is checked against real sight lines from <i>each</i> window and exterior door. <b>Hard cover</b> (cruisers, parked cars, tree trunks, sheds, neighbor houses, utility boxes) stops rounds — hits are rare. <b>Concealment</b> (hedges, fences, mailboxes) hides you so he fires less often, but rounds go straight through. You can <b>move anywhere</b> — nothing snaps. Before you EXECUTE, an order whose end spot is in his line of fire is flagged <b style="color:var(--red)">⚠ EXPOSED</b> on the order list and the preview, and a route that crosses open ground is flagged <b style="color:var(--amber)">route exposed</b>; the move is still allowed. Automatic moves (take cover, fall back) still prefer cover. Shield on the unit: <span style="color:var(--green)">green</span> = hard cover, <span style="color:var(--amber)">amber</span> = concealment, <span style="color:var(--red)">red</span> = exposed. Planned routes are tinted red/amber where they cross his lines of fire.')}
  ${HB('Containment', 'contain the house by watching every side (4 corners, front, rear) from real cover — there are no map markers; choose your own spots. Out front there is little to hide behind, so drive a cruiser into the street and stand behind it (a parked street car can serve too). Sides and rear use the yard (sheds, trees, hedges) or the corners of the neighbor houses. A solid green shield badge = <b>HARD COVER</b>, a leaf = <b>CONCEALMENT</b>; zoom in to see what shields it. Where a yard has nothing to hide behind, the scene adds some (hedge row, trees, utility box). Patrol officers start behind cover; posts count as held when an officer is within ~2 m or an occupied cruiser within 3 m.')}
@@ -375,13 +378,13 @@ document.addEventListener('click', e => { const c = e.target.closest('[data-clos
 
 /* ---------------- breach method picker (popup at the door) ---------------- */
 let popDoor = null;
-function hidePop() { const p = $('pop'); if (p) p.className = ''; popDoor = null; }
+function hidePop() { const p = $('pop'); if (p) { p.className = ''; p.setAttribute('aria-label', 'Breach method'); } popDoor = null; afterCtx = null; }
 function doorDesc(d) { const t = [];
   t.push(d.kind === 'garage' ? 'Garage door' : d.exterior ? 'Exterior door' : 'Interior door');
   if (d.locked) t.push('locked'); if (d.barricaded && d.barrKnown) t.push('<span style="color:var(--red)">BARRICADED</span>');
   if (d.storm && d.stormKnown) t.push(d.stormState === 'closed' ? '<span style="color:var(--amber)">storm door</span>' : 'storm door open');
   if (d.charge) t.push('<span style="color:var(--amber)">charge hung</span>'); return t.join(' · '); }
-function showBreachPop(u, did, sx, sy) { const S = Core.state, d = S.doors[did]; popDoor = did;
+function showBreachPop(u, did, sx, sy) { const S = Core.state, d = S.doors[did]; popDoor = did; popXY = [sx, sy];
   let h = `<div class="pt">${esc(d.name || 'Door')}<span>${doorDesc(d)}</span></div>`;
   for (const m of Object.keys(Core.BREACH)) { const e = Core.breachEst(u, d, m), ok = e.ok === true;
     const tip = ok ? e.text : e.ok;
@@ -394,7 +397,23 @@ function showBreachPop(u, did, sx, sy) { const S = Core.state, d = S.doors[did];
   if (!isFinite(sx) || !isFinite(sy)) { sx = W / 2; sy = Hh / 2; }
   p.style.left = Math.max(6, Math.min(W - r.width - 6, sx - r.width / 2)) + 'px'; p.style.top = Math.max(60, Math.min(Hh - r.height - 140, sy - r.height - 18)) + 'px'; }
 $('pop').addEventListener('click', e => { const b = e.target.closest('button[data-bm]'); if (!b || popDoor === null) return; const u = selUnit(); if (!u) return;
-  const o = { type: 'breach', door: popDoor, method: b.dataset.bm }; if (b.dataset.hang) o.hangOnly = true; hidePop(); q(u.uid, o); });
+  const o = { type: 'breach', door: popDoor, method: b.dataset.bm }, did = popDoor; if (b.dataset.hang) o.hangOnly = true; hidePop(); if (q(u.uid, o) && !o.hangOnly) showAfterPop(u, 'breach', popXY[0], popXY[1], did); });
+/* ---------------- v15: 'After this, the team will:' follow-up picker (breach / flashbang / CS) ---------------- */
+let afterCtx = null, popXY = [NaN, NaN];
+function placePop(p, sx, sy) { const W = window.innerWidth, Hh = window.innerHeight, r = p.getBoundingClientRect(); if (!isFinite(sx) || !isFinite(sy)) { sx = W / 2; sy = Hh / 2; }
+  p.style.left = Math.max(6, Math.min(W - r.width - 6, sx - r.width / 2)) + 'px'; p.style.top = Math.max(60, Math.min(Hh - r.height - 140, sy - r.height - 18)) + 'px'; }
+function showAfterPop(u, kind, sx, sy, did) { const C = Core.AFTER_CFG, def = C.def[kind] || 'hold'; Core.setAfter(u.uid, -1, def);
+  afterCtx = { uid: u.uid, kind, sx, sy, did, sel: def };
+  const what = kind === 'breach' ? 'Breach' : kind === 'bang' ? 'Flashbang' : 'CS gas', tips = { hold: 'stay where the action leaves you, covering the opening', clear: 'go in and clear the room', limited: 'a step or two inside along the wall, then hold', assess: 'stand at the opening looking in, then hold' };
+  let h = `<div class="pt">After this, the team will:<span>${what} set — choose the follow-up (runs as soon as it resolves)</span></div>`;
+  for (const m of C.modes) h += `<button data-after="${m}" class="${m === def ? 'def' : ''}"><b>${esc(C.names[m])}${m === def ? ' · default' : ''}</b><small>${tips[m]}</small></button>`;
+  h += `<div class="arow"><button data-after="back">‹ Back</button><button data-after="cancel">✕ Cancel ${what.toLowerCase()}</button></div>`;
+  const p = $('pop'); p.innerHTML = h; p.className = 'show after'; p.setAttribute('aria-label', 'After this, the team will'); placePop(p, sx, sy); }
+function afterChoose(m) { const A = afterCtx; if (!A) return; const u = Core.unit(A.uid); afterCtx = null; hidePop(); if (!u) return;
+  if (m === 'cancel' || m === 'back') { Core.undoOrder(A.uid); refresh(true);
+    if (m === 'back') { if (A.kind === 'breach' && A.did !== undefined) { showBreachPop(u, A.did, A.sx, A.sy); } else { V.mode = A.kind; toast(`Tap a room for the ${A.kind === 'bang' ? 'flashbang' : 'CS gas'}`); } } else toast('Cancelled'); return; }
+  const r = Core.setAfter(A.uid, -1, m); if (!r.ok) { toast(r.reason); return; } SFX.order(); toast(`Then: ${Core.AFTER_CFG.names[m]}`, true); refresh(true); }
+$('pop').addEventListener('click', e => { const b = e.target.closest('button[data-after]'); if (b) afterChoose(b.dataset.after); });
 
 /* ---------------- aim preview (Fire / Suppress) ---------------- */
 function planEnd(u) { const P = Core.planFor(u); for (let i = P.length - 1; i >= 0; i--) if (P[i] && P[i].ok && P[i].end) return P[i].end; return [u.x, u.y]; }
@@ -433,7 +452,7 @@ function mapTap(sx, sy) {
     case 'breach': { const d = Render.pickDoor(cx, cy); if (d === null) { hidePop(); toast('Tap on a door'); return; } if (S.doors[d].state !== 'closed') { toast('That door is already open'); return; } showBreachPop(u, d, sx, sy); SFX.click(); break; }
     case 'polecam': case 'detonate': { const d = Render.pickDoor(cx, cy); if (d === null) { toast('Tap on a door'); return; } q(u.uid, { type: V.mode, door: d }); break; }
     case 'bang': case 'gas': case 'clear': { const r = Core.roomAt(x, y); if (r < 0) { toast('Tap inside a room'); return; } if (!S.rooms[r].known && V.mode === 'clear') { toast('Room layout unknown — gather intel or breach first'); return; }
-      q(u.uid, { type: V.mode, room: r }); break; }
+      { const kind = V.mode; if (q(u.uid, { type: kind, room: r }) && (kind === 'bang' || kind === 'gas')) showAfterPop(u, kind, sx, sy); } break; }
     case 'shoot': case 'suppress': { const [tx, ty] = aimTarget(cx, cy); const mode = V.mode === 'shoot' ? 'fire' : 'suppress';
       const h = aimInfo(u, tx, ty, V.mode);
       if (lastPtrType !== 'mouse' && !(pendingAim && Math.abs(pendingAim[0] - tx) <= 1 && Math.abs(pendingAim[1] - ty) <= 1)) { pendingAim = [tx, ty]; showAim(u, h, V.mode, true); return; }
@@ -517,6 +536,7 @@ function bindOvw(c) { let down = false; const jump = e => { const r = c.getBound
   c.addEventListener('pointermove', e => { if (down) jump(e); }); const stop = () => { down = false; }; c.addEventListener('pointerup', stop); c.addEventListener('pointercancel', stop); }
 bindOvw($('ovw')); bindOvw($('ovw2'));
 window.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return; if (!hasGame) return; const S = Core.state; const k = e.key.toLowerCase();
+  if (afterCtx) { const ix = '1234'.indexOf(k); if (k === 'enter') { e.preventDefault(); afterChoose(afterCtx.sel); return; } if (k === 'escape') { e.preventDefault(); afterChoose('cancel'); return; } if (k === 'backspace') { e.preventDefault(); afterChoose('back'); return; } if (ix >= 0) { e.preventDefault(); afterChoose(Core.AFTER_CFG.modes[ix]); return; } }
   if (k === 'escape') { if (document.querySelector('.modal.show')) document.querySelectorAll('.modal.show').forEach(m => closeModal(m.id)); else if (popDoor !== null) hidePop(); else { V.sel = null; V.aim = null; $('aimbox').className = ''; refresh(true); } return; }
   if (document.querySelector('.modal.show:not(.mini)')) return;
   if (k === 'enter') { execute(); return; } if (k === 'backspace') { e.preventDefault(); action('undo'); return; } if (k === '0') { Render.fit('house'); return; }
@@ -712,5 +732,5 @@ requestAnimationFrame(loop);
 
 
 /* test / automation hook */
-window.GAME = { Core, Render, Career, openForm, openLoad, get career() { return CAREER; }, set career(c) { CAREER = c; }, openMain, openCalls, openStateCall, setQLevel, get qlevel() { return QLEVEL; }, get hasGame() { return hasGame; }, openBrief, open911, openCareer, select, mapTap, action, execute, openTeamDlg, closeModal, newGame, refresh, showBreachPop, hidePop, showAim, aimInfo, get busy() { return busy; }, setPtr(t) { lastPtrType = t; } };
+window.GAME = { Core, Render, Career, showAfterPop, get afterCtx() { return afterCtx; }, openForm, openLoad, get career() { return CAREER; }, set career(c) { CAREER = c; }, openMain, openCalls, openStateCall, setQLevel, get qlevel() { return QLEVEL; }, get hasGame() { return hasGame; }, openBrief, open911, openCareer, select, mapTap, action, execute, openTeamDlg, closeModal, newGame, refresh, showBreachPop, hidePop, showAim, aimInfo, get busy() { return busy; }, setPtr(t) { lastPtrType = t; } };
 })();

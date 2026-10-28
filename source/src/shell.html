@@ -150,7 +150,7 @@ kbd{font:600 10.5px ui-monospace,monospace;background:#0b1b33;border:1px solid v
 
 /* breach method popup + aim breakdown + floating overview (phone) */
 #pop{position:fixed;display:none;z-index:35;width:270px;background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line2);border-radius:10px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.6)}
-#pop.show{display:block}
+#pop.show{display:block}#pop.after button.def{border-color:var(--cyan2);box-shadow:0 0 0 1px var(--cyan2) inset}#pop .arow{display:flex;gap:6px}#pop .arow button{flex:1;text-align:center;padding:8px 6px;font-size:12px}@media (max-width:600px){#pop{width:min(300px,calc(100vw - 12px))}#pop button{padding:9px 8px}}
 #pop .pt{font-weight:800;color:#fff;font-size:12px;margin:0 2px 6px}#pop .pt span{display:block;font-weight:600;font-size:10.5px;color:var(--dim)}
 #pop button{display:block;width:100%;text-align:left;margin:4px 0;padding:6px 8px}#pop button b{display:block;font-size:12px;color:#fff}#pop button small{font-size:10.5px;color:var(--cyan2)}
 #pop .pn,#aimbox .pn{font-size:10px;color:var(--amber);margin-top:6px}

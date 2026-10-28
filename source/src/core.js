@@ -1523,7 +1523,7 @@ function breachTick(u, o, d, other) {
     else { log(`${u.name}: ${B.name.toLowerCase()} on the storm door — still holding.`); noise(other[0], other[1], B.noise, 'ram'); fx('thud', other[0], other[1]); }
     return; }
   if (B.every > 1 && !(o.set = !o.set)) { log(`${u.name}: setting the Halligan on ${d.name}…`); return; }
-  if (S.rng.chance(breachP(u, d, m, 'main'))) { doBreach(u, d, m); popOrder(u); ramRelease(u); }
+  if (S.rng.chance(breachP(u, d, m, 'main'))) { doBreach(u, d, m); popOrder(u); ramRelease(u); runAfter(u, o); }
   else { if (d.barricaded) d.barrKnown = true; log(`${u.name}: ${B.name.toLowerCase()} on ${d.name} — no give${d.barricaded ? ' (it\'s barricaded!)' : ''}.`); noise(other[0], other[1], B.noise, 'ram'); fx('thud', other[0], other[1]); }
 }
 /** After the ram: pistols come back out automatically (NOT READY for one full turn). */
@@ -2829,6 +2829,7 @@ function formationFor(u) {
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const e = edge(u.x, u.y, u.x + dx, u.y + dy); if (e.t === 'D' && (e.d.state === 'closed' || (o && o.door === e.d.id) || !o)) { door = { dx, dy, d: e.d }; break; } }
   const moving = u.moved != null && S.phase === 'executing' && S.tick - u.moved <= 1;
   const pts = []; let kind;
+  { const rg = !moving && u.regroup ? regroupForm(u, n) : null; if (rg) return { kind: 'wallline', pts: rg }; }
   if (door && !moving) { kind = 'stack'; return { kind, pts: doorStack(u, door, n, okPos) }; }
   if (moving || (inside && hallLike(roomAt(u.x, u.y)))) { kind = 'column'; // staggered column hugging alternating walls
     const W = FORM_CFG.wall; for (let i = 0; i < n; i++) { const s = (i % 2 ? 1 : -1) * (moving && !inside ? FORM_CFG.stagger : W); pts.push(fit(fx_ * 0.2 - fx_ * i * FORM_CFG.gap + lx * s, fy_ * 0.2 - fy_ * i * FORM_CFG.gap + ly * s)); }
@@ -2892,6 +2893,88 @@ function initialArrivals() {
   S.arrival = { mode, count: k, of: n, why, ids: first.map(o => o.id) };
   return S.arrival;
 }
+/* =====================================================================
+   v15 — FOLLOW-UP ACTIONS AND POST-CLEAR REGROUP (rules only)
+   1) AFTER-ACTION: a breach / flashbang / CS order can carry o.after — what the team does
+      once the action resolves: 'hold' position, 'clear' (enter and clear the room),
+      'limited' (limited penetration: a step or two inside, along the wall, then hold) or
+      'assess' (stand at the doorway / opening looking in, then hold). The follow-up orders are
+      put at the FRONT of the queue the moment the action resolves (same turn).
+   2) REGROUP: when a room is cleared and nothing else is queued, the team stacks shoulder to
+      shoulder along the wall that holds the nearest door of that room, without crossing a
+      doorway, POINT nearest the door frame. Nobody stands in the opening.
+   ===================================================================== */
+const AFTER_CFG = { modes: ['hold', 'clear', 'limited', 'assess'], gap: 0.42, press: 0.34, first: 0.78, limitedDepth: 2,
+  names: { hold: 'Hold position', clear: 'Enter and clear', limited: 'Limited penetration and hold', assess: 'Assess from doorway' },
+  def: { breach: 'assess', bang: 'clear', gas: 'hold' } };
+const AFTER_ORDERS = ['breach', 'bang', 'gas'];
+/** Door of a room: [{d, cin:[x,y] room-side cell, cout:[x,y], nx, ny (normal from the room toward the door)}]. */
+function roomDoorCells(r) { const out = []; for (const d of S.doors) for (const [a, b] of d.cells) {
+    const ia = roomAt(a[0], a[1]) === r, ib = roomAt(b[0], b[1]) === r; if (ia === ib) continue; const cin = ia ? a : b, cout = ia ? b : a;
+    out.push({ d, cin, cout, nx: cout[0] - cin[0], ny: cout[1] - cin[1] }); } return out; }
+function isDoorCell(r, x, y, nx, ny) { const e = edge(x, y, x + nx, y + ny); return e.t === 'D' || e.t === 'O' && roomAt(x + nx, y + ny) !== r; }
+/** Where the team regroups after clearing room r: the run of wall cells beside the nearest door (same wall), longest side. */
+function regroupSpot(u, r, n) { if (r < 0 || !S.rooms[r]) return null; n = n || Math.max(1, teamOk(u).length);
+  const ds = roomDoorCells(r).sort((p, q) => dist(u.x, u.y, p.cin[0], p.cin[1]) - dist(u.x, u.y, q.cin[0], q.cin[1]));
+  for (const dc of ds) { const ax = -dc.ny, ay = dc.nx; let best = null;
+    for (const sd of [1, -1]) { const run = []; let x = dc.cin[0], y = dc.cin[1];
+      for (let k = 1; k < 12; k++) { x += ax * sd; y += ay * sd; if (!inb(x, y) || roomAt(x, y) !== r || S.block[idx(x, y)]) break;
+        if (isDoorCell(r, x, y, dc.nx, dc.ny)) break; // another doorway in the same wall: do not cross it
+        const ew = edge(x, y, x + dc.nx, y + dc.ny); if (ew.t !== 'W' && ew.t !== 'X' && roomAt(x + dc.nx, y + dc.ny) === r) break; run.push([x, y]); }
+      if (run.length && (!best || run.length > best.run.length)) best = { run, sd }; }
+    if (!best) continue; const need = Math.max(1, Math.ceil((AFTER_CFG.first + (n - 1) * AFTER_CFG.gap) - 0.5)), k = Math.min(best.run.length, Math.max(1, Math.ceil(need / 2)));
+    const c = best.run[k - 1];
+    return { room: r, door: dc.d.id, x: c[0], y: c[1], k, nx: dc.nx, ny: dc.ny, ax: ax * best.sd, ay: ay * best.sd, len: best.run.length, dx0: dc.cin[0], dy0: dc.cin[1] }; }
+  return null; }
+/** Called when a 'clear' completes with the room empty. Queues the regroup move when nothing else is queued. */
+function startRegroup(u, r) { if (u.kind !== 'team' || u.orders.length) return null; const g = regroupSpot(u, r); if (!g) return null;
+  u.regroup = g; if (u.x === g.x && u.y === g.y) { faceAlong(u, g); return g; }
+  u.orders.unshift({ type: 'move', x: g.x, y: g.y, regroup: r }); log(`${u.name}: stacking up on the wall by the ${S.doors[g.door].name || 'door'}.`, 'radio'); return g; }
+function faceAlong(u, g) { u.dir = Math.atan2(g.ay, g.ax) + Math.PI; }
+/** Formation offsets for a regrouped team: one line along the wall, POINT nearest the door frame, pressed against the wall. */
+function regroupForm(u, n) { const g = u.regroup; if (!g || u.x !== g.x || u.y !== g.y || roomAt(u.x, u.y) !== g.room) return null; const pts = [];
+  for (let i = 0; i < n; i++) { let s = AFTER_CFG.first + i * AFTER_CFG.gap; s = Math.min(s, g.len + 0.4); const o = s - g.k; // along-run offset from the team cell
+    pts.push([+(g.ax * o + g.nx * AFTER_CFG.press).toFixed(2), +(g.ay * o + g.ny * AFTER_CFG.press).toFixed(2)]); }
+  return pts; }
+/** The room an action opens into (for breach: the other side of the door from the team; for throws: o.room). */
+function afterRoom(u, o) { if (o.type === 'bang' || o.type === 'gas') return o.room; const d = S.doors[o.door]; if (!d) return -1;
+  const here = roomAt(u.x, u.y); for (const [a, b] of d.cells) { const ra = roomAt(a[0], a[1]), rb = roomAt(b[0], b[1]); if (ra !== here) return ra; if (rb !== here) return rb; } return -1; }
+/** The opening the team works through (door cell pair nearest the team, or the team cell for a window). */
+function afterOpening(u, r) { let best = null; for (const dc of roomDoorCells(r)) { if (dc.d.state === 'closed') continue; const s = dist(u.x, u.y, dc.cout[0], dc.cout[1]); if (!best || s < best.s) best = Object.assign({ s }, dc); } return best; }
+/** Build the follow-up orders for mode m into room r. Pure: returns the orders, does not queue them. */
+function afterOrders(u, m, r) { const out = [], rm = S.rooms[r], tc = r >= 0 ? roomTargetCell(r) : null, op = r >= 0 ? afterOpening(u, r) : null;
+  const face = tc ? { x: tc[0], y: tc[1] } : {};
+  if (m === 'clear' && tc) out.push({ type: 'clear', room: r, x: tc[0], y: tc[1], fromAfter: true });
+  else if (m === 'limited' && op) { let x = op.cin[0], y = op.cin[1], best = [x, y];
+    for (let k = 1; k < AFTER_CFG.limitedDepth; k++) { x -= op.nx; y -= op.ny; if (roomAt(x, y) !== r || S.block[idx(x, y)]) break; best = [x, y]; }
+    // step off the line of the doorway toward a wall
+    for (const sd of [1, -1]) { const sx = best[0] + -op.ny * sd, sy = best[1] + op.nx * sd; if (roomAt(sx, sy) === r && !S.block[idx(sx, sy)] && seeE(best[0], best[1], sx, sy)) { best = [sx, sy]; break; } }
+    out.push({ type: 'move', x: best[0], y: best[1], fromAfter: true }, Object.assign({ type: 'hold', fromAfter: true }, face)); }
+  else if (m === 'assess' && op) { if (!(u.x === op.cout[0] && u.y === op.cout[1]) && roomAt(u.x, u.y) !== r) out.push({ type: 'move', x: op.cout[0], y: op.cout[1], fromAfter: true });
+    out.push(Object.assign({ type: 'hold', assess: r, fromAfter: true }, face)); }
+  else out.push(Object.assign({ type: 'hold', fromAfter: true }, face)); // hold (also the fallback when there is no room / opening)
+  return out; }
+/** Action resolved: put the follow-up at the front of the queue. */
+function runAfter(u, o) { if (!o || !o.after || o.afterDone || !AFTER_CFG.modes.includes(o.after)) return null; o.afterDone = true;
+  const r = afterRoom(u, o), list = afterOrders(u, o.after, r); u.orders.unshift(...list); u.regroup = null;
+  log(`${u.name}: ${AFTER_CFG.names[o.after].toLowerCase()}${r >= 0 && S.rooms[r] && S.rooms[r].known ? ' — ' + S.rooms[r].name : ''}.`, 'radio'); return list; }
+/** UI/API: set (or clear) the follow-up on a queued breach / throw order. */
+function setAfter(uid, i, m) { const u = unit(uid); if (!u || S.phase !== 'planning') return { ok: false, reason: 'Not now' }; const o = u.orders[i < 0 ? u.orders.length + i : i];
+  if (!o || !AFTER_ORDERS.includes(o.type)) return { ok: false, reason: 'No breach or throw order' }; if (m && !AFTER_CFG.modes.includes(m)) return { ok: false, reason: 'Unknown follow-up' };
+  if (o.hangOnly) return { ok: false, reason: 'Hang-only charge: choose the follow-up when you detonate' };
+  if (m) o.after = m; else delete o.after; S.version++; return { ok: true, after: m || null }; }
+/* v15 address labels: the target address in RED over the suspect's house (or unit); for a duplex, the neighbouring
+   unit's own address (number ±2, same street) in GREEN over that unit. Derived from the brief — nothing new is saved. */
+const ADDR_CFG = { target: '#ff3b4e', neighbour: '#3ddc84', step: 2 };
+function addrParts() { const a = (S.brief && S.brief.addr) || '', m = /^(\d+)\s+(.*)$/.exec(a); return m ? { num: +m[1], street: m[2], full: a } : { num: 0, street: a, full: a }; }
+function neighbourAddr() { const p = addrParts(), H = S.house; if (!H || !H.duplex || !p.num) return null;
+  let n = H.duplex.aSide === 'L' ? p.num + ADDR_CFG.step : p.num - ADDR_CFG.step; if (n < 1) n = p.num + ADDR_CFG.step; return `${n} ${p.street}`; }
+function roomsBox(rs) { if (!rs.length) return null; const x0 = Math.min(...rs.map(q => q.x)), x1 = Math.max(...rs.map(q => q.x + q.w)), y0 = Math.min(...rs.map(q => q.y)), y1 = Math.max(...rs.map(q => q.y + q.h)); return { x0, x1, y0, y1, cx: (x0 + x1) / 2 - 0.5, cy: (y0 + y1) / 2 - 0.5 }; }
+/** [{text, color, target, x, y, box}] in cell coordinates (label centre). */
+function addrLabels() { const p = addrParts(); if (!p.full || !S.rooms) return []; const out = [];
+  const A = roomsBox(S.rooms.filter(q => !q.unitB)); if (A) out.push({ text: p.full, num: p.num, color: ADDR_CFG.target, target: true, x: A.cx, y: A.cy, box: A });
+  const nb = neighbourAddr(), B = nb ? roomsBox(S.rooms.filter(q => q.unitB)) : null; if (B) out.push({ text: nb, num: +nb.split(' ')[0], color: ADDR_CFG.neighbour, target: false, x: B.cx, y: B.cy, box: B });
+  return out; }
 
 /* =====================================================================
    ORDERS — validation & planning (shared by preview and execution)
@@ -3261,8 +3344,8 @@ function unitAct(u) {
   if (o.type === 'dracoInstall') return dracoInstallTick(u, o, speed);
   if (o.type === 'move' || o.type === 'clear') {
     const r = stepAlong(u, o, (x, y) => x === o.x && y === o.y, speed);
-    if (r === null) failOrders(u, 'route blocked'); else if (r) { popOrder(u); if (o.type === 'move') u.stayPut = !!o.exposed; if (o.type === 'clear') { const rm = S.rooms[o.room];
-      if (!spInRoom(o.room)) { log(`${u.name}: ${rm.name} CLEAR.`, 'good'); xpAct('clear', u, rm.name); fx('text', u.x, u.y, { text: 'CLEAR', color: '#3ef0a0' }); } } }
+    if (r === null) failOrders(u, 'route blocked'); else if (r) { popOrder(u); if (o.type === 'move') u.stayPut = !!o.exposed; if (o.regroup !== undefined && u.regroup) faceAlong(u, u.regroup); if (o.type === 'clear') { const rm = S.rooms[o.room];
+      if (!spInRoom(o.room)) { log(`${u.name}: ${rm.name} CLEAR.`, 'good'); xpAct('clear', u, rm.name); fx('text', u.x, u.y, { text: 'CLEAR', color: '#3ef0a0' }); startRegroup(u, o.room); } } }
     return;
   }
   if (o.type === 'board') { const c = unit(o.car); if (!c || seatsUsed(c) + seatsNeeded(u) > carSeats(c)) { failOrders(u, 'vehicle full'); return; }
@@ -3283,7 +3366,7 @@ function unitAct(u) {
     if (!o.so) o.so = standoffGoal(u, d) || [u.x, u.y];
     if (u.x !== o.so[0] || u.y !== o.so[1]) { const r = stepAlong(u, o, (x, y) => x === o.so[0] && y === o.so[1], roomAt(u.x, u.y) < 0 ? 2 : 1); if (r === null) o.so = [u.x, u.y]; if (!r) return; }
     if (o.hangOnly) { log(`${u.name}: at the safe standoff — charge on ${d.name} ready. Awaiting Detonate.`, 'radio'); popOrder(u); return; }
-    log(`${u.name}: standing off — "Breaching, breaching, breaching!"`, 'radio'); detonateCharge(u, d); popOrder(u); return; }
+    log(`${u.name}: standing off — "Breaching, breaching, breaching!"`, 'radio'); detonateCharge(u, d); popOrder(u); if (d.state !== 'closed') runAfter(u, o); return; }
   if (o.type === 'breach' || o.type === 'polecam' || o.type === 'detonate') {
     const d = S.doors[o.door]; const sides = doorSides(d);
     const goal = (x, y) => sides.some(c => c[0] === x && c[1] === y);
@@ -3309,7 +3392,7 @@ function unitAct(u) {
       let nb = 0; eachSp(sp => { if (sp.room === o.room && hostile()) { sp.stun = 5; sp.stunBy = null; sp.daze = FIRE_CFG.bangDaze; sp.ambush = false; nb++; } });
       if (nb) { xpAct('bang', u); log(nb > 1 ? `${nb} suspects disoriented by flashbang.` : 'Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
     else { gasDeploy(o.room); fx('gas', tc[0], tc[1], { room: o.room, fromX: u.x, fromY: u.y }); log(`${u.name}: CS gas deployed into ${rm.known ? rm.name : 'room'}.`, 'radio'); aggressive(15); }
-    return;
+    runAfter(u, o); return;
   }
 }
 function canSeeRoom(u, roomId) { return u.vis && u.vis.some(c => S.room[c] === roomId); }
@@ -3657,7 +3740,7 @@ function withdraw() { if (S.phase === 'over') return { ok: false, reason: 'Missi
   log('Command: withdraw — all units pull back to the perimeter.', 'bad'); finishMission(); return { ok: true }; }
 function endTurn() {
   S.turn++; S.phase = 'planning'; S.tick = 0; S.peek = []; syncAll(); // weapons become ready again
-  for (const u of S.units) { u.orders = u.orders.filter(o => o.type !== 'hold' && o.type !== 'shoot' && !DEVICE_ORDERS.includes(o.type)); u.holding = false; u.waiting = false; u.exiting = null;
+  for (const u of S.units) { u.orders = u.orders.filter(o => o.regroup === undefined && o.type !== 'hold' && o.type !== 'shoot' && !DEVICE_ORDERS.includes(o.type)); u.holding = false; u.waiting = false; u.exiting = null;
     if ((u.kind === 'drone' || u.kind === 'robot') && unitAlive(u)) { u.battery--; if (u.battery <= 0) { u.status = 'down'; log(`${u.name}: battery depleted.`); } } }
   gasTurn(); eachSp(suspectGasTurn); casualtyTurn(); negoTurn(); eachSp(sceneTurn); types3Turn();
   if (S.intel.blueprint && S.intel.blueprint === S.turn) { S.rooms.forEach(q => q.known = true); S.doors.forEach(d => d.known = true); S.intel.floors = true; log('Blueprints received — full floor plan on screen.', 'intel'); }
@@ -3832,7 +3915,7 @@ function newGame(seed, opts) {
 }
 
 return { DRUG_CFG, INMATE_CFG, DUPLEX_CFG, TRAILER_CFG, DOOR_MUL, doorMul, exitWin, roomInPlay, camSees, camTurn, duplexTurn, partyBreach, thinWallTurn, types3Turn, cmdShown, structFor, STRUCT_CFG, STRUCT_KEYS, ownRooms, isOwnRoom, MULTI_TYPES, multiType, PAROLE_CFG, SOVCIT_CFG, BASE_KEYS, hiddenNow, applyTypeExtras, NEGO_FLAVOR, SCEN_TYPES, SCEN_KEYS, typeForSeed, stypeCfg, resolvedNoForce, onNeighborSide, typeFireMul, LEGAL_TXT, typeDebrief, SHOOT_CFG, MAX_RETURN_FIRE, returnFirers, returnFire, memberWeapon, primaryOf, suspectTick, suspectFire, TASER_CFG, doorExposed, FORM_CFG, wallSpots, doorStack, pickVictim, LL_CFG, DEVICE_ORDERS, deviceUser, deviceWhyNot, deviceShotReq, deviceChance, ARMOR, ARMOR_CFG, SHIELDS, SHIELD_CFG, SUSPECT_CAL, armorOf, shieldOf, armorHit, shotOfficer, suspectArmorStops, hasShield, teamArmor, revealSuspectArmor, officerDown, suspectHit, fireAt, DRACO_CFG, bearcat, installTicks, dracoTick, passE, edge, dracoTargetReq, openingMid,
-  REAR_CFG, REAR_OFF, reach, newGame, get state() { return S; }, MULTI_CFG, suspList, multiSp, spName, spState, suspectCountInfo, fleeCount, patrolReport, suspById, withSp, eachSp, spHostile, spActive, setLead, MAP_W, MAP_H, TICKS, LOSE_DOWN, SCORE, withdraw, forceLeft, updateVision, computeVis, checkEnd, EQUIP, SPECS, QUALS, WEAPONS, SUSPECT_WEAPONS, STANCES, COVER_NAMES, COMMANDS, idx, roomAt, edge, los, losEx, findPath, planFor, queueOrder, undoOrder, clearOrders,
+  REAR_CFG, REAR_OFF, reach, newGame, get state() { return S; }, MULTI_CFG, suspList, multiSp, spName, spState, suspectCountInfo, fleeCount, patrolReport, suspById, withSp, eachSp, spHostile, spActive, setLead, MAP_W, MAP_H, TICKS, LOSE_DOWN, SCORE, withdraw, forceLeft, updateVision, computeVis, checkEnd, EQUIP, SPECS, QUALS, WEAPONS, SUSPECT_WEAPONS, STANCES, COVER_NAMES, COMMANDS, idx, roomAt, edge, los, losEx, findPath, planFor, queueOrder, undoOrder, clearOrders, AFTER_CFG, AFTER_ORDERS, setAfter, afterOrders, afterRoom, regroupSpot, regroupForm, startRegroup, roomDoorCells, addrLabels, ADDR_CFG, neighbourAddr,
   setCommand, execute, stepTick, formTeam, assign, equip, renameTeam, intelInfo, unit, off, teamOk, hasSpec, teamSkill, nearStaging, orderReq, setStance, BREACH, CHARGE_SAFE, breachEst, breachMethods, breachCan, defaultMethod, doorMid, gasAt, gasTurn, gasDeploy, gasCond, gasExpose, suspectGas, suspectGasTurn, masked, impairAcc, impairVis, donMasks, detonateCharge, dist, hitChance, coverInfo, expoAt, computeExpo,
   validateHouse, patrolStartOk, patrolCoverKind, suspSees, houseRectDist, onProperty, suspEyePts, vehId, vehDist, vehNear, VEH_CFG, PATROL_CFG, GEO_CFG, downedSpot, losEx, sceneTurn, validateWorld, footprint, carAxis, houseSideOf, exitCell, spotterOf, perchAt, owCone, weaponOf, onFoot, skillOf, houseCenter, carAt, snapCover, shieldAt, validateContain, COVER_CFG, exposedOrders, ITEM_CFG, INV_CFG, invAct, invView, invOf, isReady, teamWeapon, syncEquip, setTeamOrder, atEquipment, stagePos, CAR_SEATS, carSeats, seatsUsed, TURN_SEC, missionScore, careerSummary, ACT_XP, xpAct, xpSummary, callState, preview, cornerAt, cornerAvail, CORNER_CFG, FIRE_CFG, fireImpair, formationFor, FORM_CFG, initialArrivals, ARRIVE_CFG, mmss, tDur, tMin, clockAt, elapsedAt, sideWatch, watchAt, houseSides, statusCheck, review911, roadblockHeld, withVirtualCar, SCENE_CFG, VARIANT_TXT, setupScene, sceneDebrief, T_HIT, T_TRY,
   CAS_CFG, NEGO_CFG, TALK_KEYS, TALK_NAMES, casById, casActive, casKnow, sevWord, casLabel, setEMS, emsCheck, ccpFor, setSurrenderSpot, surrSpot, setTalk, talkAvail, negoSummary, negOnScene, paCapable, paInRange, paUnits, protocolNow, ambushChance, ambushRisk, walkout, addCasualty, officerDown, suspectHit, robotPhoneGoal, defaultEMS, hostile, contactTry, runTalk, paAct, casualtyTurn, applyAid };
