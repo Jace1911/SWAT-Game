@@ -32,8 +32,8 @@ button.on{background:linear-gradient(180deg,#1f6fd0,#124a8e);border-color:var(--
 /* top bar */
 #top{top:calc(8px + var(--sat));left:8px;right:8px;height:50px;display:flex;align-items:center;gap:12px;padding:0 10px}
 #top .logo{width:30px;height:34px;flex:none}
-#top .op{font-weight:800;letter-spacing:.14em;color:#fff;font-size:14px;white-space:nowrap}
-#top .sub{font-size:11px;color:var(--dim);letter-spacing:.08em;white-space:nowrap}
+#top .op{font-weight:800;letter-spacing:.14em;color:#fff;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#top .sub{font-size:11px;color:var(--dim);letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #top .grow{flex:1;min-width:0}
 .stat{display:flex;flex-direction:column;align-items:flex-start;padding:0 10px;border-left:1px solid var(--line);white-space:nowrap}
 .stat b{font-size:13px;color:#fff;letter-spacing:.06em}.stat span{font-size:9.5px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase}
@@ -86,9 +86,30 @@ button.on{background:linear-gradient(180deg,#1f6fd0,#124a8e);border-color:var(--
 #toast{position:fixed;left:50%;top:calc(70px + var(--sat));transform:translateX(-50%);background:rgba(60,8,14,.92);border:1px solid var(--red);color:#ffd0d5;padding:8px 16px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:40;max-width:90vw;text-align:center}
 #toast.show{opacity:1}#toast.ok{background:rgba(6,40,30,.92);border-color:var(--green);color:#c8ffe6}
 #zoom{position:fixed;right:290px;bottom:104px;display:flex;flex-direction:column;gap:5px}
+/* collapsible side panels */
+.ptog{width:24px;height:24px;font-size:15px;font-weight:800;flex:none;color:var(--cyan2)}
+#bmini{display:none}
+#left.col{width:62px}#left.col .ph{padding:6px;justify-content:center}#left.col .ph>:not(.ptog){display:none}#left.col .ph .sp{display:none}
+#left.col .scroll{padding:4px;overflow-x:hidden}#left.col .card{padding:4px;justify-content:center;margin-bottom:5px}#left.col .card>:not(.shield):not(.pbadge){display:none}
+#left.col .row,#left.col #b-form{display:none}#left.col .sec{font-size:0;letter-spacing:0;margin:6px 0 4px}#left.col .sec:after{height:1px}
+#right.col{width:190px;bottom:auto}#right.col>:not(.ph:first-child):not(#bmini){display:none}#right.col #bmini{display:block;padding:6px 10px 8px;font-size:11px}
+#right.col .ph small{display:none}
+#bmini .mr{display:flex;gap:6px;justify-content:space-between;padding:1px 0}#bmini .mr span{color:var(--dim);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase}#bmini .mr b{color:#fff;text-align:right;font-size:11px}
+#bmini .ml{margin-top:5px;padding-top:4px;border-top:1px solid var(--line);color:#bcd0e6;font-size:10.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}#bmini .ml i{font-style:normal;color:#4e6a8a;font-weight:700;margin-right:4px}
+/* collapsible dialogs (brief / intel): shrink to a title bar so the map and controls stay usable */
+.mtog{width:28px;height:28px;font-size:14px;margin-left:4px}
+.modal.mini{background:transparent;pointer-events:none;align-items:flex-start;padding-top:calc(52px + var(--sat))}.modal.mini .dlg{pointer-events:auto;width:min(420px,100%)}.modal.mini .dlg>:not(.ph){display:none}
 /* modals */
 .modal{position:fixed;inset:0;background:rgba(2,6,12,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:12px}
 .modal.show{display:flex}
+.mm .mmb{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px 12px;min-height:54px;width:100%}.mm .mmb b{font-size:14px}.mm .mmb span{font-size:11px;color:var(--dim);font-weight:400}.mm .mmb.on span{color:#dff}
+.mmq{border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}.mmg{gap:8px}
+.lvrow{display:flex;align-items:center;gap:8px;font-size:12px;color:#bcd0e6}.lvrow label{min-width:70px}.lvrow input[type=range]{flex:1;min-width:80px;accent-color:var(--cyan2);height:28px}.lvrow input[type=number]{width:58px;background:#0b1622;color:#fff;border:1px solid var(--line);border-radius:6px;padding:5px;font:inherit;font-size:14px}
+.mmt{font-size:11.5px;color:#bcd0e6;line-height:1.45;min-height:34px}
+.lvbox{display:flex;gap:12px;align-items:center;border:1px solid var(--cyan2);border-radius:8px;padding:8px 10px;margin-bottom:10px;background:rgba(40,120,170,.12)}.lvn{font-size:11px;color:var(--dim);text-align:center;line-height:1}.lvn b{display:block;font-size:28px;color:#fff}
+.lvbar{height:8px;background:#0b1622;border-radius:4px;overflow:hidden;margin:5px 0 3px;border:1px solid var(--line)}.lvbar i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan2),var(--green))}
+.calls{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.callc{display:flex;flex-direction:column;gap:3px;text-align:left;font-size:12px;color:#bcd0e6;padding:10px;font-weight:400}
+@media (max-height:560px) and (min-width:761px){.mm .mmb{min-height:40px;padding:6px 10px}.mmq{gap:3px;padding:6px}.mmt{min-height:0}.calls{grid-template-columns:repeat(3,1fr)}}
 .dlg.wide{width:min(860px,100%)}
 .tr{display:grid;grid-template-columns:62px 78px 1fr;gap:6px;padding:4px 6px;border-radius:5px;font-size:12.5px}.tr .tt{color:var(--dim);font-variant-numeric:tabular-nums}.tr .who{font-weight:800;color:var(--cyan2)}.tr.c .who{color:var(--amber)}.tr.n{color:var(--dim);font-style:italic}.tr.n .who{color:var(--dim)}.tr.on{background:rgba(43,140,255,.18)}
 .tl{border-left:2px solid var(--line2);margin:4px 0 4px 6px;padding-left:10px;font-size:12px}.tl div{margin:3px 0}.tl b{color:#fff;font-variant-numeric:tabular-nums}
@@ -124,10 +145,24 @@ kbd{font:600 10.5px ui-monospace,monospace;background:#0b1b33;border:1px solid v
 #aimbox .pt{font-weight:800;color:var(--cyan2);letter-spacing:.08em;display:flex;align-items:center;margin-bottom:3px}#aimbox .pt b{margin-left:auto;font-size:17px;color:#fff}
 #aimbox .pr{display:flex;gap:6px;align-items:baseline;color:#bcd0e6}#aimbox .pr span{width:52px;color:var(--dim);text-transform:uppercase;font-size:9.5px;letter-spacing:.08em}#aimbox .pr i{flex:1;font-style:normal;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#aimbox .pr b{color:#fff}
 #ovwf{display:none;right:6px;width:200px;padding:4px;z-index:25}#ovwf.show{display:block}#ovw2{width:100%;height:auto;border-radius:6px}
+/* ---------- compact landscape (phones / small tablets on their side) ---------- */
+@media (max-height:560px) and (min-width:761px){
+  #top{height:38px;top:calc(4px + var(--sat));left:calc(6px + var(--sal));right:calc(6px + var(--sar));gap:6px;padding:0 6px}
+  #top .logo{width:20px;height:24px}#top .sub,#top .hm2,#top .stat>span{display:none}#top .op{font-size:12px;letter-spacing:.08em}
+  #top .stat{padding:0 6px}#top .ib{width:28px;height:28px;font-size:13px}#b-wd{height:28px;padding:0 8px}
+  #left,#right{top:calc(48px + var(--sat));bottom:calc(60px + var(--sab))}#left{left:calc(6px + var(--sal))}#right{right:calc(6px + var(--sar))}
+  #left:not(.col){width:240px}#right:not(.col){width:250px}#ovw{height:110px}.ph{padding:6px 10px 5px}
+  #bottom{left:calc(6px + var(--sal));right:calc(6px + var(--sar));bottom:calc(4px + var(--sab));height:50px;padding:5px 6px;gap:6px}
+  .act{min-width:46px;height:38px;padding:2px 4px;gap:1px;font-size:8px;letter-spacing:.02em}.act .ic{font-size:14px}.act .ct{margin:-30px 0 0 30px}.vsep{height:30px}
+  #exec{height:38px;min-width:104px;font-size:12px;letter-spacing:.12em}#exec small{font-size:8px}
+  #hint{bottom:calc(60px + var(--sab));left:calc(76px + var(--sal));transform:none;max-width:calc(100vw - 340px);white-space:normal;font-size:10.5px;padding:3px 10px;border-radius:10px;line-height:1.3}#toast{top:calc(48px + var(--sat))}#aimbox{top:calc(48px + var(--sat))}
+  #zoom{gap:4px}#zoom button{width:28px;height:28px;font-size:13px}
+  .modal.mini{padding-top:calc(46px + var(--sat))}
+}
 /* ---------- phone layout ---------- */
 @media (max-width:760px){
   #top{height:44px;gap:8px;left:6px;right:6px;top:calc(6px + var(--sat))}
-  #top .stat.hm,#top .sub,#top .hm2{display:none}#top .op{font-size:12px;overflow:hidden;text-overflow:ellipsis}#b-new{padding:0 10px}.stat{padding:0 6px}
+  #top .stat.hm,#top .sub,#top .hm2,.ptog{display:none}#top .op{font-size:12px;overflow:hidden;text-overflow:ellipsis}#b-new{padding:0 10px}.stat{padding:0 6px}
   #left,#right{display:none;top:auto;bottom:calc(132px + var(--sab));left:6px;right:6px;width:auto;height:min(58vh,460px);z-index:30}
   #left.open,#right.open{display:flex}
   #chips{display:flex;position:fixed;left:6px;right:6px;top:calc(56px + var(--sat));gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px}
@@ -156,21 +191,20 @@ kbd{font:600 10.5px ui-monospace,monospace;background:#0b1b33;border:1px solid v
 <div id="top" class="panel">
   <svg class="logo" viewBox="0 0 30 34"><defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b8cff"/><stop offset="1" stop-color="#0a2a5a"/></linearGradient></defs><path d="M15 1 C20 3 25 3 28 3 L28 15 C28 24 22 29 15 33 C8 29 2 24 2 15 L2 3 C5 3 10 3 15 1Z" fill="url(#lg)" stroke="#7fe3ff" stroke-width="1.5"/><path d="M9 17 l4 4 l8 -9" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
   <div class="grow"><div class="op" id="opname">OPERATION</div><div class="sub" id="opsub">BARRICADED SUBJECT · RESIDENTIAL</div></div>
-  <div class="stat"><span>Status</span><b id="st-status">—</b></div>
-  <div class="stat" title="Mission clock — each EXECUTE advances 0:30"><span>Mission <i id="st-clock" style="font-style:normal;color:var(--dim)"></i></span><b id="st-turn">0:00</b></div>
-  <div class="stat hm"><span>Officers Down</span><b id="st-down">0</b></div>
-  <div class="stat hm"><span>Seed</span><b id="st-seed">—</b></div>
-  <button id="b-brief" class="ib" title="Mission brief &amp; 911 call">📋</button><button id="b-career" title="Career — roster, record, unlocks"><span>🎖</span> <span class="hm2">Career</span></button><button id="b-new" title="New random scenario (not counted in the career)">⟳ <span class="hm2">New Scenario</span></button>
+  <div class="stat st-s"><span>Status</span><b id="st-status">—</b></div>
+  <button id="b-brief" class="ib" title="Mission brief &amp; 911 call">📋</button><button id="b-wd" title="End mission / withdraw (no time limit — optional)"><span>⚑</span> <span class="hm2">Withdraw</span></button>
+  <button id="b-menu" class="ib" title="Menu — scenario, seed, career">☰</button>
   <button id="b-mute" class="ib" title="Sound on/off">🔊</button>
   <button id="b-help" class="ib" title="Help">?</button>
 </div>
 <div id="chips"></div>
-<div id="left" class="panel"><div class="ph">Team Units<span class="sp"></span><small id="l-count"></small><button class="ib mclose" data-close="left" style="display:none">✕</button></div><div class="scroll" id="teams"></div></div>
-<div id="right" class="panel"><div class="ph">Building Info<span class="sp"></span><small>LIVE</small><button class="ib mclose" data-close="right" style="display:none">✕</button></div>
+<div id="left" class="panel"><div class="ph"><span class="pt">Team Units</span><span class="sp"></span><small id="l-count"></small><button class="ib ptog" id="tg-left" title="Collapse / expand team units" aria-label="Collapse or expand team units">‹</button><button class="ib mclose" data-close="left" style="display:none">✕</button></div><div class="scroll" id="teams"></div></div>
+<div id="right" class="panel"><div class="ph"><button class="ib ptog" id="tg-right" title="Collapse / expand building info" aria-label="Collapse or expand building info">›</button><span class="pt">Building Info</span><span class="sp"></span><small>LIVE</small><button class="ib mclose" data-close="right" style="display:none">✕</button></div>
+  <div id="bmini"></div>
   <div class="kv" id="binfo"></div>
   <div style="padding:2px 12px 0"><div class="row" style="padding:0"><span style="font-size:10.5px;color:var(--dim);letter-spacing:.06em">INTEL LEVEL</span><span class="r" id="intelpct">0%</span></div><div class="bar"><i id="intelbar" style="width:0"></i></div></div>
   <div class="ovwh"><span>NEIGHBORHOOD · TAP TO JUMP</span></div><canvas id="ovw" aria-label="Minimap — tap or drag to jump" title="Minimap — tap or drag to jump" width="492" height="316" title="Overview — click or drag to move the view"></canvas>
-  <div class="ph" style="border-top:1px solid var(--line)">Radio / Pager Log</div>
+  <div class="ph logh" style="border-top:1px solid var(--line)">Radio / Pager Log<span class="sp"></span><small id="log-clock" title="Mission time (information only — no time limit). Each EXECUTE = 30 s">T+0:00</small></div>
   <div id="log"></div>
 </div>
 <div id="zoom"><button class="ib" id="z-in" title="Zoom in">＋</button><button class="ib" id="z-out" title="Zoom out">－</button><button class="ib" id="z-fit" title="Fit house (0)">⤢</button><button class="ib" id="z-all" title="Whole neighborhood / overview map">▦</button></div>
@@ -191,6 +225,15 @@ kbd{font:600 10.5px ui-monospace,monospace;background:#0b1b33;border:1px solid v
 <div class="modal" id="m-brief"><div class="panel dlg" id="brief-dlg"></div></div>
 <div class="modal" id="m-911"><div class="panel dlg" id="c911-dlg"></div></div>
 <div class="modal" id="m-career"><div class="panel dlg wide" id="career-dlg"></div></div>
+<div class="modal" id="m-wd"><div class="panel dlg" id="wd-dlg"></div></div>
+<div class="modal" id="m-menu"><div class="panel dlg" id="menu-dlg"><div class="ph">Menu<span class="sp"></span><button class="ib" data-close="m-menu">✕</button></div><div class="body">
+  <div class="kv" style="padding:0 0 8px"><span>Operation</span><b id="mn-op">—</b><span>Seed</span><b id="st-seed">—</b><span>Mission time</span><b id="mn-time">0:00</b></div>
+  <div class="grid2"><button id="b-new" class="cmd"><b>⟳ New Scenario</b><span>New random Quick Mission (not counted in the career)</span></button>
+  <button id="b-career" class="cmd"><b>🎖 Career</b><span id="mn-car">Roster, record, team level</span></button>
+  <button id="b-main" class="cmd"><b>⌂ Main menu</b><span>Quick Mission level, Career Mode, help</span></button>
+  <button id="b-state" class="cmd" style="display:none"><b>☎ Call State SWAT Team</b><span>Hand over the scene · keep action XP only</span></button></div></div></div></div>
+<div class="modal" id="m-main"><div class="panel dlg" id="main-dlg"></div></div>
+<div class="modal" id="m-calls"><div class="panel dlg" id="calls-dlg"></div></div>
 <div class="modal" id="m-help"><div class="panel dlg" id="help-dlg"></div></div>
 <script>
 /* =====================================================================
@@ -205,7 +248,7 @@ kbd{font:600 10.5px ui-monospace,monospace;background:#0b1b33;border:1px solid v
    ===================================================================== */
 const Core = (function () {
 'use strict';
-const MAP_W = 112, MAP_H = 72, TICKS = 8, LOSE_DOWN = 3, TURN_LIMIT = 30;
+const MAP_W = 112, MAP_H = 72, TICKS = 8, LOSE_DOWN = 3; // LOSE_DOWN: kept only as the 'heavy losses' warning threshold — the mission never auto-ends on losses or time
 /* ---------- time display: logic stays turn-based; each executed turn = 30 s of scene time ---------- */
 const TURN_SEC = 30;
 function mmss(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
@@ -274,6 +317,7 @@ const SUSPECT_WEAPONS = {
 const STANCES = { return: 'Return fire', free: 'Fire at will', hold: 'Hold fire' };
 const TEAM_NAMES = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot'];
 const LAST = ['Reyes','Kim','Novak','Okafor','Brennan','Castillo','Haddad','Lindqvist','Morales','Tran','Walsh','Diaz','Petrov','Hughes','Sato','Mensah','Kowalski','Rivera'];
+const LAST2 = ['Abbott','Banks','Chen','Dorsey','Ellison','Fischer','Gomez','Hale','Ibarra','Jovanovic','Kaur','Lund','Marsh','Nakamura','Olsen','Pratt','Quinn','Rossi','Sandoval','Tate','Underwood','Varga','Whitfield','Yilmaz'];
 const PATROL = ['Miller','Grant','Shah','Ortiz','Becker'];
 const OPS = ['NIGHTFALL','IRON GATE','BLUE HERON','STONEWALL','SILENT KEY','COLD HARBOR','NORTH STAR','GLASS HOUSE','BLACKWOOD','HALCYON'];
 const STREETS = ['Maple', 'Oak Hollow', 'Linden', 'Birch', 'Willow Creek', 'Juniper', 'Aspen', 'Cedar Ridge', 'Elm', 'Sycamore'];
@@ -923,6 +967,7 @@ function containStatus() {
   const key = S.units.filter(u => u.kind === 'cruiser').map(u => u.x + ',' + u.y + ',' + carAxis(u)).join(';');
   if (S._cruKey !== key) { S._cruKey = key; for (const c of S.contain) if (c.q === 'cruiser') c.screened = shieldAt(c.x, c.y).q !== 'open'; }
   for (const c of S.contain) c.covered = S.units.some(u => (onFoot(u) && dist(u.x, u.y, c.x, c.y) <= 2.3 && (c.q !== 'cruiser' || c.screened)) || (u.kind === 'cruiser' && u.occ.length && dist(u.x, u.y, c.x, c.y) <= 3));
+  if (S.turn > 0 && S.contain.length && S.contain.every(c => c.covered) && !S.stats.containXp) { S.stats.containXp = S.turn; xpAct('contain', null); }
 }
 /** Which sides of the house (with openings) are actually watched right now by an officer outside or a crewed cruiser. */
 function sideWatch() {
@@ -977,6 +1022,14 @@ function setupUnits(r) {
     S.officers = O.roster.map((o, i) => { const k = used[o.spec] = (used[o.spec] || 0) + 1, e = etaBy[o.spec] || [3];
       return { id: 'O' + i, careerId: o.id, last: o.last, name: (o.rank || 'Ofc.') + ' ' + o.last, spec: o.spec, skill: o.skill, status: 'enroute', eta: e[Math.min(k - 1, e.length - 1)] + (k > e.length ? 1 : 0), team: null, stable: false,
         dog: o.spec === 'k9' ? (o.dog || 'Rex') : null, quals: (o.quals || []).slice() }; }); }
+  else if (O.specs && O.specs.length) { // team level (Quick Mission): staff built from the level's specialty list; own rng so the map is identical
+    const q = makeRng((S.seed * 7 + O.specs.length * 131 + 17) >>> 0), pool = names.concat(q.shuffle(LAST2.slice())), used = {};
+    const etaBy = { leader: [1], point: [1, 2], breacher: [1, 3], negotiator: [3, 4], medic: [3, 4], marksman: [4, 5], tech: [2, 3], k9: [5, 6] };
+    const base = O.skill || 0.7;
+    S.officers = O.specs.map((sp, i) => { const k = used[sp] = (used[sp] || 0) + 1, e = etaBy[sp] || [3], last = pool[i % pool.length] + (i >= pool.length ? '-' + (i + 1) : '');
+      return { id: 'O' + i, last, name: (i === 0 ? 'Lt.' : sp === 'negotiator' ? 'Det.' : k === 1 && sp !== 'point' ? 'Cpl.' : 'Ofc.') + ' ' + last, spec: sp, skill: +clamp(base - 0.08 + q() * 0.22, 0.4, 0.95).toFixed(2),
+        status: 'enroute', eta: e[Math.min(k - 1, e.length - 1)] + Math.floor((k - 1) / e.length), team: null, stable: false, dog: sp === 'k9' ? q.pick(['Rex', 'Bruno', 'Koda', 'Max', 'Nova']) : null, quals: [] }; });
+    const cand = q.shuffle(S.officers.filter(o => !['leader', 'marksman'].includes(o.spec))); cand.slice(0, Math.max(O.spotters != null ? O.spotters : 2, 0)).forEach(o => o.quals.push('spotter')); }
   if (O.gear) for (const k in O.gear) if (k in S.armory) S.armory[k] = O.gear[k];
   S.teamMax = O.teamMax || 5;
   rebuildDyn(); setupRoadblocks(r); // three cruisers at the ends of the block, keeping traffic out
@@ -1154,6 +1207,14 @@ function updateVision() {
   const W = new Set(watchers());
   for (const u of S.units) { if (!W.has(u)) { u.vis = []; continue; } u.vis = computeVis(u); for (const c of u.vis) S.vis[c] = 1; }
   for (const c of S.peek) S.vis[c] = 1;
+  for (const u of W) if (u.slice && u.slice.ox === u.x && u.slice.oy === u.y && u.slice.cells.length) { for (const c of u.slice.cells) S.vis[c] = 1; u.vis = u.vis.concat(u.slice.cells); } // pie-slice reveal
+  // mutual sight: if the suspect has a clear line to one of our units inside sight range, that unit sees him too (no facing needed)
+  const sp0 = S.suspect;
+  if (sp0 && suspectActive()) { const sc = idx(sp0.x, sp0.y); for (const u of W) { if (u.kind === 'cruiser' || !u.vis || u.vis.includes(sc)) continue; const p = visParamsG(u);
+    if (dist(u.x, u.y, sp0.x, sp0.y) <= p.range && los(sp0.x, sp0.y, u.x, u.y) === 1 && los(u.x, u.y, sp0.x, sp0.y) === 1) { u.vis.push(sc); S.vis[sc] = 1; } } }
+  // per-cell memory: indoor cells we have actually had eyes on (through open doors/doorways), drawn even while the room is not yet "explored"
+  if (!S.seenCell || S.seenCell.length !== S.vis.length) S.seenCell = new Uint8Array(S.vis.length);
+  for (let c = 0; c < S.vis.length; c++) if (S.vis[c] && S.room[c] >= 0) S.seenCell[c] = 1;
   const counts = new Array(S.rooms.length).fill(0);
   for (let c = 0; c < S.vis.length; c++) if (S.vis[c]) { const rr = S.room[c]; if (rr >= 0) counts[rr]++; }
   S.rooms.forEach((rm, i) => { const occupied = S.units.some(u => unitAlive(u) && (u.kind === 'team' ? u.deployed : u.kind === 'drone' || u.kind === 'robot') && roomAt(u.x, u.y) === i);
@@ -1162,7 +1223,8 @@ function updateVision() {
   S.doors.forEach(d => { if (d.storm && !d.stormKnown && d.cells.some(([a, b]) => (roomAt(a[0], a[1]) < 0 && S.vis[idx(a[0], a[1])]) || (roomAt(b[0], b[1]) < 0 && S.vis[idx(b[0], b[1])]))) { d.stormKnown = true; log(`${d.name}: outer storm door spotted — pry will take longer.`, 'intel'); } });
   const sp = S.suspect;
   if (sp && suspectActive() && (S.vis[idx(sp.x, sp.y)] || (sp.walk && sp.room < 0))) { // a walk-out in the yard is watched by everyone
-    if (!sp.seen) log(`CONTACT — suspect visual in ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'yard'}!`, 'alert');
+    if (!sp.seen) { log(`CONTACT — suspect visual in ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'yard'}!`, 'alert'); const sc = idx(sp.x, sp.y), who = [];
+      for (const u of W) if (u.kind === 'team' && u.vis.includes(sc)) who.push(...teamOk(u).map(o => o.id)); xpAct('locate', who.length ? who : null); }
     sp.seen = true; sp.visible = true; sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn }; sp.heat = null;
   } else if (sp) sp.visible = false;
   containStatus();
@@ -1479,10 +1541,10 @@ function applyAid(u, c, auto) {
     else { c.stable = true; c.aided = 2; t = `medic stabilises ${c.name} — countdown stopped.`; } }
   else if (medic) { if (c.aided >= 1) return false; c.crit += cfg.medicNoKit; c.aided = 1; t = `medic (no medkit) packs ${c.name}'s injury — +${tDur(cfg.medicNoKit)}.`; }
   else { if (c.aided >= 1) { if (!auto) log(`${u.name}: ${c.name} already has first aid — needs a medic or EMS.`, 'radio'); return false; } c.crit += cfg.aidOther; c.aided = 1; t = `first aid on ${c.name} — +${tDur(cfg.aidOther)}.`; }
-  log(`${u.name}: ${t}`, 'good'); fx('text', c.x, c.y, { text: c.stable ? 'STABLE' : 'AID', color: '#3ef0a0' }); S.version++; return true;
+  log(`${u.name}: ${t}`, 'good'); xpAct('aid', u, c.name); fx('text', c.x, c.y, { text: c.stable ? 'STABLE' : 'AID', color: '#3ef0a0' }); S.version++; return true;
 }
 function dropCas(u, c) { if (c) { c.carrier = null; } u.carrying = null; }
-function atEMS(c, u) { c.state = 'transport'; c.tr = CAS_CFG.transport; c.stable = true; c.carrier = null; c.known = true; if (u) u.carrying = null;
+function atEMS(c, u) { if (u) xpAct('evac', u, c.name); c.state = 'transport'; c.tr = CAS_CFG.transport; c.stable = true; c.carrier = null; c.known = true; if (u) u.carrying = null;
   log(`EMS: ${c.name} loaded into the ambulance — transport ${tMin(c.tr)}.`, 'good'); fx('text', c.x, c.y, { text: 'EMS', color: '#3ef0a0' }); }
 /** Execution of aid / rescue / evac orders (called from unitAct). */
 function casAct(u, o, speed) {
@@ -1499,7 +1561,7 @@ function casAct(u, o, speed) {
   const goal = o.type === 'evac' ? (x, y) => cheb(x, y, S.ems.x, S.ems.y) <= 1 : (x, y) => x === o.dx && y === o.dy;
   const r = stepAlong(u, o, goal, sp); c.x = u.x; c.y = u.y;
   if (r === null) { dropCas(u, c); failOrders(u, 'no route while carrying'); return; }
-  if (r) { popOrder(u); if (o.type === 'evac') atEMS(c, u); else { dropCas(u, c); c.ccp = true; log(`${u.name}: ${c.name} at the casualty collection point (in cover).`, 'radio'); } }
+  if (r) { popOrder(u); if (o.type === 'evac') atEMS(c, u); else { dropCas(u, c); c.ccp = true; xpAct('rescue', u, c.name); log(`${u.name}: ${c.name} at the casualty collection point (in cover).`, 'radio'); } }
 }
 /** Per tick: mobile casualties move themselves (cover first, then to EMS). Fog flags refresh. */
 function casualtyTick() {
@@ -1603,7 +1665,7 @@ function contactTry(chan) {
     if (r.chance(T.escalate)) { sp.agit = clamp(sp.agit + 8, 0, 100); negHist(`Contact refused — he shouts at us to back off. Agitation rising.`, 'alert'); }
     else { N.quiet = r.int(1, 2); negHist(`Contact refused — he has gone quiet.`, 'radio'); }
     return false; }
-  N.contact = chan; N.everContact = true; sp.talk = clamp(sp.talk + 5, 0, 100); sp.agit = clamp(sp.agit - 5, 0, 100);
+  N.contact = chan; N.everContact = true; xpAct('contact', negOnScene().filter(o => o.status === 'ok' || o.status === 'staged').map(o => o.id)); sp.talk = clamp(sp.talk + 5, 0, 100); sp.agit = clamp(sp.agit - 5, 0, 100);
   negHist(`CONTACT — he is talking to us (${chan === 'pa' ? 'shouting back over the PA' : chan === 'line' ? 'on the throw-phone' : 'on his cell'}).`, 'good'); return true;
 }
 function talkMult(chan) { const n = negOnScene(); return (0.75 + negotiatorSkill() * 0.5) * (chan === 'pa' ? NEGO_CFG.pa.eff : 1) * (n.length >= 2 ? NEGO_CFG.coach : 1); }
@@ -1615,7 +1677,7 @@ function runTalk() {
   const T = NEGO_CFG.temper[N.temper];
   if (k === 'call') { N.attempts; if (!N.line && r.chance(T.noAnswer)) { N.attempts++; N.refusals++; negHist('Negotiator: the phone rings out — no answer.', 'radio'); return; }
     contactTry(N.line ? 'line' : 'phone'); return; }
-  const C = NEGO_CFG.talk, m = talkMult(N.contact); N.rounds++; let gain = 0, msg = '';
+  const C = NEGO_CFG.talk, m = talkMult(N.contact); N.rounds++; xpAct('dialogue', negOnScene().map(o => o.id)); let gain = 0, msg = '';
   if (k === 'rapport') { gain = r.int(C.rapport.gain[0], C.rapport.gain[1]) * m - sp.agit * NEGO_CFG.agitDrag; sp.agit += C.rapport.agit; msg = 'building rapport — talking about his family, what he needs.'; }
   if (k === 'listen') { gain = r.int(C.listen.gain[0], C.listen.gain[1]) * m; sp.agit += C.listen.agit; msg = 'letting him vent. He is calming down.';
     if (r.chance(C.listen.intel)) { sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.located = true; msg += ` He mentions he is in the ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'house'}.`; } }
@@ -1940,7 +2002,7 @@ function statusCheck() {
 /** End of turn: a side nobody watches gives him a way out. */
 function sceneTurn() {
   const sc = S.scene, sp = S.suspect; if (!sc) return;
-  const sw = sideWatch(); if (sc.gap0.length && sc.gapClosed == null && !sw.gaps.some(g => sc.gap0.includes(g))) sc.gapClosed = S.turn;
+  const sw = sideWatch(); if (sc.gap0.length && sc.gapClosed == null && !sw.gaps.some(g => sc.gap0.includes(g))) { sc.gapClosed = S.turn; xpAct('contain', null); }
   if (!hostile() || sp.mode !== 'barricaded' || sp.walk || (S.nego && S.nego.contact) || S.turn < 2) { sc.gapTurns = 0; return; }
   const wins = S.windows.filter(w => w.room !== sp.room && !w.broken && sw.gaps.includes(watchPts().find(p => p.win === w.id).side));
   if (!wins.length) { sc.gapTurns = 0; return; }
@@ -1959,6 +2021,145 @@ function sceneDebrief() {
   if (sc.injury) { const c = casById(sc.injury.cas); out.push({ k: '  Officer down on arrival', v: `${sc.injury.name}: ${sc.injury.kind === 'kia' ? 'killed before SWAT arrived' : sc.injury.kind + ' — outcome: ' + (c ? sevWord(c) : 'unknown')}.` }); }
   const B = S.brief; if (B) out.push({ k: '  Call', v: `${B.type} at ${B.time}; 911 recording ${B.reviewed ? 'reviewed' : 'not reviewed'}.` });
   return out;
+}
+
+/* =====================================================================
+   PER-ACTION EXPERIENCE · STATE TEAM HAND-OVER · SCENARIO PREVIEW
+   Every useful individual action is logged with the officers who did it, so a mission that
+   is handed to the State SWAT team still pays out the experience for those actions
+   (but never the mission-completion XP). Values are data — retune here.
+   ===================================================================== */
+const ACT_XP = {
+  breach:    { xp: 15, cap: 6, label: 'Door breached' },
+  clear:     { xp: 10, cap: 10, label: 'Room cleared' },
+  corner:    { xp: 6,  cap: 10, label: 'Corner worked (pie slice)' },
+  threat:    { xp: 15, cap: 3, label: 'Threat found while slicing a corner' },
+  aid:       { xp: 20, cap: 6, label: 'First aid rendered' },
+  rescue:    { xp: 20, cap: 6, label: 'Casualty moved to cover' },
+  evac:      { xp: 25, cap: 6, label: 'Casualty handed to EMS' },
+  locate:    { xp: 15, cap: 1, label: 'Suspect located' },
+  contain:   { xp: 20, cap: 1, label: 'Containment established' },
+  contact:   { xp: 15, cap: 3, label: 'Negotiation contact made' },
+  dialogue:  { xp: 4,  cap: 8, label: 'Dialogue round' },
+  overwatch: { xp: 10, cap: 3, label: 'Overwatch set' },
+  bang:      { xp: 8,  cap: 4, label: 'Flashbang on the suspect' },
+  detain:    { xp: 40, cap: 1, label: 'Suspect taken into custody' },
+};
+function crewIds(u) { return !u ? [] : Array.isArray(u) ? u : u.kind === 'team' ? teamOk(u).map(o => o.id) : []; }
+/** Log one action for XP. who: a unit (team members get it), an officer-id array, or null (command / patrol → team XP only). */
+function xpAct(key, who, detail) { const A = ACT_XP[key]; if (!A || !S) return; S.xpLog = S.xpLog || [];
+  if (S.xpLog.filter(x => x.key === key).length >= A.cap) return;
+  const ids = crewIds(who); S.xpLog.push({ key, label: A.label, xp: A.xp, ids, by: who && who.name ? who.name : who && who.length ? 'officers' : 'command', detail: detail || '', turn: S.turn }); }
+function xpSummary() { const by = {}; for (const x of S.xpLog || []) { const b = by[x.key] = by[x.key] || { key: x.key, label: x.label, n: 0, xp: 0, per: x.xp }; b.n++; b.xp += x.xp * Math.max(1, x.ids.length); }
+  const rows = Object.values(by); return { rows, total: rows.reduce((a, r) => a + r.xp, 0) }; }
+/** Career mode: give the scene to the State SWAT team. Ends the mission; only per-action XP is kept. */
+function callState() { if (S.phase === 'over') return { ok: false, reason: 'Mission already over' };
+  if (!(S.opts && S.opts.career)) return { ok: false, reason: 'Only in Career Mode' };
+  S.phase = 'over'; S.stats.stateTeam = true;
+  S.result = { win: false, title: 'STATE SWAT TEAM TAKES OVER', text: `Command requested the State SWAT team after ${tMin(S.turn)}. The scene is handed over — the unit keeps only the experience from individual actions, no mission-completion credit.` };
+  log('Command: State SWAT team requested — our units hold the perimeter and hand over.', 'system'); finishMission(); return { ok: true }; }
+/** Scenario facts for the call-in screen, without disturbing the current game. diff: 1 (routine) … 3 (high risk). */
+function preview(seed, opts) { const keep = S; let out;
+  try { newGame(seed, opts || {}); const B = S.brief, sp = S.suspect;
+    let diff = 1 + (B.shots ? 0.5 : 0) + (B.officerDown ? 0.8 : 0) + (sp.weapon !== 'handgun' ? 0.4 : 0) + (S.rooms.length >= 9 ? 0.3 : 0) + (S.scene && S.scene.variant === 'gap' ? 0.2 : 0);
+    diff = +clamp(diff, 1, 3).toFixed(1);
+    out = { seed: S.seed, op: S.opName, type: B.type, addr: B.addr, time: B.time, shots: !!B.shots, officerDown: !!B.officerDown, sawGun: !!B.sawGun, area: S.geo.name, arch: S.house.archName, diff,
+      label: diff >= 2.3 ? 'HIGH RISK' : diff >= 1.6 ? 'ELEVATED' : 'ROUTINE' }; }
+  finally { S = keep; }
+  return out; }
+
+/* =====================================================================
+   WORK THE CORNER (slicing the pie)
+   At a corner (hall corner, door frame, house corner) the unit opens the hidden area in
+   45° cuts, one cut every CORNER_CFG.ticks ticks, stopping the moment a threat is seen.
+   Cells revealed this way join the unit's vision while it stays put.
+   ===================================================================== */
+const CORNER_CFG = { ticks: 2, cuts: 4, step: Math.PI / 4, minHidden: 4, rangeIn: 8, rangeOut: 12, hitBase: 0.35, hitPerCut: 0.05, tryMult: 0.6 };
+function vis360(x, y, R) { const out = new Set(); for (let yy = Math.max(0, y - R); yy <= Math.min(MAP_H - 1, y + R); yy++) for (let xx = Math.max(0, x - R); xx <= Math.min(MAP_W - 1, x + R); xx++) {
+  if (dist(x, y, xx, yy) > R) continue; const l = los(x, y, xx, yy); if (l === 1 || (l === 2 && dist(x, y, xx, yy) <= 3)) out.add(idx(xx, yy)); } return out; }
+/** Best corner from (x,y): a neighbouring step that opens ground hidden from here. → {px,py,a,hidden:[cells sorted by cut angle]} | null */
+function cornerAt(x, y, u) {
+  const R = roomAt(x, y) >= 0 ? CORNER_CFG.rangeIn : CORNER_CFG.rangeOut, here = vis360(x, y, R); let best = null;
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const px = x + dx, py = y + dy;
+    if (!cellOk(px, py, { avoidSuspect: false }) || !seeE(x, y, px, py)) continue; if (u && u.kind === 'patrol' && roomAt(px, py) >= 0) continue;
+    const a = Math.atan2(dy, dx), hid = [];
+    for (const c of vis360(px, py, R)) { if (here.has(c)) continue; const cx = c % MAP_W, cy = (c / MAP_W) | 0; let t = Math.atan2(cy - py, cx - px) - a; t = Math.abs(Math.atan2(Math.sin(t), Math.cos(t))); hid.push([c, t]); }
+    if (hid.length >= CORNER_CFG.minHidden && (!best || hid.length > best.hidden.length)) best = { px, py, a, hidden: hid.sort((p, q) => p[1] - q[1]) }; }
+  return best; }
+function cornerAvail(u) { if (!u || !onFoot(u) || u.perch) return 'Unit must be on foot'; const c = cornerAt(u.x, u.y, u); return c ? c : 'No corner here — stand at a hallway corner, door frame or house corner'; }
+/** One tick of corner work. Returns true while still working. */
+function cornerTick(u, o) {
+  if (!o.c) { const c = cornerAt(u.x, u.y, u); if (!c) { log(`${u.name}: no corner to work from here.`, 'radio'); popOrder(u); return; } o.c = { px: c.px, py: c.py, a: c.a, hidden: c.hidden }; o.cut = 0; o.t = 0; o.ox = u.x; o.oy = u.y;
+    u.slice = { ox: u.x, oy: u.y, px: c.px, py: c.py, cells: [], cut: 0, active: true }; log(`${u.name}: working the corner toward the ${dirWord(c.a)} — slicing the pie.`, 'radio'); }
+  if (u.x !== o.ox || u.y !== o.oy) { popOrder(u); return; }
+  u.dir = o.c.a; u.holding = true; o.t++; if (o.t % CORNER_CFG.ticks) return;
+  o.cut++; const lim = o.cut * CORNER_CFG.step, add = o.c.hidden.filter(h => h[1] <= lim && h[1] > lim - CORNER_CFG.step).map(h => h[0]);
+  u.slice.cells.push(...add); u.slice.cut = o.cut; u.dir = o.c.a + (o.c.hidden.length ? Math.sign(o.c.hidden[o.c.hidden.length - 1][1]) * 0 : 0);
+  updateVision(); const sp = S.suspect, sc = sp && idx(sp.x, sp.y);
+  if (suspectActive() && hostile() && u.slice.cells.includes(sc)) { u.dir = Math.atan2(sp.y - u.y, sp.x - u.x); u.slice.active = false; u.slice.threat = true; popOrder(u);
+    log(`${u.name}: THREAT — suspect seen around the corner (cut ${o.cut}, ${o.cut * 45}°). Corner work stopped.`, 'alert'); fx('text', u.x, u.y, { text: 'THREAT', color: '#ff5d6c' }); xpAct('threat', u); return; }
+  const left = o.c.hidden.filter(h => h[1] > lim).length;
+  if (o.cut >= CORNER_CFG.cuts || !left) { u.slice.active = false; popOrder(u); log(`${u.name}: corner clear (${o.cut} cut${o.cut > 1 ? 's' : ''}, ${Math.min(180, o.cut * 45)}°).`, 'good'); fx('text', u.x, u.y, { text: 'CORNER CLEAR', color: '#3ef0a0' }); xpAct('corner', u); return; }
+  log(`${u.name}: cut ${o.cut} — ${o.cut * 45}° open, nothing seen.`, 'radio');
+}
+function dirWord(a) { const d = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east']; return d[((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8]; }
+/** Suspect side: an officer slicing the pie is only exposed where his slice reaches the suspect — and only partly. */
+function sliceExposed(u, px, py) { return u.slice && u.slice.ox === u.x && u.slice.oy === u.y && u.slice.cells.includes(idx(px, py)); }
+function sliceHit(u) { return CORNER_CFG.hitBase + CORNER_CFG.hitPerCut * ((u.slice && u.slice.cut) || 1); }
+
+/* =====================================================================
+   FORMATIONS — where each team member stands (presentation helper, derived from context).
+   Returns cell-space offsets from the team's cell centre, one per fit member.
+   ===================================================================== */
+const FORM_CFG = { gap: 0.4, lat: 0.3, stagger: 0.2, fan: 0.55 };
+function formationFor(u) {
+  if (!u || u.kind !== 'team' || !u.deployed || u.perch) return { kind: 'none', pts: [] };
+  const n = teamOk(u).length; if (!n) return { kind: 'none', pts: [] };
+  const inside = roomAt(u.x, u.y) >= 0, d = u.dir || 0, fx_ = Math.cos(d), fy_ = Math.sin(d), lx = -fy_, ly = fx_;
+  const okPos = (ox, oy) => { const cx = Math.round(u.x + ox), cy = Math.round(u.y + oy); if (!inb(cx, cy) || S.block[idx(cx, cy)]) return false; if (cx === u.x && cy === u.y) return true;
+    if (Math.abs(cx - u.x) + Math.abs(cy - u.y) === 1) return seeE(u.x, u.y, cx, cy) && (!inside || roomAt(cx, cy) === roomAt(u.x, u.y) || roomAt(cx, cy) >= 0 || true); return los(u.x, u.y, cx, cy) === 1; };
+  const fit = (ox, oy) => { for (const t of [1, 0.75, 0.5, 0.25]) if (okPos(ox * t, oy * t)) return [+(ox * t).toFixed(2), +(oy * t).toFixed(2)]; return [0, 0]; };
+  // context: at a door (a breach/pole cam order on this door, or standing next to a closed door)
+  let door = null; const o = u.orders[0];
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const e = edge(u.x, u.y, u.x + dx, u.y + dy); if (e.t === 'D' && (e.d.state === 'closed' || (o && o.door === e.d.id))) { door = { dx, dy, d: e.d }; break; } }
+  const moving = u.moved != null && S.phase === 'executing' && S.tick - u.moved <= 1;
+  const pts = []; let kind;
+  if (door && !moving) { kind = 'stack'; // stack on the wall beside the door, point man at the frame, rest behind with slight offset
+    const bx = -door.dx, by = -door.dy, sx = -door.dy, sy = door.dx; const side = okPos(sx * 0.5, sy * 0.5) ? 1 : -1;
+    for (let i = 0; i < n; i++) pts.push(fit(door.dx * 0.18 + bx * i * FORM_CFG.gap + sx * side * (FORM_CFG.lat + (i % 2) * 0.06), door.dy * 0.18 + by * i * FORM_CFG.gap + sy * side * (FORM_CFG.lat + (i % 2) * 0.06))); }
+  else if (moving || (inside && hallLike(roomAt(u.x, u.y)))) { kind = 'column'; // staggered column behind the point man
+    for (let i = 0; i < n; i++) { const s = i === 0 ? 0 : (i % 2 ? 1 : -1) * FORM_CFG.stagger; pts.push(fit(fx_ * 0.2 - fx_ * i * FORM_CFG.gap + lx * s, fy_ * 0.2 - fy_ * i * FORM_CFG.gap + ly * s)); } }
+  else if (inside) { kind = 'fan'; // in a room: fan out to cover sectors
+    for (let i = 0; i < n; i++) { const a = d + (n === 1 ? 0 : -1.1 + 2.2 * i / (n - 1)); pts.push(fit(Math.cos(a) * FORM_CFG.fan, Math.sin(a) * FORM_CFG.fan)); } }
+  else { const cv = coverAdj(u.x, u.y); kind = cv ? 'cover' : 'line'; // outside: spread along the cover edge (or a line abreast)
+    let ax, ay, bx2 = 0, by2 = 0; if (cv) { const L = Math.hypot(cv.dx, cv.dy); ax = -cv.dy / L; ay = cv.dx / L; bx2 = cv.dx / L * 0.22; by2 = cv.dy / L * 0.22; } else { ax = lx; ay = ly; bx2 = -fx_ * 0.1; by2 = -fy_ * 0.1; }
+    for (let i = 0; i < n; i++) { const k = (i - (n - 1) / 2) * FORM_CFG.gap * (n > 5 ? 0.85 : 1); pts.push(fit(ax * k + bx2, ay * k + by2)); } }
+  return { kind, pts };
+}
+function hallLike(r) { const rm = S.rooms[r]; return !!rm && (/hall|corridor/i.test(rm.name) || Math.min(rm.w, rm.h) <= 2); }
+
+/* =====================================================================
+   FIRST ARRIVALS — at least one SWAT officer is always on scene at the start.
+   Usually 1–3 (the closest responders), sometimes a larger group, and a small chance the whole
+   team arrives together. Own rng (seeded from the scenario) so the map and suspect stay identical.
+   ===================================================================== */
+const ARRIVE_CFG = { allP: 0.065, groupP: 0.22, few: [[1, 0.45], [2, 0.35], [3, 0.2]], group: [4, 6],
+  allWhy: ['The whole team was training together at the range and arrived as one group.',
+    'The whole team was clearing from another call nearby and arrived as one group.',
+    'The whole team was at a briefing at the station and rolled out together — everyone arrived as one group.'] };
+function initialArrivals() {
+  const q = makeRng(((S.seed * 2246822519) ^ 0x5bd1e995) >>> 0), offs = S.officers, n = offs.length; if (!n) return null;
+  let mode, k; const r = q();
+  if (r < ARRIVE_CFG.allP) { mode = 'all'; k = n; }
+  else if (r < ARRIVE_CFG.allP + ARRIVE_CFG.groupP && n > 3) { mode = 'group'; k = Math.min(n - 1, q.int(ARRIVE_CFG.group[0], ARRIVE_CFG.group[1])); }
+  else { mode = 'few'; let x = q(), acc = 0; k = 1; for (const [v, p] of ARRIVE_CFG.few) { acc += p; if (x < acc) { k = v; break; } } k = Math.min(k, Math.max(1, n - 1)); }
+  k = Math.max(1, Math.min(n, k));
+  // the closest responders (lowest ETA) are first; ties broken by the arrival rng
+  const order = offs.map(o => ({ o, k: o.eta + q() * 0.9 })).sort((a, b) => a.k - b.k).map(x => x.o);
+  const first = order.slice(0, k); first.forEach(o => { o.status = 'staged'; o.eta = 0; o.firstIn = true; });
+  const why = mode === 'all' ? q.pick(ARRIVE_CFG.allWhy) : mode === 'group' ? `${k} team members were together nearby and arrived at the same time.` : k === 1 ? `${first[0].name} was closest and is already on scene.` : `${k} team members were closest and are already on scene.`;
+  S.arrival = { mode, count: k, of: n, why, ids: first.map(o => o.id) };
+  return S.arrival;
 }
 
 /* =====================================================================
@@ -2034,6 +2235,7 @@ function planOrder(u, o, sx, sy, assume) {
       if (canThrowFrom(sx, sy, o.room, assume, u, o.type)) return { ok: true, path: [], end: [sx, sy] };
       const p = pathAny(fn); if (!p) return { ok: false, reason: 'No opening into that room (breach a door or reach a window)' }; return { ok: true, path: p, end: p[p.length - 1] }; }
     case 'hold': return { ok: true, path: [], end: [sx, sy] };
+    case 'corner': { const c = cornerAt(sx, sy, u); if (!c) return { ok: false, reason: 'No corner here — stand at a hallway corner, door frame or house corner' }; return { ok: true, path: [], end: [sx, sy], corner: { px: c.px, py: c.py, n: c.hidden.length } }; }
     case 'aid': case 'rescue': case 'evac': return planCas(u, o, sx, sy, assume);
     case 'pa': { if (!hostile()) return { ok: false, reason: 'Not needed' }; if (!paInRange(sx, sy)) return { ok: false, reason: `Out of loudspeaker range — move within ~${NEGO_CFG.pa.range} m of the house` };
       if (u.orders.some(q => q !== o && q.type === 'pa')) return { ok: false, reason: 'One PA broadcast per 30 s' };
@@ -2073,7 +2275,7 @@ function orderReq(u, o) {
       if (o.via === 'robot' && (!(e.robot > 0) || !hasSpec(u, 'tech'))) return 'Robot delivery needs a robot and a Tech on the team'; }
     if (u.carrying && !['evac', 'rescue', 'hold'].includes(o.type) && !u.orders.some(q => q.cas === u.carrying)) return 'Carrying a casualty — Evac or Rescue first';
   } else if (u.kind === 'patrol') {
-    if (!['move', 'hold', 'shoot', 'board', 'aid', 'rescue', 'evac'].includes(o.type)) return 'Patrol officers can Move, Hold, Fire, get in a cruiser, or help casualties';
+    if (!['move', 'hold', 'shoot', 'board', 'aid', 'rescue', 'evac', 'corner'].includes(o.type)) return 'Patrol officers can Move, Hold, Fire, work a corner, get in a cruiser, or help casualties';
     if (['aid', 'rescue', 'evac'].includes(o.type) && u.inCar) return 'Get out of the cruiser first';
     if (o.type === 'shoot' && u.inCar) return 'Get out of the cruiser first (select the cruiser → Exit)';
     if (o.type === 'board') { const c = unit(o.car); if (!c || c.kind !== 'cruiser') return 'Tap a cruiser'; if (u.inCar) return 'Already in a cruiser'; if (c.occ.length >= 2) return 'Cruiser is full (2 seats)'; if (c.disabled) return 'That cruiser is disabled'; }
@@ -2216,7 +2418,7 @@ function stepAlong(u, o, goalFn, speed = 1) {
     }
     const [nx, ny] = p[0]; const e = edge(u.x, u.y, nx, ny);
     if (e.t === 'D' && e.d.state === 'closed') { e.d.state = 'open'; e.d.known = true; faceTo(u, nx, ny); noise(nx, ny, 2, 'door'); log(`${u.name}: opening ${e.d.name || 'door'}.`); return false; }
-    faceTo(u, nx, ny); u.x = nx; u.y = ny; u.waiting = false; u.moved = S.tick;
+    faceTo(u, nx, ny); u.x = nx; u.y = ny; u.waiting = false; u.moved = S.tick; if (u.slice) u.slice = null; // stepping off ends the pie slice
     if (roomAt(nx, ny) >= 0) break; // one cell per tick inside — careful movement
   }
   return goalFn(u.x, u.y);
@@ -2272,13 +2474,14 @@ function unitAct(u) {
     if (pc && !o.prog) { o.prog = 1; log(`${u.name}: inside the ${pc.name.toLowerCase()} — setting up at the ${pc.kind}.`); return; }
     const [hx, hy] = houseCenter(); if (pc) { u.x = pc.x; u.y = pc.y; u.perch = { id: pc.id, entry: pc.entry, kind: pc.kind, name: pc.name }; } else u.perch = { yard: true, kind: 'yard vantage', name: 'yard vantage point' };
     u.dir = Math.atan2(hy - u.y, hx - u.x); popOrder(u); const sp = spotterOf(u);
-    log(`${u.name}: OVERWATCH set — ${u.perch.kind}, ${sp ? 'spotter ' + sp.name + (sp.q ? ' (qualified)' : ' (untrained)') : 'no spotter'}.`, 'good'); return; }
+    xpAct('overwatch', u); log(`${u.name}: OVERWATCH set — ${u.perch.kind}, ${sp ? 'spotter ' + sp.name + (sp.q ? ' (qualified)' : ' (untrained)') : 'no spotter'}.`, 'good'); return; }
   const outside = roomAt(u.x, u.y) < 0;
   const speed = u.kind === 'drone' ? 2 : (u.kind === 'patrol' || u.kind === 'team') && outside && (u.impair || 0) < 0.35 ? 2 : 1;
+  if (o.type === 'corner') return cornerTick(u, o);
   if (o.type === 'move' || o.type === 'clear') {
     const r = stepAlong(u, o, (x, y) => x === o.x && y === o.y, speed);
     if (r === null) failOrders(u, 'route blocked'); else if (r) { popOrder(u); if (o.type === 'clear') { const rm = S.rooms[o.room];
-      if (!(S.suspect.room === o.room && suspectActive())) { log(`${u.name}: ${rm.name} CLEAR.`, 'good'); fx('text', u.x, u.y, { text: 'CLEAR', color: '#3ef0a0' }); } } }
+      if (!(S.suspect.room === o.room && suspectActive())) { log(`${u.name}: ${rm.name} CLEAR.`, 'good'); xpAct('clear', u, rm.name); fx('text', u.x, u.y, { text: 'CLEAR', color: '#3ef0a0' }); } } }
     return;
   }
   if (o.type === 'board') { const c = unit(o.car); if (!c || c.occ.length >= 2) { failOrders(u, 'cruiser full'); return; }
@@ -2320,7 +2523,7 @@ function unitAct(u) {
     const rm = S.rooms[o.room]; const tc = roomTargetCell(o.room);
     faceTo(u, tc[0], tc[1]); u.equip[o.type]--; popOrder(u);
     if (o.type === 'bang') { fx('flash', tc[0], tc[1], { fromX: u.x, fromY: u.y }); log(`${u.name}: BANG OUT — flashbang into ${rm.known ? rm.name : 'room'}.`, 'radio'); noise(tc[0], tc[1], 10, 'bang');
-      if (S.suspect.room === o.room && hostile()) { S.suspect.stun = 5; S.suspect.ambush = false; log('Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
+      if (S.suspect.room === o.room && hostile()) { S.suspect.stun = 5; S.suspect.ambush = false; xpAct('bang', u); log('Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
     else { gasDeploy(o.room); fx('gas', tc[0], tc[1], { room: o.room, fromX: u.x, fromY: u.y }); log(`${u.name}: CS gas deployed into ${rm.known ? rm.name : 'room'}.`, 'radio'); aggressive(15); }
     return;
   }
@@ -2330,7 +2533,7 @@ function doBreach(u, d, how) {
   d.state = 'breached'; d.known = true; d.barricaded = false; d.locked = false; S.stats.breaches++;
   const c = d.cells[Math.floor(d.cells.length / 2)]; const mx = (c[0][0] + c[1][0]) / 2, my = (c[0][1] + c[1][1]) / 2;
   fx('breach', mx, my, { how }); fx('text', mx, my, { text: 'BREACH', color: '#ffb020' });
-  log(`${u.name}: ${d.name} BREACHED (${BREACH[how] ? BREACH[how].name.toLowerCase() : how}).`, 'radio'); d.method = how;
+  xpAct('breach', u, d.name); log(`${u.name}: ${d.name} BREACHED (${BREACH[how] ? BREACH[how].name.toLowerCase() : how}).`, 'radio'); d.method = how;
   noise(mx, my, how === 'charge' ? 18 : 14, 'breach'); aggressive(how === 'charge' ? 25 : 20);
   const sp = S.suspect; if (false) { sp.stun = Math.max(sp.stun, 2); log('Suspect stunned by the blast.', 'good'); }
 }
@@ -2351,14 +2554,15 @@ function suspectWindowCells() { const sp = S.suspect; const out = []; for (const
 /** Classify a target from a firing point: open / concealed (hedge, fence — hidden, not protected) / covered (hard cover) / car / perched. */
 function targetClass(u, px, py) {
   if (u.kind === 'cruiser') return 'car';
+  if (sliceExposed(u, px, py) && los(px, py, u.x, u.y) !== 1) return 'slice';
   if (u.perch && u.perch.entry) return 'perched';
   if (roomAt(u.x, u.y) >= 0) return 'open';
   if (u.exiting && S.tick - u.exiting <= 1) return 'open';
   const l = losEx(px, py, u.x, u.y, true); return l.cov === 2 ? 'covered' : l.cov === 1 ? 'concealed' : 'open';
 }
-const T_PRIO = { open: 3, car: 2, concealed: 1.3, covered: 1, perched: 0.6 };
-const T_TRY = { open: 0.85, car: 0.6, concealed: 0.3, covered: 0.25, perched: 0.15 }; // concealment: he can barely see you, so he fires less
-const T_HIT = { open: 1, concealed: 0.85, covered: 0.2, perched: 0.12 }; // …but rounds go through a hedge; hard cover stops them
+const T_PRIO = { slice: 1.2, open: 3, car: 2, concealed: 1.3, covered: 1, perched: 0.6 };
+const T_TRY = { slice: 0.85 * 0.6, open: 0.85, car: 0.6, concealed: 0.3, covered: 0.25, perched: 0.15 }; // concealment: he can barely see you, so he fires less
+const T_HIT = { slice: 0.4, open: 1, concealed: 0.85, covered: 0.2, perched: 0.12 }; // …but rounds go through a hedge; hard cover stops them
 function suspectTick() {
   const sp = S.suspect; if (!suspectActive()) return;
   if (sp.stun > 0) { sp.stun--; return; }
@@ -2375,7 +2579,7 @@ function suspectTick() {
   // best (position, target) pair: his current cell or a window of his room
   const spots = [[sp.x, sp.y]].concat(sp.room >= 0 ? suspectWindowCells() : []);
   let best = null;
-  for (const u of shooters()) { for (const [px, py] of spots) { const d = dist(px, py, u.x, u.y); if (d > R) continue; const l = los(px, py, u.x, u.y); if (!l) continue;
+  for (const u of shooters()) { for (const [px, py] of spots) { const d = dist(px, py, u.x, u.y); if (d > R) continue; const l = los(px, py, u.x, u.y) || (sliceExposed(u, px, py) ? 1 : 0); if (!l) continue; // a pie-slicing officer is partly exposed where his slice reaches
       const cls = targetClass(u, px, py); const indoorTeam = u.kind === 'team' && roomAt(u.x, u.y) >= 0;
       const s = T_PRIO[cls] - d / 40 - (px !== sp.x || py !== sp.y ? 0.35 : 0) + (indoorTeam ? 1.5 : 0) + (u.kind === 'drone' || u.kind === 'robot' ? -0.8 : 0);
       if (!best || s > best.s) best = { u, px, py, d, l, cls, s }; } }
@@ -2405,7 +2609,7 @@ function suspectFire(b) {
     returnFire(); return;
   }
   if (T.kind === 'drone' || T.kind === 'robot') { if (S.rng.chance(0.45)) { T.status = 'down'; T.orders = []; log(`Shots fired — ${T.name} disabled.`, 'bad'); } else log(`Shots fired at ${T.name} — missed.`, 'alert'); return; }
-  p *= T_HIT[b.cls] || 1; if (T.moved === S.tick) p *= 0.8;
+  p *= b.cls === 'slice' ? sliceHit(T) : T_HIT[b.cls] || 1; if (T.moved === S.tick) p *= 0.8;
   if (T.kind === 'team') { p *= 1 - teamSkill(T) * 0.25; if (T.equip.shield > 0 && roomAt(T.x, T.y) >= 0) p *= 0.65; if (T.carrying && T.equip.shield > 0) p *= CAS_CFG.carryShield; if (hasSpec(T, 'point')) p *= 0.95; }
   p = clamp(p, 0.01, 0.55);
   if (S.rng.chance(p)) officerDown(T);
@@ -2481,7 +2685,7 @@ function fleeStep() {
     w.broken = true; sp.x = ox; sp.y = oy; sp.room = -1; fx('glass', ox, oy);
     const catcher = S.units.find(u => onFoot(u) && !(u.perch && u.perch.entry) && dist(u.x, u.y, ox, oy) <= 6 && los(u.x, u.y, ox, oy)) || S.units.find(u => u.kind === 'cruiser' && u.occ.length && dist(u.x, u.y, ox, oy) <= 4);
     if (catcher) { sp.mode = 'detained'; S.stats.method = 'Caught by perimeter'; log(`Suspect bails out a window — straight into ${catcher.name}. SUSPECT DETAINED.`, 'good'); }
-    else { sp.mode = 'escaped'; log('Suspect went out a window — perimeter gap. He is gone.', 'bad'); }
+    else { sp.mode = 'detained'; S.stats.escaped = true; S.stats.method = 'Caught after escape (outer units)'; log('Suspect went out a window through a perimeter gap — outer units and K9 tracked him down after a foot pursuit. SUSPECT DETAINED (perimeter breach).', 'bad'); }
     return;
   }
   const p = findPath(sp.x, sp.y, (x, y) => x === cx && y === cy, { suspect: true, canOpen: true });
@@ -2510,23 +2714,30 @@ function teamResponses() {
       if (u.equip.lesslethal > 0 && u.stance !== 'hold' && d <= 11 && !(u.llcd > S.tick)) { u.llcd = S.tick + 3; /* single-shot launcher: re-load before the next round */ const p = (0.3 + (hasSpec(u, 'marksman') ? 0.15 : 0) + teamSkill(u) * 0.15) * (sp.ambush ? 0.45 : 1);
         if (S.rng.chance(p)) { sp.mode = 'incapacitated'; fx('ll', sp.x, sp.y, { fromX: u.x, fromY: u.y }); log(`${u.name}: less-lethal round — suspect incapacitated, weapon dropped.`, 'good'); u.detain = true; continue; }
         else log(`${u.name}: less-lethal round missed.`, 'radio'); }
-      else if (sp.cd > 0) { sp.cd += 1; log(`${u.name}: "POLICE! DROP THE WEAPON!" — suspect ducks into cover.`, 'radio'); }
+      else if (sp.cd > 0) { sp.cd += 1; if (u.duckLog !== S.turn) { u.duckLog = S.turn; log(`${u.name}: "POLICE! DROP THE WEAPON!" — suspect ducks into cover.`, 'radio'); } }
     }
   }
   // K9 detection through walls
   for (const u of S.units) if (u.kind === 'team' && unitAlive(u) && u.deployed && hasSpec(u, 'k9') && dist(u.x, u.y, sp.x, sp.y) <= 5 && !sp.visible && (!sp.heat || sp.heat.turn !== S.turn)) {
     sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.located = true; log(`${u.name}: K9 is indicating — suspect close, ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'nearby'}.`, 'intel'); }
 }
-function detained(u, how) { const sp = S.suspect; sp.mode = 'detained'; if (sp.downBy === 'fire' && how === 'Less-lethal + arrest') how = 'Officer fire + arrest'; S.stats.method = how; fx('text', sp.x, sp.y, { text: 'SECURED', color: '#3ef0a0' }); log(`${u.name}: SUSPECT IN CUSTODY. Scene secure. (${how})`, 'good'); }
+function detained(u, how) { const sp = S.suspect; sp.mode = 'detained'; xpAct('detain', u && u.kind ? u : null); if (sp.downBy === 'fire' && how === 'Less-lethal + arrest') how = 'Officer fire + arrest'; S.stats.method = how; fx('text', sp.x, sp.y, { text: 'SECURED', color: '#3ef0a0' }); log(`${u.name}: SUSPECT IN CUSTODY. Scene secure. (${how})`, 'good'); }
+/** The mission ends only when the suspect is in custody or command chooses to withdraw — never on losses or elapsed time. */
 function checkEnd() {
   if (S.phase === 'over') return;
   const sp = S.suspect;
-  if (sp.mode === 'detained') { S.phase = 'over'; S.result = { win: true, title: 'SUSPECT IN CUSTODY', text: `Resolved in ${tMin(S.turn + 1)} (${elapsedAt(S.turn + 1)}). Method: ${S.stats.method}. Officers hit: ${S.stats.down}.` }; }
-  else if (sp.mode === 'escaped') { S.phase = 'over'; S.result = { win: false, title: 'SUSPECT ESCAPED', text: 'The perimeter had a gap. Keep containment points covered.' }; }
-  else if (S.turn >= TURN_LIMIT && sp.mode !== 'detained') { S.phase = 'over'; S.result = { win: false, title: 'STANDOFF CALLED OFF', text: `No resolution after ${tMin(S.turn + 1)}. Command has handed the scene to a relief team.` }; }
-  else if (S.stats.down >= LOSE_DOWN) { S.phase = 'over'; S.result = { win: false, title: 'OPERATION ABORTED', text: `${S.stats.down} officers hit. Command has pulled the team back.` }; }
-  if (S.phase === 'over') { casualtyResolve(S.result.win); S.result.debrief = debrief(); log(S.result.title, S.result.win ? 'good' : 'bad'); S.version++; }
+  if (sp.mode === 'detained') { S.phase = 'over'; S.result = { win: true, title: S.stats.escaped ? 'SUSPECT CAUGHT AFTER ESCAPE' : 'SUSPECT IN CUSTODY', text: `Resolved after ${tMin(S.turn + 1)} (${elapsedAt(S.turn + 1)}). Method: ${S.stats.method}. Officers hit: ${S.stats.down}.` }; }
+  if (S.phase === 'over') finishMission();
 }
+function finishMission() { casualtyResolve(S.result.win); S.result.debrief = debrief(); log(S.result.title, S.result.win ? 'good' : 'bad'); S.version++; }
+/** Units that can still act on scene (or are still coming). */
+function forceLeft() { const offs = S.officers.filter(o => o.status === 'enroute' || o.status === 'staged').length;
+  const field = S.units.filter(u => unitAlive(u) && (u.kind === 'team' ? teamOk(u).length > 0 : u.kind === 'patrol')).length; return offs + field; }
+/** Player ends the operation without a resolution (e.g. no mobile officers left). */
+function withdraw() { if (S.phase === 'over') return { ok: false, reason: 'Mission already over' };
+  const sp = S.suspect; S.phase = 'over'; S.stats.withdrawn = true;
+  S.result = { win: false, title: 'OPERATION WITHDRAWN', text: `Command ended the operation after ${tMin(S.turn)} without taking the suspect into custody${sp.mode === 'incapacitated' ? ' (suspect down but not secured)' : ''}. Scene handed over.` };
+  log('Command: withdraw — all units pull back to the perimeter.', 'bad'); finishMission(); return { ok: true }; }
 function endTurn() {
   S.turn++; S.phase = 'planning'; S.tick = 0; S.peek = [];
   for (const u of S.units) { u.orders = u.orders.filter(o => o.type !== 'hold' && o.type !== 'shoot'); u.holding = false; u.waiting = false; u.exiting = null;
@@ -2553,36 +2764,47 @@ function debrief() {
   out.push({ k: 'Casualties', v: own.length ? `${own.length} hit — evacuated ${cnt('evacuated')}, lost ${cnt('lost')}, killed in action ${cnt('kia')}.` : 'None.' });
   own.forEach(c => out.push({ k: '  ' + c.name, v: sevWord(c) + (c.initial ? ' (hit before SWAT arrived)' : '') }));
   const sc = S.cas.find(c => c.who === 'suspect');
-  const M = missionScore(); out.push({ k: 'Score', v: `${M.score} — ${M.grade}${M.parts.length ? ' (' + M.parts.join(', ') + ')' : ''}` });
+  const M = missionScore(); out.push({ k: 'Score', v: `${M.score} — ${M.grade}` });
+  M.items.forEach(i => out.push({ k: '  ' + (i.pts < 0 ? 'Deduction' : 'Bonus'), v: `${i.label}: ${i.pts > 0 ? '+' : '−'}${Math.abs(i.pts)}`, pts: i.pts }));
   out.push({ k: 'Suspect', v: sp.deceased ? 'Did not survive' : sc ? (sc.state === 'evacuated' ? 'Injured — evacuated to hospital in custody' : 'Injured') : sp.mode === 'detained' ? 'Uninjured, in custody' : sp.mode === 'escaped' ? 'Escaped' : 'Still inside' });
   return out;
 }
 
-/** Commendation score for the debrief / career. */
+/** Commendation score for the debrief / career. No time component. Losses are deductions, never an early end.
+    items: [{label, pts}] — every bonus and deduction, listed in the debrief. */
+const SCORE = { resolved: 500, talked: 250, rescued: 150, gapClosed: 50, officerHit: -200, officerLost: -400, civHurt: -300, civKilled: -600, hostageHurt: -300, hostageKilled: -800, suspectLost: -150, escape: -300, withdraw: -400, stateTeam: -250 };
 function missionScore() {
-  const R = S.result || {}, sp = S.suspect, N = S.nego, parts = []; let sc = 0;
-  const own = S.cas.filter(c => c.who !== 'suspect' && !c.initial), lost = own.filter(c => c.state === 'kia' || c.state === 'lost').length;
-  if (R.win) { sc += 500; parts.push('resolved +500'); if (N.how) { sc += 250; parts.push('talked out +250'); } const tb = Math.max(0, TURN_LIMIT - S.turn) * 10; sc += tb; parts.push(`time +${tb}`); }
-  else if (sp.mode === 'escaped') { sc -= 200; parts.push('escape −200'); }
-  if (own.length) { sc -= own.length * 120; parts.push(`officers hit −${own.length * 120}`); } if (lost) { sc -= lost * 250; parts.push(`lost −${lost * 250}`); }
-  if (sp.deceased) { sc -= 150; parts.push('suspect did not survive −150'); }
-  const init = S.cas.find(c => c.initial && c.state !== 'kia'); if (init && (init.state === 'evacuated' || init.state === 'transport' || init.stable)) { sc += 150; parts.push('rescued downed officer +150'); }
-  if (S.scene && S.scene.gap0.length && S.scene.gapClosed != null && !S.scene.slipTried) { sc += 50; parts.push('closed perimeter gap +50'); }
-  const grade = sc >= 1000 ? 'Medal of Valor' : sc >= 750 ? 'Unit Commendation' : sc >= 450 ? 'Satisfactory' : sc >= 0 ? 'Needs Review' : 'Board of Inquiry';
-  return { score: sc, grade, parts };
+  const R = S.result || {}, sp = S.suspect, N = S.nego, items = [], add = (label, pts) => { if (pts) items.push({ label, pts }); };
+  const after = S.cas.filter(c => !c.initial), lostSt = c => c.state === 'kia' || c.state === 'lost';
+  const ours = after.filter(c => c.who === 'officer' || c.who === 'patrol'), civ = after.filter(c => c.who === 'civilian' && !c.hostage), hos = after.filter(c => c.who === 'hostage' || c.hostage);
+  if (R.win) { add('Suspect resolved', SCORE.resolved); if (N.how) add('Talked out (no force)', SCORE.talked); }
+  if (S.stats.escaped) add('Perimeter breach — suspect escaped before capture', SCORE.escape);
+  if (S.stats.withdrawn) add('Withdrew without resolution', SCORE.withdraw);
+  if (S.stats.stateTeam) add('Scene handed to the State SWAT team', SCORE.stateTeam);
+  const oh = ours.filter(c => !lostSt(c)).length, ol = ours.filter(lostSt).length;
+  if (oh) add(`Officers hit (${oh})`, oh * SCORE.officerHit); if (ol) add(`Officers killed or lost (${ol})`, ol * SCORE.officerLost);
+  const ch = civ.filter(c => !lostSt(c)).length, ck = civ.filter(lostSt).length; if (ch) add(`Civilians hurt (${ch})`, ch * SCORE.civHurt); if (ck) add(`Civilians killed (${ck})`, ck * SCORE.civKilled);
+  const hh = hos.filter(c => !lostSt(c)).length, hk = hos.filter(lostSt).length; if (hh) add(`Hostages hurt (${hh})`, hh * SCORE.hostageHurt); if (hk) add(`Hostages killed (${hk})`, hk * SCORE.hostageKilled);
+  if (sp.deceased) add('Suspect did not survive', SCORE.suspectLost);
+  const init = S.cas.find(c => c.initial && c.state !== 'kia'); if (init && (init.state === 'evacuated' || init.state === 'transport' || init.stable)) add('Rescued officer down on arrival', SCORE.rescued);
+  if (S.scene && S.scene.gap0.length && S.scene.gapClosed != null && !S.scene.slipTried) add('Closed perimeter gap', SCORE.gapClosed);
+  const sc = items.reduce((a, i) => a + i.pts, 0), sg = v => (v > 0 ? '+' : '−') + Math.abs(v);
+  const grade = sc >= 1000 ? 'Medal of Valor' : sc >= 650 ? 'Unit Commendation' : sc >= 350 ? 'Satisfactory' : sc >= 0 ? 'Needs Review' : 'Board of Inquiry';
+  return { score: sc, grade, items, parts: items.map(i => `${i.label} ${sg(i.pts)}`), deductions: items.filter(i => i.pts < 0) };
 }
 /** Everything the career layer needs from a finished mission (pure data, no references into S). */
 function careerSummary() {
   const R = S.result || {}, sp = S.suspect, N = S.nego, m = S.stats.method || '';
-  const outcome = !R.win ? (sp.mode === 'escaped' ? 'escaped' : /ABORT/.test(R.title || '') ? 'aborted' : 'timeout')
+  const outcome = S.stats.stateTeam ? 'state' : !R.win ? 'withdrawn' : S.stats.escaped ? 'pursuit'
     : N.how === 'callout' ? 'callout' : N.how ? 'negotiated' : /perimeter/i.test(m) ? 'perimeter' : /Less-lethal/i.test(m) ? 'lesslethal' : /fire/i.test(m) ? 'officerfire' : /entry|flashbang|gas/i.test(m) ? 'tactical' : 'arrest';
   const officers = S.officers.map(o => { const c = S.cas.find(q => q.who === 'officer' && q.ref === o.id);
     return { careerId: o.careerId || null, id: o.id, name: o.name, spec: o.spec, onScene: o.status !== 'enroute', inTeam: !!o.team, cas: c ? { state: c.state, sev: c.sev, stable: !!c.stable } : null }; });
   const pc = S.cas.filter(c => c.who === 'patrol'), scs = S.cas.find(c => c.who === 'suspect');
   const M = missionScore();
-  return { seed: S.seed, win: !!R.win, title: R.title || '', method: m, outcome, turns: S.turn + 1, timeSec: (S.turn + 1) * TURN_SEC, score: M.score, grade: M.grade, officers,
+  return { seed: S.seed, win: !!R.win, title: R.title || '', method: m, outcome, turns: S.turn + 1, timeSec: (S.turn + 1) * TURN_SEC, score: M.score, grade: M.grade, deductions: M.deductions.map(d => ({ label: d.label, pts: d.pts })), officers,
     patrol: { hit: pc.length, lost: pc.filter(c => c.state === 'kia' || c.state === 'lost').length },
-    suspect: sp.deceased ? 'lost' : scs ? 'injured' : sp.mode === 'escaped' ? 'escaped' : sp.mode === 'detained' ? 'unhurt' : 'inside', variant: S.scene ? S.scene.variant : null };
+    suspect: sp.deceased ? 'lost' : scs ? 'injured' : sp.mode === 'escaped' ? 'escaped' : sp.mode === 'detained' ? 'unhurt' : 'inside', variant: S.scene ? S.scene.variant : null,
+    stateTakeover: !!S.stats.stateTeam, actions: (S.xpLog || []).map(x => ({ key: x.key, label: x.label, xp: x.xp, ids: x.ids.slice(), by: x.by, detail: x.detail, turn: x.turn })), level: (S.opts && S.opts.level) || null };
 }
 /* ---------- team management (planning phase only) ---------- */
 const nearStaging = (x, y) => dist(x, y, S.ext.staging.x, S.ext.staging.y) <= 4.5;
@@ -2665,13 +2887,15 @@ function newGame(seed, opts) {
   if (S.scene.injury) { const c = casById(S.scene.injury.cas), mate = S.units.find(u => u.kind === 'patrol' && u.status === 'ok' && !u.inCar);
     log(c.state === 'kia' ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit in the front yard — he's not moving. We can't get to him!"` : c.state === 'mobile' ? `${c.name}: "I'm hit — I can move. I'm in the open out front, need cover!"` : c.sev === 3 ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit out front, he's losing a lot of blood — we need help NOW!"` : `${c.name}: "I'm hit — I can't move. Front yard. Somebody get me out of here!"`, 'bad'); }
   log('SWAT team paged. Set containment from cover while the team responds.', 'system');
-  S.officers.forEach(o => log(`PAGER: ${o.name} (${SPECS[o.spec].name}${o.quals.length ? ', ' + o.quals.map(q => QUALS[q].name).join(', ') : ''}) en route — ETA ${tMin(o.eta)}.`, 'pager'));
+  const A = initialArrivals(); S.brief.arrival = A;
+  if (A) log(A.mode === 'all' ? `SWAT: FULL TEAM ON SCENE — ${A.why}` : `SWAT: ${A.count} of ${A.of} on scene at staging — ${A.why}${A.count < A.of ? ' The rest are paged and en route.' : ''}`, A.mode === 'all' ? 'good' : 'system');
+  S.officers.forEach(o => log(o.status === 'staged' ? `PAGER: ${o.name} (${SPECS[o.spec].name}${o.quals.length ? ', ' + o.quals.map(q => QUALS[q].name).join(', ') : ''}) ON SCENE at staging.` : `PAGER: ${o.name} (${SPECS[o.spec].name}${o.quals.length ? ', ' + o.quals.map(q => QUALS[q].name).join(', ') : ''}) en route — ETA ${tMin(o.eta)}.`, 'pager'));
   return S;
 }
 
-return { newGame, get state() { return S; }, MAP_W, MAP_H, TICKS, LOSE_DOWN, TURN_LIMIT, EQUIP, SPECS, QUALS, WEAPONS, SUSPECT_WEAPONS, STANCES, COVER_NAMES, COMMANDS, idx, roomAt, edge, los, losEx, findPath, planFor, queueOrder, undoOrder, clearOrders,
+return { newGame, get state() { return S; }, MAP_W, MAP_H, TICKS, LOSE_DOWN, SCORE, withdraw, forceLeft, updateVision, computeVis, checkEnd, EQUIP, SPECS, QUALS, WEAPONS, SUSPECT_WEAPONS, STANCES, COVER_NAMES, COMMANDS, idx, roomAt, edge, los, losEx, findPath, planFor, queueOrder, undoOrder, clearOrders,
   setCommand, execute, stepTick, formTeam, assign, equip, renameTeam, intelInfo, unit, off, teamOk, hasSpec, teamSkill, nearStaging, orderReq, setStance, BREACH, CHARGE_SAFE, breachEst, breachMethods, breachCan, defaultMethod, doorMid, gasAt, gasTurn, gasDeploy, gasCond, gasExpose, suspectGas, suspectGasTurn, masked, impairAcc, impairVis, donMasks, detonateCharge, dist, hitChance, coverInfo, expoAt, computeExpo,
-  validateHouse, validateWorld, footprint, carAxis, houseSideOf, exitCell, spotterOf, perchAt, owCone, weaponOf, onFoot, skillOf, houseCenter, carAt, snapCover, shieldAt, validateContain, COVER_CFG, TURN_SEC, missionScore, careerSummary, mmss, tDur, tMin, clockAt, elapsedAt, sideWatch, watchAt, houseSides, statusCheck, review911, roadblockHeld, withVirtualCar, SCENE_CFG, VARIANT_TXT, setupScene, sceneDebrief, T_HIT, T_TRY,
+  validateHouse, validateWorld, footprint, carAxis, houseSideOf, exitCell, spotterOf, perchAt, owCone, weaponOf, onFoot, skillOf, houseCenter, carAt, snapCover, shieldAt, validateContain, COVER_CFG, TURN_SEC, missionScore, careerSummary, ACT_XP, xpAct, xpSummary, callState, preview, cornerAt, cornerAvail, CORNER_CFG, formationFor, FORM_CFG, initialArrivals, ARRIVE_CFG, mmss, tDur, tMin, clockAt, elapsedAt, sideWatch, watchAt, houseSides, statusCheck, review911, roadblockHeld, withVirtualCar, SCENE_CFG, VARIANT_TXT, setupScene, sceneDebrief, T_HIT, T_TRY,
   CAS_CFG, NEGO_CFG, TALK_KEYS, TALK_NAMES, casById, casActive, casKnow, sevWord, casLabel, setEMS, emsCheck, ccpFor, setSurrenderSpot, surrSpot, setTalk, talkAvail, negoSummary, negOnScene, paCapable, paInRange, paUnits, protocolNow, ambushChance, ambushRisk, walkout, addCasualty, officerDown, suspectHit, robotPhoneGoal, defaultEMS, hostile, contactTry, runTalk, paAct, casualtyTurn, applyAid };
 })();
 
@@ -2932,7 +3156,16 @@ function buildComp() {
 }
 function rebake() { bakeGround(); bakeInterior(); bakeBlueprint(); bakeRoof(); const MW = Core.MAP_W, MH = Core.MAP_H; L.fog = mk(MW, MH); L.tint = mk(MW, MH); L.gas = mk(MW, MH); L.expo = mk(MW, MH);
   builtSeed = Core.state.seed; compKey = ''; dynVer = -1; planVer = -1; anims = []; seenFx = Core.state.fxSeq || 0; }
-let gasAny = false;
+let gasAny = false, peekAny = false;
+/** Line-of-sight reveal: indoor cells seen through open doors/doorways in rooms not yet explored. Lit while in view, dim once out of view. */
+function buildPeek() {
+  const S = Core.state, b = hbox(), seen = S.seenCell; peekAny = false; if (!seen || !L.interior) return;
+  const c = L.peek || (L.peek = mk(b.w * CS, b.h * CS)); if (c.width !== Math.ceil(b.w * CS) || c.height !== Math.ceil(b.h * CS)) { c.width = b.w * CS; c.height = b.h * CS; }
+  const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
+  for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) { const i = Core.idx(x, y), rm = S.room[i]; if (rm < 0 || !seen[i] || S.rooms[rm].explored) continue;
+    peekAny = true; const px = (x - b.x) * CS, py = (y - b.y) * CS; g.drawImage(L.interior, px, py, CS, CS, px, py, CS, CS);
+    if (!S.vis[i]) { g.fillStyle = 'rgba(4,10,20,.62)'; g.fillRect(px, py, CS, CS); } }
+}
 function updateDyn() {
   const S = Core.state, MW = Core.MAP_W, MH = Core.MAP_H;
   const fg = L.fog.getContext('2d'), fi = fg.createImageData(MW, MH), tg = L.tint.getContext('2d'), ti = tg.createImageData(MW, MH), gg = L.gas.getContext('2d'), gi = gg.createImageData(MW, MH);
@@ -2946,6 +3179,7 @@ function updateDyn() {
     const gv = S.vis[i] ? S.gas[i] : (S.gasSeen ? S.gasSeen[i] : 0);
     if (gv > 0.03) { gasAny = true; gi.data[p] = 214; gi.data[p + 1] = 236; gi.data[p + 2] = 196; gi.data[p + 3] = Math.min(220, 40 + gv * 190) * (S.vis[i] ? 1 : 0.6); } }
   fg.putImageData(fi, 0, 0); tg.putImageData(ti, 0, 0); gg.putImageData(gi, 0, 0); dynVer = S.version;
+  buildPeek();
 }
 
 /* =====================================================================
@@ -2996,6 +3230,7 @@ function frame(now) {
   lights(g, now, 'under');
   if (view.sel && S.phase === 'planning') drawExpo(g);
   const b = hbox(); g.drawImage(L.comp, b.x * CS, b.y * CS);
+  if (peekAny && L.peek) g.drawImage(L.peek, b.x * CS, b.y * CS);
   g.save(); g.beginPath(); for (const rm of S.rooms) if (rm.explored) g.rect(rm.x * CS, rm.y * CS, rm.w * CS, rm.h * CS); g.clip(); g.imageSmoothingEnabled = false; g.drawImage(L.fog, 0, 0, Core.MAP_W * CS, Core.MAP_H * CS); g.restore();
   drawDoors(g, now);
   drawCruisers(g, now);
@@ -3237,6 +3472,9 @@ function coverBadge(g, x, y, ci, s) { if (!ci || ci.level === 'inside') return; 
 function shieldPath(g, x, y, w, h) { g.beginPath(); g.moveTo(x, y - h / 2); g.quadraticCurveTo(x + w * 0.35, y - h * 0.36, x + w / 2, y - h * 0.4); g.lineTo(x + w / 2, y - h * 0.02); g.quadraticCurveTo(x + w * 0.45, y + h * 0.3, x, y + h / 2); g.quadraticCurveTo(x - w * 0.45, y + h * 0.3, x - w / 2, y - h * 0.02); g.lineTo(x - w / 2, y - h * 0.4); g.quadraticCurveTo(x - w * 0.35, y - h * 0.36, x, y - h / 2); g.closePath(); }
 /** Officers tuck toward their cover object: offset the marker 0.28 cell toward it. */
 function tuck(u, ux, uy) { if (u.kind !== 'team' && u.kind !== 'patrol') return [ux, uy]; if (animating) return [ux, uy]; const ci = Core.coverInfo(u.x, u.y); if (!ci || !ci.dx && !ci.dy) return [ux, uy]; return [ux + ci.dx * 0.28, uy + ci.dy * 0.28]; }
+const formCache = new Map();
+function formOf(u) { const S = Core.state, key = `${S.seed}|${u.x},${u.y}|${(u.dir || 0).toFixed(2)}|${S.version}|${S.tick}|${S.phase}|${u.perch ? 1 : 0}`; const c = formCache.get(u.uid); if (c && c.key === key) return c.f;
+  const f = Core.formationFor ? Core.formationFor(u) : null; formCache.set(u.uid, { key, f }); return f; }
 function teamShield(u) { const s = sz(); let [ux, uy] = posOf(u.uid, u.x, u.y); [ux, uy] = tuck(u, ux, uy); const [x, y] = toScreen(ux + 0.5, uy + 0.5); const lift = cam.z < 0.4 ? 26 : 40; return { x, y, sx: x, sy: y - lift * s, s }; }
 function onFootVisible(u) { return !(u.kind === 'patrol' && u.inCar) && !(u.kind === 'team' && !u.deployed && false); }
 function drawUnits(g, now) {
@@ -3263,7 +3501,14 @@ function drawUnits(g, now) {
     if (n) badge(g, x, y, String(n), '#ffffff', '#1d2a3a', s); }
   const teams = S.units.filter(u => u.kind === 'team'); teams.sort((a, b) => (view.sel === a.uid) - (view.sel === b.uid));
   for (const u of teams) { if (!u.deployed && u.status === 'ok' && !Core.teamOk(u).length) continue; const T = teamShield(u), { x, y, sx, sy } = T; const sel = view.sel === u.uid; const down = u.status !== 'ok'; const n = Core.teamOk(u).length; const col = down ? '#ff3b4e' : sel ? '#7fe3ff' : u.perch ? '#3ef0a0' : '#38c8ff';
-    g.save(); g.shadowColor = col; g.shadowBlur = 10; g.fillStyle = col; g.beginPath(); g.arc(x, y, 5 * s, 0, 7); g.fill(); g.restore();
+    const F = down ? null : formOf(u);
+    if (F && F.pts.length) { // one blue dot per team member, laid out in the context formation (stack / column / fan / cover line)
+      const rd = Math.max(3.2, Math.min(7, 0.14 * CS * cam.z)), k = CS * cam.z; g.save(); g.shadowColor = col; g.shadowBlur = 6;
+      F.pts.forEach(([dx, dy], i) => { const px = x + dx * k, py = y + dy * k; g.fillStyle = i === 0 ? '#bff1ff' : col; g.beginPath(); g.arc(px, py, rd, 0, 7); g.fill(); g.lineWidth = 1; g.strokeStyle = '#06203f'; g.stroke(); });
+      g.restore(); if (cam.z > 0.55) { g.fillStyle = 'rgba(191,241,255,.75)'; g.font = `700 ${7.5 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(F.kind.toUpperCase(), x, y + Math.max(rd * 2.2, 0.75 * k)); } }
+    else { g.save(); g.shadowColor = col; g.shadowBlur = 10; g.fillStyle = col; g.beginPath(); g.arc(x, y, 5 * s, 0, 7); g.fill(); g.restore(); }
+    if (u.slice && u.slice.active) { const [px, py] = toScreen(u.slice.px + 0.5, u.slice.py + 0.5); g.save(); g.strokeStyle = '#ffd36b'; g.lineWidth = 2; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(x, y); g.lineTo(px, py); g.stroke(); g.setLineDash([]);
+      g.fillStyle = '#ffd36b'; g.font = `800 ${9 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillText(`◩ ${u.slice.cut * 45}°`, px, py - 8 * s); g.restore(); }
     if (!down) { const d = dirOf(u.uid, u.dir || 0); g.strokeStyle = col; g.lineWidth = 2.5; g.beginPath(); g.moveTo(x + Math.cos(d - 0.6) * 9 * s, y + Math.sin(d - 0.6) * 9 * s); g.lineTo(x + Math.cos(d) * 13 * s, y + Math.sin(d) * 13 * s); g.lineTo(x + Math.cos(d + 0.6) * 9 * s, y + Math.sin(d + 0.6) * 9 * s); g.stroke(); }
     g.strokeStyle = `rgba(56,200,255,${sel ? 0.9 : 0.55})`; g.lineWidth = 1.5; g.setLineDash([2, 4]); g.beginPath(); g.moveTo(x, y - 6 * s); g.lineTo(sx, sy + 16 * s); g.stroke(); g.setLineDash([]);
     const w = 30 * s, h = 34 * s;
@@ -3339,7 +3584,12 @@ return { init, resize, frame, fit, pan, zoomAt, toCell, toScreen, setSafe, snaps
 </script>
 <script>
 /* =====================================================================
-   CAREER — persistent profile (roster, record, unlocks, memorial).
+   CAREER — persistent profile: TEAM XP → TEAM LEVEL (primary), roster, record, memorial.
+   Team level (1..100) drives staffing + armory through teamForLevel(): one data table (LEVEL),
+   used both by Career Mode (level from team XP) and by Quick Mission (level picked on the menu).
+   Save schema v3 (key unchanged: 'swat.career'). Team XP is the most protected value: stored at top
+   level, validated on its own, mirrored to a tiny backup key, and kept even if the roster is damaged
+   (the roster is then regenerated for the current level).
    Pure data + a tiny storage adapter. No DOM, no game rules, no render:
    the UI calls Career.*; the core only receives plain options
    ({ roster, gear, teamMax, armored }) and returns careerSummary().
@@ -3347,10 +3597,10 @@ return { init, resize, frame, fit, pan, zoomAt, toCell, toScreen, setSafe, snaps
    for Capacitor Preferences on iOS).
    ===================================================================== */
 const Career = (() => {
-  const VERSION = 2, KEY = 'swat.career', CODE_PREFIX = 'SWATC';
+  const VERSION = 3, KEY = 'swat.career', XP_KEY = 'swat.career.teamxp', CODE_PREFIX = 'SWATC';
   const SPEC_NAME = { leader: 'Team Leader', breacher: 'Breacher', point: 'Point', tech: 'Robot / Tech', negotiator: 'Negotiator', medic: 'Medic', marksman: 'Sniper', k9: 'K9 Handler' };
   const RANKS = [[0, 'Ofc.'], [150, 'Cpl.'], [400, 'Sgt.'], [800, 'Lt.']];
-  const NAMES = ['Reyes', 'Kim', 'Novak', 'Okafor', 'Brennan', 'Castillo', 'Haddad', 'Lindqvist', 'Morales', 'Tran', 'Walsh', 'Diaz', 'Petrov', 'Hughes', 'Sato', 'Mensah', 'Kowalski', 'Rivera', 'Abara', 'Fischer', 'Quinn', 'Varga', 'Ito', 'Moreau', 'Nolan', 'Silva'];
+  const NAMES = ['Ahn', 'Bauer', 'Carter', 'Duval', 'Ellis', 'Grant', 'Holm', 'Iqbal', 'Jensen', 'Keane', 'Lopez', 'Mbeki', 'Ortiz', 'Park', 'Ruiz', 'Shah', 'Torres', 'Usman', 'Vance', 'Weber', 'Young', 'Zane', 'Reyes', 'Kim', 'Novak', 'Okafor', 'Brennan', 'Castillo', 'Haddad', 'Lindqvist', 'Morales', 'Tran', 'Walsh', 'Diaz', 'Petrov', 'Hughes', 'Sato', 'Mensah', 'Kowalski', 'Rivera', 'Abara', 'Fischer', 'Quinn', 'Varga', 'Ito', 'Moreau', 'Nolan', 'Silva'];
   /** Unlock catalog. gear: armory pool overrides; base = what a new career has. */
   const UNLOCKS = {
     drone:      { name: 'Micro Drone', cost: 300, desc: 'Flying scout + thermal flyby (needs Tech).', gear: { drone: 1 } },
@@ -3363,7 +3613,47 @@ const Career = (() => {
     medkits:    { name: 'Extra Medkits', cost: 200, desc: '+2 medkits in the armory.', gear: { medkit: 5 } },
   };
   const BASE_GEAR = { drone: 0, robot: 0, lesslethal: 0 };
-  const BASE_SPECS = ['leader', 'breacher', 'point', 'tech', 'negotiator', 'breacher', 'medic', 'marksman', 'k9'];
+  const BASE_SPECS = ['leader', 'breacher', 'point', 'tech', 'negotiator', 'breacher', 'medic', 'marksman', 'k9']; // v6 starting roster (kept for migration)
+
+  /* ---------- TEAM LEVEL: one data table, easy to retune ----------
+     staff/teamMax/skill: [at level 1, at level 100], linear in between.
+     order: who joins as the unit grows (first N are on the call-out list at that level).
+     gear: item → [unlock level, count at unlock, count at 100]; locked items are 0.  */
+  const LEVEL = {
+    max: 100, staff: [4, 30], teamMax: [4, 8], skill: [0.6, 0.8], armoredAt: 60,
+    order: ['leader', 'point', 'breacher', 'negotiator', 'medic', 'point', 'breacher', 'marksman', 'tech', 'k9',
+      'negotiator', 'marksman', 'breacher', 'medic', 'point', 'tech', 'marksman', 'breacher', 'point', 'negotiator',
+      'medic', 'k9', 'marksman', 'point', 'breacher', 'tech', 'medic', 'point', 'marksman', 'breacher'],
+    gear: { shield: [1, 1, 6], ram: [1, 1, 4], halligan: [1, 1, 6], medkit: [1, 1, 10], bullhorn: [1, 1, 3],
+      bang: [10, 2, 20], polecam: [15, 1, 4], tphone: [20, 1, 4], charge: [25, 1, 8], drone: [30, 1, 3],
+      gas: [35, 1, 10], lesslethal: [45, 1, 6], robot: [50, 1, 3] },
+    xpCurve: [40, 1.5], // team XP needed for level L = 40 · (L-1)^1.5  (L2 = 40, L10 ≈ 1 080, L50 ≈ 13 700, L100 ≈ 39 400)
+  };
+  const GEAR_NAME = { shield: 'Ballistic shields', ram: 'Rams', halligan: 'Halligan bars', medkit: 'Medkits', bullhorn: 'Bullhorns', bang: 'Flashbangs', polecam: 'Pole cameras', tphone: 'Throw phones', charge: 'Breaching charges', drone: 'Micro drone', gas: 'CS gas', lesslethal: 'Less-lethal launchers', robot: 'Ground robot' };
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const clampL = L => Math.max(1, Math.min(LEVEL.max, Math.round(+L) || 1));
+  /** Everything a team of this level brings: roster specialties, armory counts, unlocks, team size. */
+  function teamForLevel(level) {
+    const L = clampL(level), t = (L - 1) / (LEVEL.max - 1);
+    const staff = Math.round(lerp(LEVEL.staff[0], LEVEL.staff[1], t)), specs = LEVEL.order.slice(0, staff);
+    const gear = {}, unlocked = [], locked = [];
+    for (const k in LEVEL.gear) { const [at, lo, hi] = LEVEL.gear[k]; if (L < at) { gear[k] = 0; locked.push({ k, at, name: GEAR_NAME[k] || k }); continue; }
+      gear[k] = Math.round(lerp(lo, hi, at >= LEVEL.max ? 1 : (L - at) / (LEVEL.max - at))); unlocked.push(k); }
+    const counts = {}; specs.forEach(s => counts[s] = (counts[s] || 0) + 1);
+    return { level: L, staff, specs, counts, gear, unlocked, locked, teamMax: Math.round(lerp(LEVEL.teamMax[0], LEVEL.teamMax[1], t)), armored: L >= LEVEL.armoredAt,
+      spotters: counts.marksman || 0, skill: +lerp(LEVEL.skill[0], LEVEL.skill[1], t).toFixed(2) };
+  }
+  function xpForLevel(L) { L = clampL(L); return Math.round(LEVEL.xpCurve[0] * Math.pow(L - 1, LEVEL.xpCurve[1])); }
+  function levelForXp(xp) { xp = validXp(xp) || 0; let L = 1; while (L < LEVEL.max && xpForLevel(L + 1) <= xp) L++; return L; }
+  function validXp(v) { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.floor(Math.min(n, 1e9)) : null; }
+  function levelOf(c) { return levelForXp(c && c.teamXp); }
+  function levelInfo(c) { const xp = validXp(c && c.teamXp) || 0, L = levelForXp(xp), a = xpForLevel(L), b = L < LEVEL.max ? xpForLevel(L + 1) : a;
+    return { level: L, xp, cur: a, next: b, pct: L >= LEVEL.max ? 1 : (xp - a) / Math.max(1, b - a) }; }
+  /** Options for a Quick Mission at a chosen level (no career roster, nothing recorded). */
+  function quickOpts(level) { const T = teamForLevel(level); return { level: T.level, specs: T.specs, gear: Object.assign({}, T.gear), teamMax: T.teamMax, armored: T.armored, spotters: T.spotters, skill: T.skill, career: false, mode: 'quick' }; }
+  /** Hire rookies until the roster holds every specialty the level calls for. */
+  function staffTo(c, L) { const T = teamForLevel(L), out = [];
+    for (const s in T.counts) { let have = c.roster.filter(o => o.spec === s).length; while (have < T.counts[s]) { out.push(recruit(c, s, true)); have++; } } return out; }
 
   /* ---------- storage adapter (graceful fallback) ---------- */
   const mem = {};
@@ -3376,40 +3666,68 @@ const Career = (() => {
   let seq = Date.now() % 100000;
   const rnd = () => Math.random();
   function recruit(c, spec, rookie) { const used = new Set(c.roster.map(o => o.last).concat(c.memorial.map(o => o.last)));
-    const free = NAMES.filter(n => !used.has(n)); const last = free.length ? free[Math.floor(rnd() * free.length)] : 'Recruit' + (c.roster.length + 1);
+    const free = NAMES.filter(n => !used.has(n)); const last = free.length ? free[Math.floor(rnd() * free.length)] : NAMES[Math.floor(rnd() * NAMES.length)] + '-' + (c.roster.length + 1);
     const o = { id: 'R' + (++seq) + '-' + Math.floor(rnd() * 1e4), last, spec, quals: [], skill: +((rookie ? 0.6 : 0.64) + rnd() * 0.12).toFixed(2), xp: 0, rank: 'Ofc.', missions: 0, wins: 0, injuries: 0, recover: 0, hired: c.record.played };
     if (spec === 'k9') o.dog = ['Rex', 'Bruno', 'Koda', 'Max'][Math.floor(rnd() * 4)]; c.roster.push(o); return o; }
-  function fresh() {
-    const c = { v: VERSION, created: new Date().toISOString(), points: 0, earned: 0,
+  /** Schema defaults (no roster). Every field here is filled in on load when missing. */
+  function defaults() { return { v: VERSION, created: new Date().toISOString(), teamXp: 0, points: 0, earned: 0,
       record: { played: 0, wins: 0, losses: 0, outcomes: {}, timeSec: 0, bestScore: null, officersHit: 0, officersLost: 0, patrolHit: 0, patrolLost: 0, suspects: { unhurt: 0, injured: 0, lost: 0, escaped: 0, inside: 0 } },
-      history: [], roster: [], memorial: [], unlocks: {} };
-    BASE_SPECS.forEach(s => recruit(c, s)); c.roster.find(o => o.spec === 'leader').rank = 'Sgt.';
-    const sp = c.roster.filter(o => !['leader', 'marksman'].includes(o.spec)); sp[1].quals.push('spotter'); sp[3].quals.push('spotter');
-    return c;
-  }
+      history: [], roster: [], memorial: [], unlocks: {}, calls: [], started: false }; }
+  /** A new career: team level 1 (team XP 0) with the level-1 staff. */
+  function fresh() { const c = defaults(); staffTo(c, 1); const ld = c.roster.find(o => o.spec === 'leader'); if (ld) ld.rank = 'Sgt.'; return c; }
+  function validOfficer(o) { return o && typeof o === 'object' && typeof o.last === 'string' && o.last && SPEC_NAME[o.spec]; }
+  function fixOfficer(o) { o.id = typeof o.id === 'string' && o.id ? o.id : 'R' + (++seq) + '-' + Math.floor(rnd() * 1e4); o.quals = Array.isArray(o.quals) ? o.quals.filter(q => typeof q === 'string') : [];
+    o.skill = Number.isFinite(+o.skill) ? Math.max(0.3, Math.min(0.95, +o.skill)) : 0.62; for (const k of ['missions', 'wins', 'injuries', 'recover']) o[k] = Math.max(0, +o[k] | 0); o.xp = validXp(o.xp) || 0; o.rank = typeof o.rank === 'string' ? o.rank : rankFor(o.xp); return o; }
   /** Bring any older save up to the current schema. v1 = { version:1, played, wins, officers:[{name,spec,xp}] }. */
-  function migrate(d) {
+  /** Bring any older save up to the current schema without losing data.
+      v1 (v1–v3 game): { version:1, played, wins, officers:[{name,spec,xp}] }
+      v2 (v4–v6 game): { v:2, points, record, roster, memorial, unlocks, history }  → team XP = total roster XP earned
+      v3 (v7+):        adds top-level teamXp (primary), calls, started.  Missing fields always default. */
+  function migrate(d, xpHint) {
     if (!d || typeof d !== 'object') throw new Error('not a save');
-    if (d.version === 1 && !d.v) { const c = fresh(); c.roster = [];
-      (d.officers || []).forEach(o => { const r = recruit(c, o.spec || 'point'); r.last = String(o.name || r.last).split(' ').pop(); r.xp = o.xp | 0; r.rank = rankFor(r.xp); });
-      if (!c.roster.length) BASE_SPECS.forEach(s => recruit(c, s));
-      c.record.played = d.played | 0; c.record.wins = d.wins | 0; c.record.losses = Math.max(0, c.record.played - c.record.wins); c.migratedFrom = 1; d = c; }
-    if (d.v === VERSION) { const f = fresh(); for (const k of ['record', 'unlocks']) d[k] = Object.assign({}, f[k], d[k] || {}); d.record.outcomes = d.record.outcomes || {}; d.record.suspects = Object.assign({}, f.record.suspects, d.record.suspects || {});
-      d.history = d.history || []; d.memorial = d.memorial || []; d.roster = (d.roster || []).filter(o => o && o.spec && o.last); if (!d.roster.length) BASE_SPECS.forEach(s => recruit(d, s)); return d; }
+    if (d.version === 1 && !d.v) { const c = defaults(); c.v = 2;
+      (Array.isArray(d.officers) ? d.officers : []).forEach(o => { if (!o) return; const r = recruit(c, SPEC_NAME[o.spec] ? o.spec : 'point'); r.last = String(o.name || r.last).split(' ').pop(); r.xp = validXp(o.xp) || 0; r.rank = rankFor(r.xp); });
+      c.record.played = d.played | 0; c.record.wins = d.wins | 0; c.record.losses = Math.max(0, c.record.played - c.record.wins); c.migratedFrom = 1; delete c.teamXp; d = c; }
+    if (d.v === 2) { // v6 → v7: team XP is the sum of everything the unit has earned (roster + fallen officers' share)
+      const rosterXp = (Array.isArray(d.roster) ? d.roster : []).reduce((a, o) => a + (o ? validXp(o.xp) || 0 : 0), 0);
+      d.teamXp = validXp(d.teamXp) != null ? validXp(d.teamXp) : rosterXp; d.v = 3; d.migratedFrom = d.migratedFrom || 2; d.started = true; d.staffUp = true; }
+    if (d.v === VERSION) { const f = defaults();
+      // 1) PRIMARY: team XP, validated on its own; fall back to the backup mirror, then to roster XP
+      let xp = validXp(d.teamXp); if (xp == null) xp = validXp(xpHint); if (xp == null) xp = (Array.isArray(d.roster) ? d.roster : []).reduce((a, o) => a + (o ? validXp(o.xp) || 0 : 0), 0); d.teamXp = xp;
+      // 2) secondary data: default anything missing or malformed
+      for (const k of ['record', 'unlocks']) d[k] = Object.assign({}, f[k], d[k] && typeof d[k] === 'object' ? d[k] : {});
+      d.record.outcomes = d.record.outcomes && typeof d.record.outcomes === 'object' ? d.record.outcomes : {}; d.record.suspects = Object.assign({}, f.record.suspects, d.record.suspects || {});
+      for (const k of ['history', 'memorial', 'calls']) if (!Array.isArray(d[k])) d[k] = [];
+      for (const k of ['points', 'earned']) d[k] = Math.max(0, +d[k] | 0); if (typeof d.created !== 'string') d.created = f.created; d.started = !!d.started;
+      // 3) roster: keep valid officers, regenerate the rest for the current level — team XP untouched
+      d.roster = (Array.isArray(d.roster) ? d.roster : []).filter(validOfficer).map(fixOfficer);
+      if (d.staffUp) { delete d.staffUp; staffTo(d, levelForXp(d.teamXp)); } // migrated careers get the hires their new level calls for (nobody removed)
+      if (!d.roster.length) { d.rosterRebuilt = true; staffTo(d, levelForXp(d.teamXp)); const ld = d.roster.find(o => o.spec === 'leader'); if (ld) ld.rank = 'Sgt.'; }
+      return d; }
     throw new Error('unknown save version ' + (d.v || d.version));
   }
   function rankFor(xp) { let r = 'Ofc.'; for (const [t, n] of RANKS) if (xp >= t) r = n; return r; }
-  function load() { try { const raw = store.get(KEY); if (!raw) return fresh(); return migrate(JSON.parse(raw)); } catch (e) { return fresh(); } }
-  function save(c) { try { return store.set(KEY, JSON.stringify(c)); } catch (e) { return false; } }
-  function reset() { const c = fresh(); save(c); return c; }
+  function backupXp() { try { const raw = store.get(XP_KEY); if (!raw) return null; const j = JSON.parse(raw); return j && j.v === 1 ? validXp(j.teamXp) : null; } catch (e) { return null; } }
+  /** Load: a damaged main save never costs the team XP — it is recovered from the backup mirror. */
+  function load() { const bx = backupXp(); let raw = null; try { raw = store.get(KEY); } catch (e) { }
+    if (raw) { try { const d = migrate(JSON.parse(raw), bx); if (bx != null && bx > d.teamXp && validXp(JSON.parse(raw).teamXp) == null) d.teamXp = bx; return d; } catch (e) { /* fall through */ } }
+    const c = fresh(); if (bx != null && bx > 0) { c.teamXp = bx; c.recovered = true; c.started = true; staffTo(c, levelForXp(bx)); } return c; }
+  function save(c) { try { c.teamXp = validXp(c.teamXp) || 0; store.set(XP_KEY, JSON.stringify({ v: 1, teamXp: c.teamXp, level: levelForXp(c.teamXp), at: new Date().toISOString() })); return store.set(KEY, JSON.stringify(c)); } catch (e) { return false; } }
+  function reset() { const c = fresh(); c.started = true; save(c); return c; }
 
-  /** Mission options for Core.newGame: available officers (not recovering), gear and team size from unlocks. */
+  /** Mission options for Core.newGame: available officers (not recovering); gear, team size and vehicle from the TEAM LEVEL.
+      Unlocks bought under the old (v6) points system still count as a floor, so no migrated career loses kit. */
   function missionOpts(c) {
-    const gear = Object.assign({}, BASE_GEAR); let teamMax = 5, armored = false;
-    for (const k in c.unlocks) { const u = UNLOCKS[k]; if (!u) continue; if (u.gear) Object.assign(gear, u.gear); if (u.teamMax) teamMax = Math.max(teamMax, u.teamMax); if (k === 'armored') armored = true; }
+    const T = teamForLevel(levelOf(c)), gear = Object.assign({}, T.gear); let teamMax = T.teamMax, armored = T.armored;
+    for (const k in c.unlocks) { const u = UNLOCKS[k]; if (!u) continue; if (u.gear) for (const g in u.gear) gear[g] = Math.max(gear[g] || 0, u.gear[g]); if (u.teamMax) teamMax = Math.max(teamMax, u.teamMax); if (k === 'armored') armored = true; }
     const roster = c.roster.filter(o => !(o.recover > 0)).map(o => ({ id: o.id, last: o.last, spec: o.spec, quals: o.quals.slice(), skill: o.skill, rank: o.rank, dog: o.dog }));
-    return { roster, gear, teamMax, armored, career: true };
+    return { roster, gear, teamMax, armored, career: true, mode: 'career', level: T.level };
   }
+  /** Random calls for the call-in screen. describe(seed) → Core.preview (scenario facts + a rough difficulty 1..3). */
+  function makeCalls(c, describe, n = 3) { const L = levelOf(c), want = 1 + 2 * (L - 1) / 99, pool = [];
+    for (let i = 0; i < n * 3; i++) { const seed = Math.floor(rnd() * 999998) + 1; const d = describe ? describe(seed) : { seed, diff: 2 }; pool.push(Object.assign({ seed }, d)); }
+    pool.sort((a, b) => Math.abs(a.diff - want) - Math.abs(b.diff - want)); const out = pool.slice(0, n); if (n > 1 && L < 100) out[n - 1] = pool[pool.length - 1]; // one off-level call for variety
+    c.calls = out; return out; }
   function available(c) { return c.roster.filter(o => !(o.recover > 0)); }
   /** Apply a finished mission (Core.careerSummary()) to the career. Returns a list of notes for the UI. */
   function record(c, m) {
@@ -3417,19 +3735,26 @@ const Career = (() => {
     R.bestScore = R.bestScore == null ? m.score : Math.max(R.bestScore, m.score); R.patrolHit += m.patrol.hit; R.patrolLost += m.patrol.lost; R.suspects[m.suspect] = (R.suspects[m.suspect] || 0) + 1;
     // recovering officers sat this one out: one mission closer to duty
     for (const o of c.roster) if (o.recover > 0 && !m.officers.some(q => q.careerId === o.id)) { o.recover--; if (!o.recover) notes.push(`${o.rank} ${o.last} is back on duty.`); }
+    const L0 = levelOf(c), noWin = !!m.stateTakeover, acts = Array.isArray(m.actions) ? m.actions : []; let teamGain = 0;
+    const actFor = id => acts.reduce((a, x) => a + ((x.ids || []).includes(id) ? x.xp : 0), 0);
+    acts.forEach(x => { if (!(x.ids && x.ids.length)) teamGain += x.xp; }); // patrol / command actions: team XP only
     for (const q of m.officers) { const o = c.roster.find(x => x.id === q.careerId); if (!o) continue;
       if (q.cas && (q.cas.state === 'kia' || q.cas.state === 'lost')) { c.roster = c.roster.filter(x => x !== o); c.memorial.push({ last: o.last, rank: o.rank, spec: o.spec, missions: o.missions + 1, date: new Date().toISOString().slice(0, 10), seed: m.seed, op: m.title });
         R.officersLost++; R.officersHit++; notes.push(`${o.rank} ${o.last} (${SPEC_NAME[o.spec]}) was killed in the line of duty. Added to the memorial.`); continue; }
       o.missions++; if (m.win) o.wins++;
-      const xp = q.onScene ? (q.inTeam ? 40 : 20) + (m.win ? 40 : 0) + Math.max(0, Math.round(m.score / 25)) : 5; o.xp += xp;
+      const ax = actFor(q.id), xp = noWin ? ax : (q.onScene ? (q.inTeam ? 40 : 20) + (m.win ? 40 : 0) + Math.max(0, Math.round(m.score / 25)) : 5) + ax; o.xp += xp; teamGain += xp;
       const nr = rankFor(o.xp); if (nr !== o.rank && RANKS.findIndex(r => r[1] === nr) > RANKS.findIndex(r => r[1] === o.rank)) { o.rank = nr; notes.push(`${o.last} promoted to ${nr}`); }
       if (q.onScene) o.skill = +Math.min(0.95, o.skill + (m.win ? 0.012 : 0.006)).toFixed(3);
       if (o.missions === 4 && !o.quals.includes('spotter') && o.spec !== 'marksman' && o.spec !== 'leader' && m.win) { o.quals.push('spotter'); notes.push(`${o.last} qualified as Spotter.`); }
       if (q.cas) { R.officersHit++; o.injuries++; o.recover = q.cas.stable && q.cas.sev < 3 ? 1 : q.cas.sev >= 3 ? 3 : 2; notes.push(`${o.rank} ${o.last} injured — recovering, out for ${o.recover} mission${o.recover > 1 ? 's' : ''}.`); } }
     // keep every core role staffed: hire a rookie when nobody (fit or recovering) holds it
-    for (const s of BASE_SPECS.filter((v, i, a) => a.indexOf(v) === i)) if (!c.roster.some(o => o.spec === s)) { const r = recruit(c, s, true); notes.push(`New hire: Ofc. ${r.last} (${SPEC_NAME[s]}).`); }
-    const pts = Math.max(25, Math.round(m.score / 4) + (m.win ? 50 : 0)); c.points += pts; c.earned += pts; notes.unshift(`+${pts} career points`);
-    c.history.unshift({ date: new Date().toISOString(), seed: m.seed, win: m.win, title: m.title, outcome: m.outcome, score: m.score, grade: m.grade, timeSec: m.timeSec }); c.history = c.history.slice(0, 25);
+    c.teamXp = (validXp(c.teamXp) || 0) + teamGain; const L1 = levelOf(c);
+    notes.unshift(`+${teamGain} team XP${noWin ? ' (individual actions only — no mission completion XP)' : ''} · Team level ${L1}${L1 > L0 ? ` ▲ (was ${L0})` : ''}`);
+    if (L1 > L0) { const T0 = teamForLevel(L0), T1 = teamForLevel(L1); T1.unlocked.filter(k => !T0.unlocked.includes(k)).forEach(k => notes.push(`Unlocked: ${GEAR_NAME[k] || k}.`)); if (T1.teamMax > T0.teamMax) notes.push(`Teams of up to ${T1.teamMax}.`); if (T1.armored && !T0.armored) notes.push('Unlocked: armored rescue vehicle.'); }
+    // keep every specialty the level calls for staffed: hire rookies (fallen officers replaced too)
+    staffTo(c, L1).forEach(r => notes.push(`New hire: Ofc. ${r.last} (${SPEC_NAME[r.spec]}).`));
+    const pts = m.score < 0 ? 10 : Math.max(25, Math.round(m.score / 4) + (m.win ? 50 : 0)); /* losses never end a mission early, they cut the score (and so the points) */ c.points += pts; c.earned += pts; /* legacy v6 points: kept for old saves, no longer shown */
+    c.history.unshift({ date: new Date().toISOString(), seed: m.seed, win: m.win, title: m.title, outcome: m.outcome, score: m.score, grade: m.grade, timeSec: m.timeSec, teamXp: teamGain, level: L1, deductions: (m.deductions || []).map(d => d.label + ' ' + d.pts) }); c.history = c.history.slice(0, 25);
     return notes;
   }
   function buy(c, key) { const u = UNLOCKS[key]; if (!u) return { ok: false, reason: 'Unknown unlock' }; if (c.unlocks[key]) return { ok: false, reason: 'Already unlocked' }; if (c.points < u.cost) return { ok: false, reason: `Needs ${u.cost} points` };
@@ -3439,10 +3764,16 @@ const Career = (() => {
   function sum(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
   const b64e = s => typeof btoa === 'function' ? btoa(unescape(encodeURIComponent(s))) : Buffer.from(s, 'utf8').toString('base64');
   const b64d = s => typeof atob === 'function' ? decodeURIComponent(escape(atob(s))) : Buffer.from(s, 'base64').toString('utf8');
-  function exportCode(c) { const j = JSON.stringify(c), b = b64e(j); return `${CODE_PREFIX}${VERSION}.${sum(j)}.${b}`; }
-  function importCode(code) { const m = /^SWATC(\d+)\.([0-9a-z]+)\.([A-Za-z0-9+/=\s]+)$/.exec(String(code || '').trim()); if (!m) throw new Error('Not a career code');
-    const j = b64d(m[3].replace(/\s+/g, '')); if (sum(j) !== m[2]) throw new Error('Code is damaged (checksum mismatch)'); return migrate(JSON.parse(j)); }
-  return { VERSION, KEY, UNLOCKS, SPEC_NAME, RANKS, fresh, migrate, load, save, reset, missionOpts, available, record, buy, exportCode, importCode, rankFor, setStorage, get storageKind() { return store.kind; } };
+  /** Code: SWATC3.L<level>-X<teamXp>-<xpsum>.<sum>.<base64 json>  — team level/XP readable up front (old v1/v2 codes: SWATC2.<sum>.<b64>). */
+  function exportCode(c) { const j = JSON.stringify(c), b = b64e(j), xp = validXp(c.teamXp) || 0; return `${CODE_PREFIX}${VERSION}.L${levelForXp(xp)}-X${xp}-${sum('X' + xp)}.${sum(j)}.${b}`; }
+  function codeHeader(code) { const m = /^SWATC(\d+)\.L(\d+)-X(\d+)-([0-9a-z]+)\./.exec(String(code || '').trim()); if (!m || sum('X' + m[3]) !== m[4]) return null; return { v: +m[1], level: +m[2], teamXp: +m[3] }; }
+  /** Import any code version. opt.recoverXp: a damaged body with an intact team-XP header still restores the team XP (new roster). */
+  function importCode(code, opt) { const s = String(code || '').trim(); const m = /^SWATC(\d+)\.(?:L\d+-X\d+-[0-9a-z]+\.)?([0-9a-z]+)\.([A-Za-z0-9+/=\s]+)$/.exec(s); const h = codeHeader(s);
+    const recover = why => { if (opt && opt.recoverXp && h) { const c = fresh(); c.teamXp = h.teamXp; c.started = true; c.recovered = true; staffTo(c, levelForXp(h.teamXp)); return c; } throw new Error(why); };
+    if (!m) return recover('Not a career code');
+    let j; try { j = b64d(m[3].replace(/\s+/g, '')); } catch (e) { return recover('Code is damaged'); } if (sum(j) !== m[2]) return recover('Code is damaged (checksum mismatch)');
+    const d = migrate(JSON.parse(j), h ? h.teamXp : null); if (h && validXp(d.teamXp) !== h.teamXp && h.teamXp > d.teamXp) d.teamXp = h.teamXp; return d; }
+  return { VERSION, KEY, XP_KEY, LEVEL, GEAR_NAME, teamForLevel, xpForLevel, levelForXp, levelOf, levelInfo, quickOpts, staffTo, makeCalls, codeHeader, defaults, UNLOCKS, SPEC_NAME, RANKS, fresh, migrate, load, save, reset, missionOpts, available, record, buy, exportCode, importCode, rankFor, setStorage, get storageKind() { return store.kind; } };
 })();
 if (typeof module !== 'undefined') module.exports = Career;
 
@@ -3493,6 +3824,7 @@ const ACTS = [
   { k: 'gas', ic: '☁', name: 'CS Gas', key: 'G', kinds: 'team', tip: 'Tap a room to deploy CS gas — it spreads through open doors; teams mask up automatically', eq: 'gas' },
   { k: 'mask', ic: 'Ⓜ', name: 'Mask', key: 'K', kinds: 'team', tip: 'Don / remove gas masks (donning takes one tick; masks slightly reduce vision and aim)', instant: true },
   { k: 'clear', ic: '▣', name: 'Clear', key: 'C', kinds: 'team', tip: 'Tap a room to enter and clear it' },
+  { k: 'corner', ic: '◩', name: 'Work Corner', key: 'N', kinds: 'team patrol', tip: 'Slice the pie: from a hallway corner, door frame or house corner, the unit edges out in 45° cuts, revealing a little more each step, and stops the moment it sees a threat. Only a sliver of the unit is exposed while it works', instant: true },
   { k: 'shoot', ic: '◎', name: 'Fire', key: 'T', kinds: 'team patrol', tip: 'Tap the suspect / a window to fire aimed shots — the hit chance is shown before you commit' },
   { k: 'suppress', ic: '⁂', name: 'Suppress', key: 'U', kinds: 'team patrol', tip: 'Tap a window / room to lay suppressive fire: low hit chance, makes the suspect duck instead of firing' },
   { k: 'overwatch', ic: '⌯', name: 'Overwatch', key: 'O', kinds: 'team', tip: 'Tap a green perch (neighbor window/roof) or a yard spot for the sniper; the cone shows the sight-lines' },
@@ -3513,17 +3845,22 @@ const ACTS = [
 ];
 const STANCE_ORDER = ['return', 'free', 'hold'], STANCE_IC = { return: '↺', free: '✱', hold: '⊘' };
 function actsFor(u) { return u ? ACTS.filter(a => a.kinds.split(' ').includes(u.kind)) : ACTS.filter(a => a.kinds.includes('team')); }
-function allowed(u, k) { if (!u || u.status !== 'ok') return false; if (u.kind === 'cruiser' && u.disabled && k === 'move') return false; return actsFor(u).some(a => a.k === k); }
+function cornerHere(u) { if (!u || u.perch || (u.kind === 'patrol' && u.inCar)) return null; const [x, y] = planEnd(u); return Core.cornerAt(x, y, u); }
+function allowed(u, k) { if (!u || u.status !== 'ok') return false; if (u.kind === 'cruiser' && u.disabled && k === 'move') return false; if (k === 'corner' && !cornerHere(u)) return false; return actsFor(u).some(a => a.k === k); }
 const maskTxt = m => m === 'on' ? 'MASKED' : m === 'donning' ? 'MASKING…' : 'mask off (carried)';
 const coverTxt = u => { if (u.kind === 'patrol' && u.inCar) return 'in cruiser'; const c = Core.coverInfo(u.x, u.y); return c.level === 'inside' ? 'inside' : c.level === 'cover' ? `hard cover${c.obj ? ' · ' + c.obj : ''}` : c.level === 'partial' ? `concealed${c.obj ? ' · ' + c.obj : ''}` : 'EXPOSED'; };
 const coverCol = u => { if (u.kind === 'patrol' && u.inCar) return 'var(--cyan2)'; const l = Core.coverInfo(u.x, u.y).level; return l === 'open' ? 'var(--red)' : l === 'partial' ? 'var(--amber)' : 'var(--green)'; };
 
 /* ---------------- panels ---------------- */
-function renderTop() { const S = Core.state, I = Core.intelInfo(); $('opname').textContent = S.opName; const tt = S.phase === 'over' ? S.turn + 1 : S.turn; $('st-turn').textContent = Core.elapsedAt(tt, S.phase === 'executing' ? S.tick : 0); $('st-clock').textContent = Core.clockAt(tt, S.phase === 'executing' ? S.tick : 0).slice(0, 5); $('st-seed').textContent = S.seed + (S.opts && S.opts.career ? ' · C' : '');
+/** Career is a between-scenarios menu: before the first EXECUTE of a scenario, or once it is over. */
+function careerAllowed() { const S = Core.state; return S.phase === 'over' || (S.phase === 'planning' && S.turn === 0); }
+function renderTop() { const S = Core.state, I = Core.intelInfo(); $('opname').textContent = S.opName; const tt = S.phase === 'over' && !S.stats.withdrawn ? S.turn + 1 : S.turn, el = Core.elapsedAt(tt, S.phase === 'executing' ? S.tick : 0);
+  // mission time lives in the radio log header (and the menu), not the top bar — information only, there is no time limit
+  $('log-clock').textContent = `T+${el} · ${Core.clockAt(tt, S.phase === 'executing' ? S.tick : 0).slice(0, 5)}`; $('mn-time').textContent = el; $('mn-op').textContent = S.opName; $('st-seed').textContent = S.seed + (S.opts && S.opts.career ? ' · career' : '');
+  const between = careerAllowed(), car = !!(S.opts && S.opts.career); $('b-state').style.display = car && S.phase !== 'over' ? '' : 'none'; $('b-main').disabled = car && !between; $('b-career').disabled = !between; $('mn-car').textContent = between ? 'Roster, record, unlocks' : 'Available between scenarios (debrief or before the first EXECUTE)';
   $('opsub').textContent = `BARRICADED SUBJECT · ${I.arch === 'UNKNOWN' ? 'RESIDENTIAL' : I.arch.toUpperCase()}`;
-  $('st-down').innerHTML = `<span style="color:${S.stats.down ? 'var(--red)' : '#fff'}">${S.stats.down}</span> / ${Core.LOSE_DOWN}`;
   const m = S.suspect.mode; const cls = S.phase === 'over' ? (S.result && S.result.win ? 'green' : 'red') : m === 'barricaded' ? 'red' : m === 'alert' || m === 'fleeing' ? 'amber' : 'green';
-  $('st-status').innerHTML = `<span class="pill ${cls}">${S.phase === 'over' ? (S.result.win ? 'RESOLVED' : 'FAILED') : S.phase === 'executing' ? 'EXECUTING' : (I.suspect === 'UNKNOWN' ? 'BARRICADED' : I.suspect)}</span>`; }
+  $('st-status').innerHTML = `<span class="pill ${cls}">${S.phase === 'over' ? (S.result.win ? 'RESOLVED' : S.stats.withdrawn ? 'WITHDRAWN' : 'ENDED') : S.phase === 'executing' ? 'EXECUTING' : (I.suspect === 'UNKNOWN' ? 'BARRICADED' : I.suspect)}</span>`; }
 function teamStatus(u) { const t = []; if (u.mask === 'on') t.push('<span style="color:var(--green)">Ⓜ masked</span>'); else if (u.mask === 'donning') t.push('<span style="color:var(--amber)">masking…</span>');
   if (u.impair > 0.1) t.push(`<span style="color:var(--amber)">☁ impaired ${Math.round(u.impair * 100)}%</span>`); if (u.stun > 0) t.push('<span style="color:var(--amber)">✷ dazed</span>');
   if (u.perch) t.push(`<span style="color:var(--green)">⌯ ${esc(u.perch.name || 'overwatch')}</span>`); return t.join(' · '); }
@@ -3574,9 +3911,12 @@ function renderInfo() { const S = Core.state, I = Core.intelInfo(), sp = S.suspe
     + (sp.maskSeen ? `<span>Gas mask</span><b style="color:var(--red)">WEARING ONE</b>` : '') + (sp.visible && sp.impair > 0.1 && !sp.maskOn ? `<span>Condition</span><b style="color:var(--amber)">COUGHING</b>` : '')
     + (I.containKnown ? `<span>Containment</span><b style="color:${I.contain === I.containTotal && !I.sides.gaps.length ? 'var(--green)' : 'var(--amber)'}">${I.contain} / ${I.containTotal} posts · ${I.sides.n}/${I.sides.of} sides${I.sides.gaps.length ? ' · GAP ' + I.sides.gaps.join(', ').toUpperCase() : ''}</b>` : `<span>Containment</span><b style="color:var(--dim);font-size:11px">? — run a Status Check</b>`) + `${negRow()}${I.cas ? `<span>Casualties</span><b style="color:var(--amber)">${I.cas} need help</b>` : ''}<span>Intel action</span><b style="color:var(--cyan2)">${S.cmd ? Core.COMMANDS[S.cmd].name : '—'}</b>`;
   $('intelpct').textContent = I.level + '%'; $('intelbar').style.width = I.level + '%'; }
+function renderMini() { const S = Core.state, I = Core.intelInfo(), last = S.log[S.log.length - 1];
+  $('bmini').innerHTML = `<div class="mr"><span>Suspect</span><b>${esc(I.suspect)}</b></div><div class="mr"><span>Threat</span><b>${esc(I.threat)}</b></div><div class="mr"><span>Rooms</span><b>${I.roomsKnown}/${I.roomsTotal} · ${I.explored} seen</b></div><div class="mr"><span>Intel</span><b>${I.level}%</b></div>`
+    + (last ? `<div class="ml"><i>T+${Core.elapsedAt(last.turn, last.tick)}</i>${esc(last.text)}</div>` : ''); }
 function renderLog(force) { const S = Core.state; if (!force && S.log.length === logLen) return; logLen = S.log.length; const L = S.log.slice(-60);
-  $('log').innerHTML = L.map(e => `<div class="${e.kind}"><span class="t" title="mission ${Core.elapsedAt(e.turn, e.tick)}">${Core.clockAt(e.turn, e.tick)}</span>${esc(e.text)}</div>`).join(''); $('log').scrollTop = 1e6;
-  const last = L[L.length - 1]; $('ticker').textContent = last ? last.text : ''; }
+  $('log').innerHTML = L.map(e => `<div class="${e.kind}"><span class="t" title="${Core.clockAt(e.turn, e.tick)} time of day">T+${Core.elapsedAt(e.turn, e.tick)}</span>${esc(e.text)}</div>`).join(''); $('log').scrollTop = 1e6;
+  const last = L[L.length - 1]; $('ticker').textContent = last ? `T+${Core.elapsedAt(last.turn, last.tick)} ${last.text}` : ''; renderMini(); }
 function renderActs() { const S = Core.state, u = selUnit(); let h = ''; const list = actsFor(u);
   for (const a of list) { const ok = !!u && allowed(u, a.k) && S.phase === 'planning'; const cnt = a.eq && u && u.equip ? u.equip[a.eq] || 0 : null;
     const nm = a.k === 'mask' && u ? (u.mask === 'on' ? 'Mask Off' : 'Masks On') : a.name;
@@ -3622,7 +3962,7 @@ function renderTeamDlg() { const S = Core.state, u = Core.unit(openTeam); if (!u
   <div class="sec">Equipment</div>${at ? '' : '<div class="note">⚠ Team must be at the staging area (SWAT truck) to draw from or return to the armory.</div>'}<div class="eq">${eq}</div>
   <div style="display:flex;gap:8px;margin-top:14px"><button data-close="m-team" style="flex:1">Done</button><button id="t-sel" style="flex:1" class="on">Give Orders</button></div></div>`; }
 function openTeamDlg(uid) { openTeam = uid; renderTeamDlg(); $('m-team').classList.add('show'); SFX.click(); }
-function closeModal(id) { const ids = id ? [id] : ['m-team', 'm-intel', 'm-help', 'm-end', 'm-brief', 'm-911', 'm-career']; if (ids.includes('m-911')) stopSpeech(); for (const k of ids) { const m = $(k); if (m) m.classList.remove('show'); if (k === 'm-team') openTeam = null; } }
+function closeModal(id) { const ids = id ? [id] : ['m-team', 'm-intel', 'm-help', 'm-end', 'm-brief', 'm-911', 'm-career', 'm-wd', 'm-menu', 'm-main', 'm-calls']; if (ids.includes('m-911')) stopSpeech(); for (const k of ids) { const m = $(k); if (m) m.classList.remove('show'); if (k === 'm-team') openTeam = null; } }
 $('team-dlg').addEventListener('change', e => { const t = e.target;
   if (t.id === 't-name') { Core.renameTeam(openTeam, t.value); refresh(true); }
   if (t.dataset.move) { const r = Core.assign(t.dataset.move, t.value === '__staging' ? null : t.value); if (!r.ok) toast(r.reason); else SFX.order(); if (!Core.unit(openTeam)) closeModal('m-team'); refresh(true); } });
@@ -3660,16 +4000,41 @@ $('intel-dlg').addEventListener('click', e => { const b = e.target.closest('butt
 $('intel-dlg').addEventListener('click', e => { const b = e.target.closest('button[data-cmd]'); if (!b) return; const k = b.dataset.cmd; if (k === 'call911') { closeModal('m-intel'); open911(); return; } const r = Core.setCommand(k === '__none' ? null : k); if (!r.ok) toast(r.reason); else { SFX.order(); if (k !== '__none') toast(Core.COMMANDS[k].instant ? `${Core.COMMANDS[k].name} — done (see log)` : `${Core.COMMANDS[k].name} queued for the next 30 s`, true); } closeModal('m-intel'); refresh(true); });
 
 /* ---------------- end / help ---------------- */
-function showEnd() { const S = Core.state, R = S.result; if (!R) return; careerRecordEnd(); const turns = S.turn + (S.phase === 'over' ? 1 : 0);
+function showEnd() { const S = Core.state, R = S.result; if (!R) return; careerRecordEnd(); const turns = S.turn + (S.phase === 'over' && !S.stats.withdrawn ? 1 : 0); const D = R.debrief || [], SC = D.filter(d => d.pts != null), AA = D.filter(d => d.pts == null && d.k !== 'Score'), M = Core.missionScore();
   $('end-dlg').innerHTML = `<div class="ph">Operation Debrief<span class="sp"></span><small>${esc(S.opName)} · SEED ${S.seed}</small></div><div class="body"><div class="big" style="color:${R.win ? 'var(--green)' : 'var(--red)'}">${esc(R.title)}</div><p style="text-align:center;color:#bcd0e6">${esc(R.text)}</p>
    <div class="kv"><span>Mission time</span><b>${Core.tMin(turns)} (${Core.elapsedAt(turns)})</b><span>Resolution</span><b>${esc(S.stats.method || '—')}</b><span>Breaches</span><b>${S.stats.breaches}</b><span>Shots fired by suspect</span><b>${S.stats.shots}</b><span>Officers hit</span><b>${S.stats.down}</b></div>
-   ${(R.debrief || []).length ? `<div class="sh" style="margin-top:12px">After-action</div><div class="kv">${R.debrief.map(d => `<span>${esc(d.k.trim())}</span><b style="font-size:11.5px;font-weight:500;${d.k.startsWith('  ') ? 'color:var(--dim)' : ''}">${esc(d.v)}</b>`).join('')}</div>` : ''}
-   ${careerEndHTML()}<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button data-close="m-end" style="flex:1">Review Map</button><button id="e-retry" style="flex:1">Replay Seed${S.opts && S.opts.career ? ' (not counted)' : ''}</button><button id="e-cont" class="on" style="flex:1">Continue ▸ Career</button></div></div>`;
+   <div class="sh" style="margin-top:12px">Score</div><div class="kv scoretab">${SC.map(d => `<span>${esc(d.v.replace(/: [+−]\d+$/, ''))}</span><b style="color:${d.pts < 0 ? 'var(--red)' : 'var(--green)'}">${d.pts > 0 ? '+' : '−'}${Math.abs(d.pts)}</b>`).join('') || '<span>No bonuses or deductions</span><b>0</b>'}<span style="color:#fff;font-weight:700">Total</span><b style="font-size:15px">${M.score} — ${esc(M.grade)}</b></div>
+   ${AA.length ? `<div class="sh" style="margin-top:12px">After-action</div><div class="kv">${AA.map(d => `<span>${esc(d.k.trim())}</span><b style="font-size:11.5px;font-weight:500;${d.k.startsWith('  ') ? 'color:var(--dim)' : ''}">${esc(d.v)}</b>`).join('')}</div>` : ''}
+   ${xpHTML()}${careerEndHTML()}<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button data-close="m-end" style="flex:1">Review Map</button><button id="e-retry" style="flex:1">Replay Seed${S.opts && S.opts.career ? ' (quick, not counted)' : ''}</button>${S.opts && S.opts.career ? '<button id="e-calls" class="on" style="flex:1">Next call ▸</button><button id="e-cont" style="flex:1">Career / Roster</button>' : '<button id="e-main" class="on" style="flex:1">Main menu ▸</button>'}</div></div>`;
   $('m-end').classList.add('show'); }
-$('end-dlg').addEventListener('click', e => { if (e.target.id === 'e-new') { closeModal('m-end'); newGame(); } if (e.target.id === 'e-retry') { closeModal('m-end'); newGame(Core.state.seed); } if (e.target.id === 'e-cont') { closeModal('m-end'); openCareer(); } });
+/** Debrief: experience earned from individual actions (shown in every mode; saved only in Career Mode). */
+function xpHTML() { const X = Core.xpSummary(), S = Core.state; if (!X.rows.length) return `<div class="sh" style="margin-top:12px">Experience earned</div><div style="font-size:12px;color:var(--dim)">No credited actions this mission.</div>`;
+  return `<div class="sh" style="margin-top:12px">Experience earned${S.opts && S.opts.career ? '' : ' <small style="color:var(--dim)">(Quick Mission — not saved)</small>'}</div><div class="kv scoretab">${X.rows.map(r => `<span>${esc(r.label)}${r.n > 1 ? ` ×${r.n}` : ''}</span><b style="color:var(--cyan2)">+${r.xp}</b>`).join('')}<span style="color:#fff;font-weight:700">Action XP</span><b>+${X.total}</b></div>${S.stats.stateTeam ? '<div class="note" style="margin-top:6px">State SWAT took over — only the action experience above counts; no mission-completion XP.</div>' : ''}`; }
+function openStateCall() { const S = Core.state; if (S.phase === 'over' || !(S.opts && S.opts.career)) return; const X = Core.xpSummary();
+  $('wd-dlg').innerHTML = `<div class="ph">Call State SWAT Team<span class="sp"></span><button class="ib" data-close="m-wd">✕</button></div><div class="body">
+   <p>Request the State SWAT team and hand them the scene. The mission ends now. Your unit keeps the <b>experience from individual actions</b> so far (<b>+${X.total} XP</b>) but earns <b>no mission-completion XP</b>; the score takes a <b>${Core.SCORE.stateTeam}</b> deduction.</p>
+   <div style="display:flex;gap:8px;margin-top:10px"><button data-close="m-wd" style="flex:1">Keep command</button><button id="st-yes" class="on" style="flex:1">☎ Call State SWAT</button></div></div>`;
+  closeModal('m-menu'); $('m-wd').classList.add('show'); }
+function openWithdraw(auto) { const S = Core.state; if (S.phase === 'over') return; const left = Core.forceLeft();
+  $('wd-dlg').innerHTML = `<div class="ph">End mission / withdraw<span class="sp"></span><button class="ib" data-close="m-wd">✕</button></div><div class="body">
+   ${auto ? '<div class="warnbox">No mobile officers left on scene and nobody en route.</div>' : ''}
+   <p>Withdraw all units and hand the scene over. The mission ends <b>now, without a resolution</b>: the debrief and career record it with a <b>${Core.SCORE.withdraw}</b> deduction (plus any losses). There is no time limit — you can keep going instead.</p>
+   <p style="color:var(--dim)">Units still able to act: ${left}.</p>
+   <div style="display:flex;gap:8px;margin-top:10px"><button data-close="m-wd" style="flex:1">Keep going</button><button id="wd-yes" class="on" style="flex:1;background:var(--red)">⚑ Withdraw &amp; end mission</button></div></div>`;
+  $('m-wd').classList.add('show'); }
+$('wd-dlg').addEventListener('click', e => { if (e.target.id === 'wd-yes') { closeModal('m-wd'); const r = Core.withdraw(); if (r.ok) { refresh(true); showEnd(); } }
+  if (e.target.id === 'st-yes') { closeModal('m-wd'); const r = Core.callState(); if (r.ok) { refresh(true); showEnd(); } else toast(r.reason); } });
+$('b-wd').addEventListener('click', () => { if (busy) return; openWithdraw(false); });
+let wdPrompted = -1;
+function checkStranded() { const S = Core.state; if (S.phase !== 'planning' || wdPrompted === S.seed) return; if (Core.forceLeft() === 0) { wdPrompted = S.seed; openWithdraw(true); } }
+$('end-dlg').addEventListener('click', e => { const S = Core.state; if (e.target.id === 'e-new') { closeModal('m-end'); newGame(); }
+  if (e.target.id === 'e-retry') { closeModal('m-end'); newGame(S.seed, false, S.opts && S.opts.career ? Career.levelOf(CAREER) : QLEVEL); }
+  if (e.target.id === 'e-cont') { closeModal('m-end'); openCareer(); } if (e.target.id === 'e-calls') { closeModal('m-end'); openCalls(); } if (e.target.id === 'e-main') { closeModal('m-end'); openMain(); } });
 const HB = (t, s) => `<p><b style="color:#fff">${t}:</b> ${s}</p>`;
 $('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><button class="ib" data-close="m-help">✕</button></div><div class="body" style="font-size:12.5px;color:#bcd0e6">
- ${HB('Goal', `an armed suspect is barricaded in one of the houses. Contain it, gather intel, then talk him out or make a safe entry. Win when he is <b>detained</b> or <b>surrenders</b>. You lose if ${Core.LOSE_DOWN} officers are hit and down, he escapes the perimeter, or ${Core.tMin(Core.TURN_LIMIT)} of mission time pass.`)}
+ ${HB('Goal', `an armed suspect is barricaded in one of the houses. Contain it, gather intel, then talk him out or make a safe entry. The mission ends when he is <b>in custody</b> (surrender, arrest, or secured after being stopped) — or when you choose <b>⚑ Withdraw</b>. There is <b>no time limit</b> and the mission never ends early on losses; instead the debrief score takes major deductions for officers hit or killed, civilians hurt, hostages killed, an escape through the perimeter, or a withdrawal. The mission clock is information only.`)}
+ ${HB('Score & withdrawing', `the debrief lists every bonus and deduction: resolving it (+${Core.SCORE.resolved}), a talked-out surrender (+${Core.SCORE.talked}), rescued casualties, a closed perimeter gap — and major deductions for each officer hit (${Core.SCORE.officerHit}) or killed (${Core.SCORE.officerLost}), civilians hurt (${Core.SCORE.civHurt}) or killed (${Core.SCORE.civKilled}), hostages hurt or killed (${Core.SCORE.hostageKilled}), a suspect who slips through the perimeter and has to be tracked down (${Core.SCORE.escape}), and withdrawing (${Core.SCORE.withdraw}). Grades: Medal of Valor ≥1000, Unit Commendation ≥650, Satisfactory ≥350, Needs Review ≥0, Board of Inquiry below 0. <b>⚑ Withdraw</b> in the top bar ends the mission without a resolution — you are offered it automatically if no officer is left able to act.`)}
+ ${HB('Vision indoors', 'officers inside the house see into the next room through <b>open doors and doorways</b> (not through walls or closed doors): the cells in their sight line are revealed, lit while in view and dimmed once out of view. If the suspect has a line of sight to an officer, that officer sees him too — even when facing away.')}
  ${HB('Time', 'the game pauses while you plan. Select a unit and queue orders (dotted paths). Orders chain — e.g. Move → Breach → Flashbang → Clear. Optionally queue one Intel action, then press <b style="color:var(--amber)">EXECUTE</b>: everyone acts at once for <b>30 seconds</b> of mission time (8 steps of ~4 s). The <b>mission clock</b> in the top bar starts at 0:00 when SWAT is activated and advances 0:30 per EXECUTE; the radio log shows the time of day. ETAs, gas, breach and critical-care timers are shown in minutes / m:ss.')}
  ${HB('Mission brief & 911 call', 'every mission opens with a brief of what happened before SWAT was activated: the 911 call, what the first patrol units did, and anything known about the suspect. <b>Listen to the 911 call</b> (📋 button, or Intel → Review 911 Call) shows the transcript with times and can read it aloud (mute / skip). The caller ID or a family caller may give you his phone number. Reviewing is instant.')}
  ${HB('Perimeter on arrival', 'patrol cruisers start at the ends of the block or at the nearest intersection, keeping traffic out (striped <b>TRAFFIC BLOCKED</b> markers on the map and minimap) — moving one opens the street. Patrol officers may already be in good positions, or may have left a side of the house unwatched by accident, or bunched up at the front. Run Intel → <b>Status Check</b> (instant) for a roll call: it reveals which sides are watched and flags any gap. An unwatched side is how he slips out.')}
@@ -3686,10 +4051,13 @@ $('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><b
  ${HB('Contain & call out', '<b>Call Out</b> over a PA orders him out. Low odds (~10–15%), better with full containment, gas and rapport; agitation lowers it.')}
  ${HB('Casualties', 'a hit person may be killed (memorial marker), injured but mobile (moves to cover and walks to EMS), or immobile (needs rescue). A ✚ marker shows the critical countdown (m:ss of mission time); you only see status with vision or a radio report. <b>First Aid</b> (Medic + medkit stabilises), <b>Rescue</b> drags to cover, <b>Evacuate</b> carries to the 🚑 EMS point, then transport to hospital. Three officers hit aborts the operation.')}
  ${HB('Breaching', 'Breach → tap a door → pick a method. <b>Charge</b> (Breacher only): hang it, back off to the safe-standoff ring, then it detonates (automatically, or choose “Hang only” and use Detonate later) — fastest and most reliable but very loud; anyone inside the ring is dazed. <b>Ram</b>: medium and loud. <b>Halligan pry</b>: quiet but slow. <b>Kick</b>: no gear, poor odds. Barricades and storm doors (shown once seen) make every method harder. Noise alerts the suspect.')}
- ${HB('Forces', 'patrol (P1–P4) are on scene — park them on the amber ◇ containment points. SWAT officers are paged and arrive at staging; press <b>Form Team</b>. Tap ⓘ (or a selected shield) for members, specialties, qualifications, armory and transfers.')}
- ${HB('Career', 'press 🎖 <b>Career</b> to run your unit: start a career mission (a new random scenario each time), then the result is saved automatically in this browser — record, outcomes, time, debrief score. Officers gain XP, skill and rank; injured officers recover and sit out missions; officers killed go to the memorial and a rookie is hired. Career points buy gear (drone, robot, less-lethal, armored vehicle, extra negotiator / sniper, bigger teams). Export the save as a text code or file to move it to another device; <b>New Career</b> resets.')}
- ${HB('Scenarios', 'every scenario is generated from a seed: house layout, neighborhood, cruiser and suspect gear, patrol positions and the 911 call. <b>New Scenario</b> picks a new seed; add <kbd>#seed=12345</kbd> to the URL to replay one. Seed replays and quick scenarios use the full default roster and gear and are <i>not</i> counted in your career.')}
- <div class="grid2"><div><b style="color:var(--cyan2)">Desktop</b><br>Click a unit / card or <kbd>1</kbd>–<kbd>9</kbd> to select · click map to order<br><kbd>M</kbd> move <kbd>B</kbd> breach <kbd>X</kbd> detonate <kbd>F</kbd> flash <kbd>G</kbd> gas <kbd>K</kbd> mask <kbd>C</kbd> clear <kbd>T</kbd> fire <kbd>U</kbd> suppress <kbd>O</kbd> overwatch <kbd>E</kbd> get in / exit <kbd>S</kbd> stance <kbd>H</kbd> hold <kbd>P</kbd> pole cam <kbd>I</kbd> intel<br><kbd>Backspace</kbd> undo · <kbd>Enter</kbd> execute · <kbd>Esc</kbd> deselect<br>Drag to pan · wheel to zoom · <kbd>0</kbd> fit · click the overview map to jump</div>
+ ${HB('Forces', 'patrol (P1–P4) are on scene — park them on the amber ◇ containment points. At least one SWAT officer is <b>already at staging</b> when you take command — usually 1–3, sometimes a larger group; the rest are paged and arrive with staggered ETAs. Rarely (about 1 in 15) the <b>whole team arrives at once</b> because they were training together or clearing from another call — the brief and radio log say so. Press <b>Form Team</b>. Tap ⓘ (or a selected shield) for members, specialties, qualifications, armory and transfers.')}
+ ${HB('Formations', 'each team member is a <b>blue dot</b> (the lighter dot is the point man). The team adapts to where it is: a <b>cover line</b> along a car or wall outside (a line abreast in the open), a <b>stack</b> on the wall beside a door, a <b>staggered column</b> in hallways and while moving, and a <b>fan</b> covering sectors inside a room. The label under the dots names the formation when zoomed in.')}
+ ${HB('Work Corner (slice the pie)', 'at a hallway corner, door frame or house corner, <b>◩ Work Corner</b> (<kbd>N</kbd>) edges the unit out in <b>45° cuts</b> — one cut every two ticks, each revealing more of the hidden area through the fog. It <b>stops the moment it sees the suspect</b> (THREAT in the log) or reports “corner clear”. While slicing only a sliver of the unit is exposed, so the suspect is less likely to fire at it and less likely to hit. Queue it like any order (it chains after a Move) and press EXECUTE; moving off the spot ends the slice. Patrol officers can work outside house corners but never step inside.')}
+ ${HB('Main menu', 'the game opens on the main menu. <b>Quick Mission</b> plays one scenario with the <b>team level</b> you pick on the slider or number box (1–100, default 100): level 1 is a small basic team (4 officers, shields, ram, Halligan, medkit, bullhorn); every level adds people and gear up to level 100 — 30 personnel and every item in large counts. Quick Missions are never saved to the career. <b>New seed</b> picks a different scenario; <b>Career / Roster</b> and <b>How to play</b> open those screens.')}
+ ${HB('Career Mode', 'starts at <b>team level 1</b>. Team XP is earned per action — breaching, clearing rooms, working corners, finding the suspect, closing the perimeter, contact and dialogue, first aid, rescue and evacuation, overwatch, flashbangs, taking custody — plus the mission result; enough XP raises the team level (personnel, gear and team size grow with it). Between missions the <b>dispatch screen</b> offers random calls with an estimated risk. In a career mission the ☰ menu has <b>☎ Call State SWAT Team</b>: hand the scene over, keep only the per-action XP (shown in the debrief), no mission-completion XP and a score deduction. Results save automatically in this browser; team level and XP are stored separately from the roster, so a damaged roster is regenerated without losing them. Officers still gain XP and rank, injured officers sit out missions, officers killed go to the memorial. <b>Export</b> a code (it starts with your level and XP, e.g. <kbd>SWATC3.L12-X3400-…</kbd>) or a file to move the career; older SWATC1/SWATC2 codes and saves import and upgrade automatically.')}
+ ${HB('Scenarios', 'every scenario is generated from a seed: house layout, neighborhood, cruiser and suspect gear, patrol positions and the 911 call. The team level changes only your unit, never the map. <b>New Scenario</b> picks a new seed; add <kbd>#seed=12345</kbd> to the URL to jump straight into one as a Quick Mission at your last chosen level. Quick Missions and seed replays are <i>not</i> counted in your career.')}
+ <div class="grid2"><div><b style="color:var(--cyan2)">Desktop</b><br>Click a unit / card or <kbd>1</kbd>–<kbd>9</kbd> to select · click map to order<br><kbd>M</kbd> move <kbd>N</kbd> work corner <kbd>B</kbd> breach <kbd>X</kbd> detonate <kbd>F</kbd> flash <kbd>G</kbd> gas <kbd>K</kbd> mask <kbd>C</kbd> clear <kbd>T</kbd> fire <kbd>U</kbd> suppress <kbd>O</kbd> overwatch <kbd>E</kbd> get in / exit <kbd>S</kbd> stance <kbd>H</kbd> hold <kbd>P</kbd> pole cam <kbd>I</kbd> intel<br><kbd>Backspace</kbd> undo · <kbd>Enter</kbd> execute · <kbd>Esc</kbd> deselect<br>Drag to pan · wheel to zoom · <kbd>0</kbd> fit · click the overview map to jump</div>
  <div><b style="color:var(--cyan2)">Touch</b><br>Tap a unit or chip to select · tap again for details<br>Tap the map to place orders (Fire: tap once to preview the hit chance, again to confirm)<br>One-finger drag to pan · pinch to zoom · ＋/－/⤢/▦ buttons<br>TEAMS / INTEL tabs open the panels; ▦ shows the overview map</div></div>
  <button data-close="m-help" class="on" style="width:100%;margin-top:12px">Got it</button></div>`;
 document.addEventListener('click', e => { const c = e.target.closest('[data-close]'); if (c) { const id = c.dataset.close; if (id === 'left' || id === 'right') $(id).classList.remove('open'); else closeModal(id); layoutSafe(); }
@@ -3776,9 +4144,10 @@ function action(k) { const S = Core.state, u = selUnit();
   if (k === 'cancel' || k === 'esc') { V.mode = 'move'; hidePop(); V.aim = null; pendingAim = null; $('aimbox').className = ''; refresh(true); return; }
   if (!u) { toast('Select a unit first'); return; }
   if (k === 'stance') { const st = STANCE_ORDER[(STANCE_ORDER.indexOf(u.stance || 'return') + 1) % 3]; Core.setStance(u.uid, st); SFX.click(); toast(`${u.name}: ${Core.STANCES[st]}`, true); refresh(true); return; }
-  if (!allowed(u, k)) { toast('Not available for this unit'); return; }
+  if (!allowed(u, k)) { toast(k === 'corner' ? 'No corner here — move to a hallway corner, door frame or house corner first' : 'Not available for this unit'); return; }
   hidePop(); V.aim = null; pendingAim = null; $('aimbox').className = '';
   if (k === 'hold') { q(u.uid, { type: 'hold' }); return; }
+  if (k === 'corner') { q(u.uid, { type: 'corner' }); return; }
   if (k === 'pa' || k === 'callout') { q(u.uid, { type: 'pa', mode: k === 'pa' ? 'contact' : 'callout' }); return; }
   if ((k === 'aid' || k === 'rescue' || k === 'evac')) { const cs = (S.cas || []).filter(c => Core.casActive(c) && c.known && c.who !== 'suspect'); if (!cs.length) { toast('No known casualties'); return; } if (cs.length === 1) { q(u.uid, { type: k, cas: cs[0].id }); return; } }
   if (k === 'mask') { q(u.uid, { type: 'mask', on: u.mask !== 'on' }); return; }
@@ -3802,7 +4171,7 @@ const TICK_MS = 300;
 function execute() { const S = Core.state; if (S.phase !== 'planning' || busy) return; ac(); hidePop(); V.aim = null; $('aimbox').className = '';
   const n = S.units.reduce((a, q) => a + (q.status === 'ok' ? q.orders.length : 0), 0); if (!n && !S.cmd) toast('No orders queued — units will hold for 30 s', true);
   if (!Core.execute()) return; busy = true; SFX.exec(); V.hint = null; refresh(true);
-  const step = () => { Render.snapshot(TICK_MS - 20); const done = Core.stepTick(); sounds(); refresh(); if (!done) setTimeout(step, TICK_MS); else setTimeout(() => { Render.endAnim(); busy = false; sounds(); refresh(true); if (Core.state.phase === 'over') { careerRecordEnd(); setTimeout(showEnd, 700); } }, TICK_MS); };
+  const step = () => { Render.snapshot(TICK_MS - 20); const done = Core.stepTick(); sounds(); refresh(); if (!done) setTimeout(step, TICK_MS); else setTimeout(() => { Render.endAnim(); busy = false; sounds(); refresh(true); if (Core.state.phase === 'over') { careerRecordEnd(); setTimeout(showEnd, 700); } else checkStranded(); }, TICK_MS); };
   setTimeout(step, 120); }
 $('exec').addEventListener('click', execute);
 
@@ -3835,20 +4204,30 @@ function bindOvw(c) { let down = false; const jump = e => { const r = c.getBound
 bindOvw($('ovw')); bindOvw($('ovw2'));
 window.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return; const S = Core.state; const k = e.key.toLowerCase();
   if (k === 'escape') { if (document.querySelector('.modal.show')) document.querySelectorAll('.modal.show').forEach(m => closeModal(m.id)); else if (popDoor !== null) hidePop(); else { V.sel = null; V.aim = null; $('aimbox').className = ''; refresh(true); } return; }
-  if (document.querySelector('.modal.show')) return;
+  if (document.querySelector('.modal.show:not(.mini)')) return;
   if (k === 'enter') { execute(); return; } if (k === 'backspace') { e.preventDefault(); action('undo'); return; } if (k === '0') { Render.fit('house'); return; }
   if (/^[1-9]$/.test(k)) { const t = S.units.find(u => u.kind === 'team' && u.num === +k); if (t) { select(t.uid); centerOn(t); } return; }
   if (k === 's') { action('stance'); return; } if (k === 'i') { action('intel'); return; }
   const u = selUnit(); const a = actsFor(u).find(q => q.key.toLowerCase() === k); if (a) action(a.k); });
 
 /* ---------------- top bar & layout ---------------- */
-$('b-new').onclick = () => newGame();
+$('b-new').onclick = () => { const S = Core.state; if (S.opts && S.opts.career && !careerAllowed()) return toast('A career mission is under way — finish it, withdraw or call the State SWAT team first.'); closeModal('m-menu'); newGame(0, false, S.opts && S.opts.mode === 'quick' ? S.opts.level : QLEVEL); };
 $('b-help').onclick = () => $('m-help').classList.add('show');
 function setMuteIcon() { $('b-mute').textContent = muted ? '🔇' : '🔊'; }
 $('b-mute').onclick = () => { muted = !muted; localStorage.setItem('swat.muted', muted ? '1' : '0'); setMuteIcon(); if (!muted) SFX.click(); };
 $('t-teams').onclick = () => { $('right').classList.remove('open'); $('left').classList.toggle('open'); layoutSafe(); };
 $('t-intel').onclick = () => { $('left').classList.remove('open'); $('right').classList.toggle('open'); renderInfo(); layoutSafe(); };
-function layoutSafe() { const ph = isPhone(); document.querySelectorAll('.mclose').forEach(b => b.style.display = ph ? 'inline-flex' : 'none');
+function setCollapsed(id, on) { const el = $(id); el.classList.toggle('col', on); const b = $('tg-' + id); if (b) { b.textContent = (id === 'left') === on ? '›' : '‹'; b.setAttribute('aria-expanded', on ? 'false' : 'true'); } }
+$('tg-left').onclick = e => { e.stopPropagation(); setCollapsed('left', !$('left').classList.contains('col')); layoutSafe(); };
+$('tg-right').onclick = e => { e.stopPropagation(); setCollapsed('right', !$('right').classList.contains('col')); renderInfo(); layoutSafe(); };
+/** Small / landscape screens start with both side panels condensed so the map stays visible. */
+function defaultPanels() { const small = !isPhone() && (window.innerHeight <= 560 || window.innerWidth <= 1100); setCollapsed('left', small); setCollapsed('right', small); if (isPhone()) { setCollapsed('left', false); setCollapsed('right', false); } }
+// brief / intel dialogs: a ▾ button folds them to their title bar
+for (const id of ['brief-dlg', 'intel-dlg', 'c911-dlg']) { const d = $(id), m = d.parentElement;
+  new MutationObserver(() => { if (!m.classList.contains('show')) m.classList.remove('mini'); const ph = d.querySelector('.ph'); if (ph && !ph.querySelector('.mtog')) { const b = document.createElement('button'); b.className = 'ib mtog'; b.title = 'Collapse / expand'; b.textContent = m.classList.contains('mini') ? '▸' : '▾'; const x = ph.querySelector('[data-close]'); x ? ph.insertBefore(b, x) : ph.appendChild(b); } }).observe(d, { childList: true });
+  d.addEventListener('click', e => { if (!e.target.closest('.mtog')) return; e.stopPropagation(); const on = !m.classList.contains('mini'); m.classList.toggle('mini', on); e.target.textContent = on ? '▸' : '▾'; }); }
+let lastPhone = null;
+function layoutSafe() { const ph = isPhone(); if (ph !== lastPhone) { lastPhone = ph; defaultPanels(); } document.querySelectorAll('.mclose').forEach(b => b.style.display = ph ? 'inline-flex' : 'none');
   const r = (id) => { const el = $(id); if (!el || getComputedStyle(el).display === 'none') return null; return el.getBoundingClientRect(); };
   const top = r('top'), bot = r('bottom'), L = !ph && r('left'), R = !ph && r('right'), ch = ph && r('chips');
   Render.setSafe({ l: L ? L.right + 6 : 0, r: R ? window.innerWidth - R.left + 6 : 0, t: (ch ? ch.bottom : top ? top.bottom : 0) + 4, b: bot ? window.innerHeight - bot.top + (ph ? 26 : 30) : 0 });
@@ -3863,9 +4242,10 @@ window.addEventListener('resize', () => { onResize(); Render.fit('house'); });
 let firstRun = false; try { firstRun = !localStorage.getItem('swat.seenHelp'); localStorage.setItem('swat.seenHelp', '1'); } catch (e) { }
 function openBrief() { const S = Core.state, B = S.brief; if (!B) return;
   const sc = S.scene || {}, inj = S.cas.find(c => c.initial);
-  $('brief-dlg').innerHTML = `<div class="ph">Mission Brief<span class="sp"></span><small>${esc(S.opName)}${S.opts && S.opts.career ? ' · CAREER' : ''}</small><button class="ib" data-close="m-brief">✕</button></div><div class="body" style="font-size:12.5px;color:#bcd0e6">
+  $('brief-dlg').innerHTML = `<div class="ph">Mission Brief<span class="sp"></span><small>${esc(S.opName)}${S.opts && S.opts.career ? ` · CAREER · TEAM LV ${S.opts.level}` : S.opts && S.opts.mode === 'quick' ? ` · QUICK · TEAM LV ${S.opts.level}` : ''}</small><button class="ib" data-close="m-brief">✕</button></div><div class="body" style="font-size:12.5px;color:#bcd0e6">
    <div class="kv"><span>Call</span><b>${esc(B.callAt)} · 911 · ${esc(B.type)}</b><span>Address</span><b>${esc(B.addr)}</b><span>Caller</span><b style="font-size:11.5px">${esc(B.caller)}</b><span>Subject</span><b style="font-size:11.5px">${esc(B.suspect)}</b><span>Occupants</span><b style="font-size:11.5px;font-weight:500">${esc(B.occupants)}</b><span>Weapon</span><b style="font-size:11.5px;font-weight:500">${B.shots ? 'Shots reported' : 'No shots reported'}${B.sawGun ? ' · weapon seen' : ''}</b></div>
    ${B.officerDown ? `<div class="warnbox">⚠ <b>Officer down.</b> ${esc(B.officerDown === true ? 'A patrol officer was hit before SWAT arrived — condition unclear.' : B.officerDown)}</div>` : ''}
+   ${B.arrival ? `<div class="${B.arrival.mode === 'all' ? 'note' : 'tl'}" style="margin-top:8px;font-size:12px">${B.arrival.mode === 'all' ? '★ <b>Full team on scene.</b> ' : '<b>SWAT on scene:</b> '}${esc(B.arrival.mode === 'all' ? B.arrival.why : `${B.arrival.count} of ${B.arrival.of} at staging — ${B.arrival.why}`)}</div>` : ''}
    <div class="sh" style="margin-top:10px">Before SWAT</div><div class="tl">${B.patrol.map(p => `<div>${esc(p).replace(/(\d\d:\d\d(:\d\d)?)/g, '<b>$1</b>')}</div>`).join('')}</div>
    ${B.known && B.known.length ? `<div class="sh">Background</div><div style="font-size:12px">${B.known.map(esc).join('<br>')}</div>` : ''}
    <p style="font-size:11.5px;color:var(--dim);margin:10px 0 0">Mission clock starts at <b style="color:#fff">0:00</b> (${esc(B.activatedAt)}). Each EXECUTE = 30 s. ${Core.intelInfo().containKnown ? '' : 'Patrol positions are unconfirmed — a <b>Status Check</b> reveals any gap.'}${firstRun ? ' New here? Tap <b>?</b> for How to Play.' : ''}</p>
@@ -3903,28 +4283,32 @@ function careerRecordEnd() { const S = Core.state; if (!(S.opts && S.opts.career
   try { careerNotes = Career.record(CAREER, Core.careerSummary()); if (!Career.save(CAREER)) careerNotes.push('(Could not write to browser storage — export a code to keep this career.)'); } catch (e) { careerNotes = ['Career save failed: ' + e.message]; } }
 function openCareer() { ccConfirm = false; renderCareer(); $('m-career').classList.add('show'); }
 function renderCareer(msg) { const C = CAREER, R = C.record, S = Core.state;
-  const oc = Object.entries(R.outcomes).map(([k, v]) => `${({ negotiated: 'Negotiated surrender', callout: 'Call-out', arrest: 'Arrest', tactical: 'Tactical entry', lesslethal: 'Less-lethal', officerfire: 'Officer fire', perimeter: 'Caught on perimeter', escaped: 'Escaped', timeout: 'Out of time', aborted: 'Aborted' })[k] || k} ${v}`).join(' · ') || '—';
+  const oc = Object.entries(R.outcomes).map(([k, v]) => `${({ negotiated: 'Negotiated surrender', callout: 'Call-out', arrest: 'Arrest', tactical: 'Tactical entry', lesslethal: 'Less-lethal', officerfire: 'Officer fire', perimeter: 'Caught on perimeter', escaped: 'Escaped', pursuit: 'Caught after escape', withdrawn: 'Withdrawn', timeout: 'Out of time (old rules)', aborted: 'Aborted (old rules)' })[k] || k} ${v}`).join(' · ') || '—';
   const roster = C.roster.slice().sort((a, b) => (a.recover > 0) - (b.recover > 0) || b.xp - a.xp).map(o => `<tr style="${o.recover > 0 ? 'opacity:.6' : ''}"><td><b>${esc(o.rank)} ${esc(o.last)}</b>${o.dog ? ` <small style="color:var(--dim)">+ ${esc(o.dog)}</small>` : ''}</td><td>${Core.SPECS[o.spec].icon} ${esc(Career.SPEC_NAME[o.spec])}${o.quals.includes('spotter') ? ' <span class="chip">◆ Spotter</span>' : ''}</td><td>${Math.round(o.skill * 100)}</td><td class="hm3">${o.xp}</td><td class="hm3">${o.missions}</td><td>${o.recover > 0 ? `<span class="pill amber">RECOVERING · ${o.recover}</span>` : '<span class="pill green">READY</span>'}</td></tr>`).join('');
-  const un = Object.entries(Career.UNLOCKS).map(([k, u]) => { const own = !!C.unlocks[k]; return `<div class="ucard ${own ? 'own' : ''}"><b>${esc(u.name)}</b>${esc(u.desc)}${own ? '<div style="color:var(--green);margin-top:5px">✓ Unlocked</div>' : `<button data-buy="${k}" ${C.points >= u.cost ? '' : 'disabled'}>Unlock · ${u.cost} pts</button>`}</div>`; }).join('');
+  const LI = Career.levelInfo(C), T = Career.teamForLevel(LI.level);
+  const un = Object.entries(Career.LEVEL.gear).map(([k, g]) => ({ k, at: g[0], n: (T.gear[k] || 0) })).concat([{ k: 'staff', at: 1, n: T.staff, lab: 'Personnel' }, { k: 'teamMax', at: 1, n: T.teamMax, lab: 'Max team size' }, { k: 'armored', at: Career.LEVEL.armoredAt, n: T.armored ? 1 : 0, lab: 'Armored rescue vehicle' }])
+    .map(r => { const own = LI.level >= r.at; return `<div class="ucard ${own ? 'own' : ''}"><b>${esc(r.lab || Career.GEAR_NAME[r.k] || r.k)}</b>${own ? `<span style="color:var(--green)">✓ ${r.k === 'armored' ? 'available' : '× ' + r.n}</span>` : `<span style="color:var(--dim)">🔒 unlocks at level ${r.at}</span>`}</div>`; }).join('');
   const mem = C.memorial.length ? C.memorial.map(m => `<div>✦ <b style="color:#fff">${esc(m.rank)} ${esc(m.last)}</b> — ${esc(Career.SPEC_NAME[m.spec] || m.spec)}, ${m.missions} mission${m.missions > 1 ? 's' : ''} · ${esc(m.date)}</div>`).join('') : '<div style="color:var(--dim)">No officers lost.</div>';
   const hist = C.history.slice(0, 6).map(h => `<div>${esc(h.date.slice(0, 10))} · <span style="color:${h.win ? 'var(--green)' : 'var(--red)'}">${esc(h.title)}</span> · ${Core.tMin(h.timeSec / 30)} · ${h.score} pts · ${esc(h.grade)}</div>`).join('') || '<div style="color:var(--dim)">No missions yet.</div>';
   const replay = !(S.opts && S.opts.career) && S.phase !== 'over' ? `<button id="cc-seed" style="flex:1">Play seed ${S.seed} as career mission</button>` : '';
   const ready = Career.available(C).length;
-  $('career-dlg').innerHTML = `<div class="ph">Career · SWAT Unit<span class="sp"></span><small>${C.points} PTS · SAVED IN ${esc(Career.storageKind === 'localStorage' ? 'BROWSER' : 'MEMORY ONLY')}</small><button class="ib" data-close="m-career">✕</button></div><div class="body" style="font-size:12.5px;color:#bcd0e6">
-   ${msg ? `<div class="note" style="margin-bottom:8px">${esc(msg)}</div>` : ''}
-   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button id="cc-start" class="on" style="flex:2" ${ready ? '' : 'disabled'}>▶ Start Career Mission <small>(new random scenario · ${ready} officers ready)</small></button>${replay}</div>
-   <div class="rec"><div><b>${R.played}</b>missions</div><div><b>${R.wins}–${R.losses}</b>won–lost</div><div><b>${R.played ? Core.tMin(R.timeSec / 30 / R.played) : '—'}</b>avg time</div><div><b>${R.bestScore == null ? '—' : R.bestScore}</b>best score</div><div><b>${R.officersHit} / ${R.officersLost}</b>officers hit / lost</div><div><b>${R.patrolHit}</b>patrol hit</div><div><b>${R.suspects.unhurt} / ${R.suspects.injured} / ${R.suspects.lost}</b>suspects unhurt / injured / died</div><div><b>${C.points}</b>career points</div></div>
+  const lvBox = `<div class="lvbox"><div class="lvn">LV <b>${LI.level}</b></div><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px"><b style="color:#fff">Team level ${LI.level} / 100</b><span>${LI.xp.toLocaleString('en-US')} team XP</span></div><div class="lvbar"><i style="width:${Math.round(LI.pct * 100)}%"></i></div><div style="font-size:11px;color:var(--dim)">${LI.level >= 100 ? 'Maximum level — full unit, all gear' : `${(LI.next - LI.xp).toLocaleString('en-US')} XP to level ${LI.level + 1}`} · ${T.staff} personnel · teams up to ${T.teamMax}</div></div></div>`;
+  $('career-dlg').innerHTML = `<div class="ph">Career · SWAT Unit<span class="sp"></span><small>LV ${LI.level} · ${LI.xp} XP · SAVED IN ${esc(Career.storageKind === 'localStorage' ? 'BROWSER' : 'MEMORY ONLY')}</small><button class="ib" data-close="m-career">✕</button></div><div class="body" style="font-size:12.5px;color:#bcd0e6">
+   ${msg ? `<div class="note" style="margin-bottom:8px">${esc(msg)}</div>` : ''}${C.recovered || C.rosterRebuilt ? '<div class="warnbox">The saved roster was damaged — a new roster was assigned. Team level and XP were kept.</div>' : ''}
+   ${lvBox}
+   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button id="cc-start" class="on" style="flex:2" ${ready ? '' : 'disabled'}>▶ Take the next call <small>(choose from random calls · ${ready} officers ready)</small></button>${replay}</div>
+   <div class="rec"><div><b>${R.played}</b>missions</div><div><b>${R.wins}–${R.losses}</b>won–lost</div><div><b>${R.played ? Core.tMin(R.timeSec / 30 / R.played) : '—'}</b>avg time</div><div><b>${R.bestScore == null ? '—' : R.bestScore}</b>best score</div><div><b>${R.officersHit} / ${R.officersLost}</b>officers hit / lost</div><div><b>${R.patrolHit}</b>patrol hit</div><div><b>${R.suspects.unhurt} / ${R.suspects.injured} / ${R.suspects.lost}</b>suspects unhurt / injured / died</div><div><b>${LI.level}</b>team level</div></div>
    <div style="font-size:11.5px;margin-top:6px"><b style="color:#fff">Outcomes:</b> ${esc(oc)}</div>
    <div class="sh" style="margin-top:12px">Roster</div><table class="ctab"><tr><th>OFFICER</th><th>SPECIALTY</th><th>SKILL</th><th class="hm3">XP</th><th class="hm3">MISSIONS</th><th>STATUS</th></tr>${roster}</table>
-   <div class="sh" style="margin-top:12px">Unlocks</div><div class="ugrid">${un}</div>
+   <div class="sh" style="margin-top:12px">Unit at level ${LI.level} <small style="color:var(--dim)">(gear and personnel grow with team level)</small></div><div class="ugrid">${un}</div>
    <div class="sh" style="margin-top:12px">Recent missions</div><div style="font-size:11.5px">${hist}</div>
    <div class="sh" style="margin-top:12px">Memorial</div><div style="font-size:12px">${mem}</div>
-   <div class="sh" style="margin-top:12px">Save transfer</div><textarea id="cc-code" placeholder="Paste a career code here to import" spellcheck="false"></textarea>
+   <div class="sh" style="margin-top:12px">Save transfer</div><div style="font-size:11.5px;color:var(--dim);margin-bottom:4px">The code starts with your team level and XP (e.g. <code>SWATC3.L${LI.level}-X${LI.xp}-…</code>) — even a damaged code restores them. Older SWATC1/SWATC2 codes import too.</div><textarea id="cc-code" placeholder="Paste a career code here to import" spellcheck="false"></textarea>
    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button id="cc-exp" style="flex:1">Show / copy code</button><button id="cc-dl" style="flex:1">⭳ Download file</button><button id="cc-up" style="flex:1">⭱ Load file</button><button id="cc-imp" style="flex:1">Import code</button><input type="file" id="cc-file" accept=".txt,text/plain" style="display:none"></div>
    <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">${ccConfirm ? `<div class="warnbox">Erase this career (record, roster, unlocks, memorial)? This cannot be undone unless you exported a code.</div><div style="display:flex;gap:8px"><button id="cc-no" style="flex:1">Keep career</button><button id="cc-yes" style="flex:1;border-color:var(--red);color:var(--red)">Yes, start a new career</button></div>` : '<button id="cc-reset" style="width:100%">New Career…</button>'}</div></div>`; }
 $('career-dlg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const C = CAREER;
   if (b.dataset.buy) { const r = Career.buy(C, b.dataset.buy); Career.save(C); SFX.order(); renderCareer(r.ok ? `Unlocked ${Career.UNLOCKS[b.dataset.buy].name}${r.recruit ? ' — hired Ofc. ' + r.recruit.last : ''}.` : r.reason); return; }
-  if (b.id === 'cc-start') { careerNotes = null; closeModal('m-career'); newGame(0, true); }
+  if (b.id === 'cc-start') { careerNotes = null; closeModal('m-career'); openCalls(); }
   if (b.id === 'cc-seed') { careerNotes = null; closeModal('m-career'); newGame(Core.state.seed, true); }
   if (b.id === 'cc-exp') { const code = Career.exportCode(C); $('cc-code').value = code; $('cc-code').select(); let ok = false; try { if (navigator.clipboard) { navigator.clipboard.writeText(code).catch(() => { }); ok = true; } } catch (x) { } toast(ok ? 'Career code copied (also shown in the box)' : 'Career code shown — copy it from the box', true); }
   if (b.id === 'cc-dl') { try { const blob = new Blob([Career.exportCode(C)], { type: 'text/plain' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `swat-career-${new Date().toISOString().slice(0, 10)}.txt`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); } catch (x) { toast('Download not available — use the code'); } }
@@ -3933,12 +4317,58 @@ $('career-dlg').addEventListener('click', e => { const b = e.target.closest('but
   if (b.id === 'cc-reset') { ccConfirm = true; renderCareer(); }
   if (b.id === 'cc-no') { ccConfirm = false; renderCareer(); }
   if (b.id === 'cc-yes') { CAREER = Career.reset(); ccConfirm = false; renderCareer('New career started.'); } });
-function importCareer(code) { try { const c = Career.importCode(code); CAREER = c; Career.save(c); renderCareer(`Imported career: ${c.record.played} missions, ${c.roster.length} officers.`); } catch (e) { renderCareer('Import failed: ' + e.message); } }
+function importCareer(code) { try { const c = Career.importCode(code); CAREER = c; Career.save(c); renderCareer(`Imported career: team level ${Career.levelOf(c)} (${c.teamXp} XP), ${c.record.played} missions, ${c.roster.length} officers.`); }
+  catch (e) { try { const c = Career.importCode(code, { recoverXp: true }); CAREER = c; Career.save(c); renderCareer(`Code body was damaged (${e.message}) — team level ${Career.levelOf(c)} and ${c.teamXp} XP restored from the header with a new roster.`); } catch (e2) { renderCareer('Import failed: ' + e.message); } } }
 $('career-dlg').addEventListener('change', e => { if (e.target.id !== 'cc-file' || !e.target.files[0]) return; const fr = new FileReader(); fr.onload = () => importCareer(String(fr.result)); fr.readAsText(e.target.files[0]); });
-$('b-career').onclick = () => openCareer();
+$('b-career').onclick = () => { if (!careerAllowed()) return toast('Career is available between scenarios — from the debrief, or before the first EXECUTE.'); closeModal('m-menu'); openCareer(); };
+$('b-menu').onclick = () => { renderTop(); $('m-menu').classList.add('show'); };
+$('b-state').onclick = () => openStateCall();
+$('b-main').onclick = () => { const S = Core.state; if (S.opts && S.opts.career && !careerAllowed()) return toast('A career mission is under way — finish it, withdraw or call the State SWAT team first.'); closeModal('m-menu'); openMain(); };
+
+/* ---------------- main menu, quick mission level, career calls ---------------- */
+let QLEVEL = 100; try { const v = +localStorage.getItem('swat.qlevel'); if (v >= 1 && v <= 100) QLEVEL = Math.round(v); } catch (e) { }
+const rndSeed = () => Math.floor(Math.random() * 999999) + 1; let menuSeed = rndSeed();
+function teamLine(L) { const T = Career.teamForLevel(L), g = Object.keys(T.gear).filter(k => T.gear[k] > 0);
+  return `<b style="color:#fff">${T.staff} personnel</b> · teams up to ${T.teamMax} · ${g.length}/${Object.keys(T.gear).length} gear types${T.armored ? ' · armored vehicle' : ''}${T.locked.length ? `<br><span style="color:var(--dim)">Locked: ${T.locked.slice(0, 4).map(l => `${esc(l.name)} (LV ${l.at})`).join(', ')}${T.locked.length > 4 ? '…' : ''}</span>` : '<br><span style="color:var(--green)">All gear, large counts</span>'}`; }
+function renderMain() { const LI = Career.levelInfo(CAREER), started = CAREER.started || CAREER.record.played > 0;
+  $('main-dlg').innerHTML = `<div class="ph">SWAT · Barricaded Subject<span class="sp"></span><small>TACTICAL COMMAND</small></div><div class="body mm">
+   <div class="mmq"><button id="mm-quick" class="on mmb"><b>▶ Quick Mission</b><span>One scenario at the team level you pick · not saved to the career</span></button>
+    <div class="lvrow"><label for="mm-lv">Team level</label><input type="range" id="mm-lv" min="1" max="100" step="1" value="${QLEVEL}"><input type="number" id="mm-lvn" min="1" max="100" value="${QLEVEL}" inputmode="numeric"></div>
+    <div id="mm-team" class="mmt">${teamLine(QLEVEL)}</div>
+    <div class="lvrow"><label>Seed</label><b id="mm-seed" style="color:#fff;flex:1">${menuSeed}</b><button id="mm-newseed">⟳ New seed</button></div></div>
+   <div class="grid2 mmg"><button id="mm-career" class="mmb"><b>🎖 Career Mode</b><span>${started ? `Continue · team level ${LI.level} · ${LI.xp} XP` : 'Start at team level 1 and earn XP'}</span></button>
+    <button id="mm-roster" class="mmb"><b>☰ Career / Roster</b><span>Level, roster, record, save codes</span></button>
+    <button id="mm-help" class="mmb"><b>? How to play</b><span>Rules, controls, tips</span></button>
+    <button id="mm-resume" class="mmb" ${Core.state && Core.state.phase !== 'over' && mainResumable ? '' : 'disabled'}><b>▸ Resume</b><span>Back to the current scenario</span></button></div></div>`; }
+let mainResumable = false;
+function openMain() { document.querySelectorAll('.modal.show').forEach(m => closeModal(m.id)); renderMain(); $('m-main').classList.add('show'); }
+function setQLevel(v) { v = Math.max(1, Math.min(100, Math.round(+v || 1))); QLEVEL = v; try { localStorage.setItem('swat.qlevel', String(v)); } catch (e) { } if (!$('mm-lv')) return; $('mm-lv').value = v; if (+$('mm-lvn').value !== v) $('mm-lvn').value = v; $('mm-team').innerHTML = teamLine(v); }
+$('main-dlg').addEventListener('input', e => { if (e.target.id === 'mm-lv') setQLevel(e.target.value); if (e.target.id === 'mm-lvn' && e.target.value !== '') { const v = +e.target.value; if (v >= 1 && v <= 100) setQLevel(v); } });
+$('main-dlg').addEventListener('change', e => { if (e.target.id === 'mm-lvn') setQLevel(e.target.value); });
+$('main-dlg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; SFX.click();
+  if (b.id === 'mm-quick') { closeModal('m-main'); newGame(menuSeed, false, QLEVEL); menuSeed = rndSeed(); }
+  if (b.id === 'mm-newseed') { menuSeed = rndSeed(); $('mm-seed').textContent = menuSeed; }
+  if (b.id === 'mm-career') { closeModal('m-main'); if (!CAREER.started) { CAREER.started = true; Career.save(CAREER); } openCalls(); }
+  if (b.id === 'mm-roster') { closeModal('m-main'); openCareer(); }
+  if (b.id === 'mm-help') { $('m-help').classList.add('show'); }
+  if (b.id === 'mm-resume') closeModal('m-main'); });
+const DIFF_COL = { ROUTINE: 'green', ELEVATED: 'amber', 'HIGH RISK': 'red' };
+function openCalls(fresh) { document.querySelectorAll('.modal.show').forEach(m => closeModal(m.id)); const LI = Career.levelInfo(CAREER);
+  $('calls-dlg').innerHTML = `<div class="ph">Dispatch · incoming calls<span class="sp"></span><small>CAREER · TEAM LV ${LI.level}</small><button class="ib" data-close="m-calls">✕</button></div><div class="body"><div style="color:var(--dim);font-size:12px">Receiving calls…</div></div>`; $('m-calls').classList.add('show');
+  setTimeout(() => { const keep = !fresh && CAREER.calls && CAREER.calls.length && CAREER.calls.every(c => c && c.seed && c.label && c.lv === LI.level);
+    const calls = keep ? CAREER.calls : Career.makeCalls(CAREER, seed => Object.assign(Core.preview(seed, Career.missionOpts(CAREER)), { lv: LI.level }), 3); Career.save(CAREER); renderCalls(calls); }, 30); }
+function renderCalls(calls) { const LI = Career.levelInfo(CAREER), ready = Career.available(CAREER).length;
+  $('calls-dlg').innerHTML = `<div class="ph">Dispatch · incoming calls<span class="sp"></span><small>CAREER · TEAM LV ${LI.level} · ${ready} READY</small><button class="ib" data-close="m-calls">✕</button></div><div class="body">
+   <div style="font-size:12px;color:#bcd0e6;margin-bottom:8px">Patrol units are holding these scenes. Pick the call your unit responds to — risk is estimated from the first reports.</div>
+   <div class="calls">${calls.map((c, i) => `<button class="callc" data-call="${i}"><div style="display:flex;justify-content:space-between;gap:6px"><b style="color:#fff">${esc(c.type.toUpperCase())}</b><span class="pill ${DIFF_COL[c.label] || 'amber'}">${esc(c.label)}</span></div>
+     <div>${esc(c.addr)} · ${esc(c.time)}</div><div style="color:var(--dim)">${esc(c.arch)}</div><div>${c.shots ? '⚠ shots fired' : 'no shots reported'}${c.officerDown ? ' · <span style="color:var(--red)">officer down</span>' : ''}${c.sawGun ? ' · weapon seen' : ''}</div><div style="color:var(--dim);font-size:11px">${esc(c.op)} · seed ${c.seed}</div></button>`).join('')}</div>
+   <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button id="cl-roster" style="flex:1">Career / Roster</button><button id="cl-main" style="flex:1">Main menu</button></div></div>`; }
+$('calls-dlg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.call != null) { const c = (CAREER.calls || [])[+b.dataset.call]; if (!c) return; if (!Career.available(CAREER).length) return toast('No officers ready — they are recovering.'); CAREER.calls = []; Career.save(CAREER); careerNotes = null; closeModal('m-calls'); newGame(c.seed, true); }
+  if (b.id === 'cl-roster') { closeModal('m-calls'); openCareer(); } if (b.id === 'cl-main') { closeModal('m-calls'); openMain(); } });
 
 /* ---------------- game lifecycle ---------------- */
-function newGame(seed, career) { if (busy) return; seed = seed || (Math.floor(Math.random() * 999999) + 1); Core.newGame(seed, career ? Career.missionOpts(CAREER) : undefined); V.sel = null; V.mode = 'move'; V.hint = null; V.aim = null; pendingAim = null; hidePop(); $('aimbox').className = ''; logLen = -1; lastFxSound = 0; Core.state.events.length = 0;
+function newGame(seed, career, level) { if (busy) return; seed = seed || (Math.floor(Math.random() * 999999) + 1); Core.newGame(seed, career ? Career.missionOpts(CAREER) : Career.quickOpts(level || QLEVEL)); mainResumable = true; V.sel = null; V.mode = 'move'; V.hint = null; V.aim = null; pendingAim = null; hidePop(); $('aimbox').className = ''; logLen = -1; lastFxSound = 0; Core.state.events.length = 0;
   try { history.replaceState(null, '', '#seed=' + seed); } catch (e) { }
   if (Render.invalidate) Render.invalidate();
   document.querySelectorAll('.modal.show').forEach(m => closeModal(m.id)); onResize(); Render.fit('house'); refresh(true); openBrief(); }
@@ -3948,12 +4378,13 @@ function loop(now) { Render.frame(now); if (!busy) refresh();
   requestAnimationFrame(loop); }
 Render.init(cv); setMuteIcon();
 window.addEventListener('hashchange', () => { const m = /seed=(\d+)/.exec(location.hash); if (m && +m[1] !== Core.state.seed) newGame(+m[1]); });
-const hs = /seed=(\d+)/.exec(location.hash); newGame(hs ? +hs[1] : 0);
+// #seed=N links straight into that scenario (Quick Mission at the saved team level); otherwise the main menu opens over a background scenario
+const hs = /seed=(\d+)/.exec(location.hash); if (hs) newGame(+hs[1]); else { newGame(menuSeed); mainResumable = false; menuSeed = rndSeed(); openMain(); }
 requestAnimationFrame(loop);
 
 
 /* test / automation hook */
-window.GAME = { Core, Render, Career, get career() { return CAREER; }, openBrief, open911, openCareer, select, mapTap, action, execute, openTeamDlg, closeModal, newGame, refresh, showBreachPop, hidePop, showAim, aimInfo, get busy() { return busy; }, setPtr(t) { lastPtrType = t; } };
+window.GAME = { Core, Render, Career, get career() { return CAREER; }, set career(c) { CAREER = c; }, openMain, openCalls, openStateCall, setQLevel, get qlevel() { return QLEVEL; }, openBrief, open911, openCareer, select, mapTap, action, execute, openTeamDlg, closeModal, newGame, refresh, showBreachPop, hidePop, showAim, aimInfo, get busy() { return busy; }, setPtr(t) { lastPtrType = t; } };
 })();
 
 </script>

@@ -253,7 +253,16 @@ function buildComp() {
 }
 function rebake() { bakeGround(); bakeInterior(); bakeBlueprint(); bakeRoof(); const MW = Core.MAP_W, MH = Core.MAP_H; L.fog = mk(MW, MH); L.tint = mk(MW, MH); L.gas = mk(MW, MH); L.expo = mk(MW, MH);
   builtSeed = Core.state.seed; compKey = ''; dynVer = -1; planVer = -1; anims = []; seenFx = Core.state.fxSeq || 0; }
-let gasAny = false;
+let gasAny = false, peekAny = false;
+/** Line-of-sight reveal: indoor cells seen through open doors/doorways in rooms not yet explored. Lit while in view, dim once out of view. */
+function buildPeek() {
+  const S = Core.state, b = hbox(), seen = S.seenCell; peekAny = false; if (!seen || !L.interior) return;
+  const c = L.peek || (L.peek = mk(b.w * CS, b.h * CS)); if (c.width !== Math.ceil(b.w * CS) || c.height !== Math.ceil(b.h * CS)) { c.width = b.w * CS; c.height = b.h * CS; }
+  const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
+  for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) { const i = Core.idx(x, y), rm = S.room[i]; if (rm < 0 || !seen[i] || S.rooms[rm].explored) continue;
+    peekAny = true; const px = (x - b.x) * CS, py = (y - b.y) * CS; g.drawImage(L.interior, px, py, CS, CS, px, py, CS, CS);
+    if (!S.vis[i]) { g.fillStyle = 'rgba(4,10,20,.62)'; g.fillRect(px, py, CS, CS); } }
+}
 function updateDyn() {
   const S = Core.state, MW = Core.MAP_W, MH = Core.MAP_H;
   const fg = L.fog.getContext('2d'), fi = fg.createImageData(MW, MH), tg = L.tint.getContext('2d'), ti = tg.createImageData(MW, MH), gg = L.gas.getContext('2d'), gi = gg.createImageData(MW, MH);
@@ -267,6 +276,7 @@ function updateDyn() {
     const gv = S.vis[i] ? S.gas[i] : (S.gasSeen ? S.gasSeen[i] : 0);
     if (gv > 0.03) { gasAny = true; gi.data[p] = 214; gi.data[p + 1] = 236; gi.data[p + 2] = 196; gi.data[p + 3] = Math.min(220, 40 + gv * 190) * (S.vis[i] ? 1 : 0.6); } }
   fg.putImageData(fi, 0, 0); tg.putImageData(ti, 0, 0); gg.putImageData(gi, 0, 0); dynVer = S.version;
+  buildPeek();
 }
 
 /* =====================================================================
@@ -317,6 +327,7 @@ function frame(now) {
   lights(g, now, 'under');
   if (view.sel && S.phase === 'planning') drawExpo(g);
   const b = hbox(); g.drawImage(L.comp, b.x * CS, b.y * CS);
+  if (peekAny && L.peek) g.drawImage(L.peek, b.x * CS, b.y * CS);
   g.save(); g.beginPath(); for (const rm of S.rooms) if (rm.explored) g.rect(rm.x * CS, rm.y * CS, rm.w * CS, rm.h * CS); g.clip(); g.imageSmoothingEnabled = false; g.drawImage(L.fog, 0, 0, Core.MAP_W * CS, Core.MAP_H * CS); g.restore();
   drawDoors(g, now);
   drawCruisers(g, now);
@@ -558,6 +569,9 @@ function coverBadge(g, x, y, ci, s) { if (!ci || ci.level === 'inside') return; 
 function shieldPath(g, x, y, w, h) { g.beginPath(); g.moveTo(x, y - h / 2); g.quadraticCurveTo(x + w * 0.35, y - h * 0.36, x + w / 2, y - h * 0.4); g.lineTo(x + w / 2, y - h * 0.02); g.quadraticCurveTo(x + w * 0.45, y + h * 0.3, x, y + h / 2); g.quadraticCurveTo(x - w * 0.45, y + h * 0.3, x - w / 2, y - h * 0.02); g.lineTo(x - w / 2, y - h * 0.4); g.quadraticCurveTo(x - w * 0.35, y - h * 0.36, x, y - h / 2); g.closePath(); }
 /** Officers tuck toward their cover object: offset the marker 0.28 cell toward it. */
 function tuck(u, ux, uy) { if (u.kind !== 'team' && u.kind !== 'patrol') return [ux, uy]; if (animating) return [ux, uy]; const ci = Core.coverInfo(u.x, u.y); if (!ci || !ci.dx && !ci.dy) return [ux, uy]; return [ux + ci.dx * 0.28, uy + ci.dy * 0.28]; }
+const formCache = new Map();
+function formOf(u) { const S = Core.state, key = `${S.seed}|${u.x},${u.y}|${(u.dir || 0).toFixed(2)}|${S.version}|${S.tick}|${S.phase}|${u.perch ? 1 : 0}`; const c = formCache.get(u.uid); if (c && c.key === key) return c.f;
+  const f = Core.formationFor ? Core.formationFor(u) : null; formCache.set(u.uid, { key, f }); return f; }
 function teamShield(u) { const s = sz(); let [ux, uy] = posOf(u.uid, u.x, u.y); [ux, uy] = tuck(u, ux, uy); const [x, y] = toScreen(ux + 0.5, uy + 0.5); const lift = cam.z < 0.4 ? 26 : 40; return { x, y, sx: x, sy: y - lift * s, s }; }
 function onFootVisible(u) { return !(u.kind === 'patrol' && u.inCar) && !(u.kind === 'team' && !u.deployed && false); }
 function drawUnits(g, now) {
@@ -584,7 +598,14 @@ function drawUnits(g, now) {
     if (n) badge(g, x, y, String(n), '#ffffff', '#1d2a3a', s); }
   const teams = S.units.filter(u => u.kind === 'team'); teams.sort((a, b) => (view.sel === a.uid) - (view.sel === b.uid));
   for (const u of teams) { if (!u.deployed && u.status === 'ok' && !Core.teamOk(u).length) continue; const T = teamShield(u), { x, y, sx, sy } = T; const sel = view.sel === u.uid; const down = u.status !== 'ok'; const n = Core.teamOk(u).length; const col = down ? '#ff3b4e' : sel ? '#7fe3ff' : u.perch ? '#3ef0a0' : '#38c8ff';
-    g.save(); g.shadowColor = col; g.shadowBlur = 10; g.fillStyle = col; g.beginPath(); g.arc(x, y, 5 * s, 0, 7); g.fill(); g.restore();
+    const F = down ? null : formOf(u);
+    if (F && F.pts.length) { // one blue dot per team member, laid out in the context formation (stack / column / fan / cover line)
+      const rd = Math.max(3.2, Math.min(7, 0.14 * CS * cam.z)), k = CS * cam.z; g.save(); g.shadowColor = col; g.shadowBlur = 6;
+      F.pts.forEach(([dx, dy], i) => { const px = x + dx * k, py = y + dy * k; g.fillStyle = i === 0 ? '#bff1ff' : col; g.beginPath(); g.arc(px, py, rd, 0, 7); g.fill(); g.lineWidth = 1; g.strokeStyle = '#06203f'; g.stroke(); });
+      g.restore(); if (cam.z > 0.55) { g.fillStyle = 'rgba(191,241,255,.75)'; g.font = `700 ${7.5 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(F.kind.toUpperCase(), x, y + Math.max(rd * 2.2, 0.75 * k)); } }
+    else { g.save(); g.shadowColor = col; g.shadowBlur = 10; g.fillStyle = col; g.beginPath(); g.arc(x, y, 5 * s, 0, 7); g.fill(); g.restore(); }
+    if (u.slice && u.slice.active) { const [px, py] = toScreen(u.slice.px + 0.5, u.slice.py + 0.5); g.save(); g.strokeStyle = '#ffd36b'; g.lineWidth = 2; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(x, y); g.lineTo(px, py); g.stroke(); g.setLineDash([]);
+      g.fillStyle = '#ffd36b'; g.font = `800 ${9 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillText(`◩ ${u.slice.cut * 45}°`, px, py - 8 * s); g.restore(); }
     if (!down) { const d = dirOf(u.uid, u.dir || 0); g.strokeStyle = col; g.lineWidth = 2.5; g.beginPath(); g.moveTo(x + Math.cos(d - 0.6) * 9 * s, y + Math.sin(d - 0.6) * 9 * s); g.lineTo(x + Math.cos(d) * 13 * s, y + Math.sin(d) * 13 * s); g.lineTo(x + Math.cos(d + 0.6) * 9 * s, y + Math.sin(d + 0.6) * 9 * s); g.stroke(); }
     g.strokeStyle = `rgba(56,200,255,${sel ? 0.9 : 0.55})`; g.lineWidth = 1.5; g.setLineDash([2, 4]); g.beginPath(); g.moveTo(x, y - 6 * s); g.lineTo(sx, sy + 16 * s); g.stroke(); g.setLineDash([]);
     const w = 30 * s, h = 34 * s;

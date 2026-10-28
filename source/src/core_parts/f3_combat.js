@@ -7,14 +7,15 @@ function suspectWindowCells() { const sp = S.suspect; const out = []; for (const
 /** Classify a target from a firing point: open / concealed (hedge, fence — hidden, not protected) / covered (hard cover) / car / perched. */
 function targetClass(u, px, py) {
   if (u.kind === 'cruiser') return 'car';
+  if (sliceExposed(u, px, py) && los(px, py, u.x, u.y) !== 1) return 'slice';
   if (u.perch && u.perch.entry) return 'perched';
   if (roomAt(u.x, u.y) >= 0) return 'open';
   if (u.exiting && S.tick - u.exiting <= 1) return 'open';
   const l = losEx(px, py, u.x, u.y, true); return l.cov === 2 ? 'covered' : l.cov === 1 ? 'concealed' : 'open';
 }
-const T_PRIO = { open: 3, car: 2, concealed: 1.3, covered: 1, perched: 0.6 };
-const T_TRY = { open: 0.85, car: 0.6, concealed: 0.3, covered: 0.25, perched: 0.15 }; // concealment: he can barely see you, so he fires less
-const T_HIT = { open: 1, concealed: 0.85, covered: 0.2, perched: 0.12 }; // …but rounds go through a hedge; hard cover stops them
+const T_PRIO = { slice: 1.2, open: 3, car: 2, concealed: 1.3, covered: 1, perched: 0.6 };
+const T_TRY = { slice: 0.85 * 0.6, open: 0.85, car: 0.6, concealed: 0.3, covered: 0.25, perched: 0.15 }; // concealment: he can barely see you, so he fires less
+const T_HIT = { slice: 0.4, open: 1, concealed: 0.85, covered: 0.2, perched: 0.12 }; // …but rounds go through a hedge; hard cover stops them
 function suspectTick() {
   const sp = S.suspect; if (!suspectActive()) return;
   if (sp.stun > 0) { sp.stun--; return; }
@@ -31,7 +32,7 @@ function suspectTick() {
   // best (position, target) pair: his current cell or a window of his room
   const spots = [[sp.x, sp.y]].concat(sp.room >= 0 ? suspectWindowCells() : []);
   let best = null;
-  for (const u of shooters()) { for (const [px, py] of spots) { const d = dist(px, py, u.x, u.y); if (d > R) continue; const l = los(px, py, u.x, u.y); if (!l) continue;
+  for (const u of shooters()) { for (const [px, py] of spots) { const d = dist(px, py, u.x, u.y); if (d > R) continue; const l = los(px, py, u.x, u.y) || (sliceExposed(u, px, py) ? 1 : 0); if (!l) continue; // a pie-slicing officer is partly exposed where his slice reaches
       const cls = targetClass(u, px, py); const indoorTeam = u.kind === 'team' && roomAt(u.x, u.y) >= 0;
       const s = T_PRIO[cls] - d / 40 - (px !== sp.x || py !== sp.y ? 0.35 : 0) + (indoorTeam ? 1.5 : 0) + (u.kind === 'drone' || u.kind === 'robot' ? -0.8 : 0);
       if (!best || s > best.s) best = { u, px, py, d, l, cls, s }; } }
@@ -61,7 +62,7 @@ function suspectFire(b) {
     returnFire(); return;
   }
   if (T.kind === 'drone' || T.kind === 'robot') { if (S.rng.chance(0.45)) { T.status = 'down'; T.orders = []; log(`Shots fired — ${T.name} disabled.`, 'bad'); } else log(`Shots fired at ${T.name} — missed.`, 'alert'); return; }
-  p *= T_HIT[b.cls] || 1; if (T.moved === S.tick) p *= 0.8;
+  p *= b.cls === 'slice' ? sliceHit(T) : T_HIT[b.cls] || 1; if (T.moved === S.tick) p *= 0.8;
   if (T.kind === 'team') { p *= 1 - teamSkill(T) * 0.25; if (T.equip.shield > 0 && roomAt(T.x, T.y) >= 0) p *= 0.65; if (T.carrying && T.equip.shield > 0) p *= CAS_CFG.carryShield; if (hasSpec(T, 'point')) p *= 0.95; }
   p = clamp(p, 0.01, 0.55);
   if (S.rng.chance(p)) officerDown(T);

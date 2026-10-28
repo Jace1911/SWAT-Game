@@ -103,10 +103,10 @@ function applyAid(u, c, auto) {
     else { c.stable = true; c.aided = 2; t = `medic stabilises ${c.name} — countdown stopped.`; } }
   else if (medic) { if (c.aided >= 1) return false; c.crit += cfg.medicNoKit; c.aided = 1; t = `medic (no medkit) packs ${c.name}'s injury — +${tDur(cfg.medicNoKit)}.`; }
   else { if (c.aided >= 1) { if (!auto) log(`${u.name}: ${c.name} already has first aid — needs a medic or EMS.`, 'radio'); return false; } c.crit += cfg.aidOther; c.aided = 1; t = `first aid on ${c.name} — +${tDur(cfg.aidOther)}.`; }
-  log(`${u.name}: ${t}`, 'good'); fx('text', c.x, c.y, { text: c.stable ? 'STABLE' : 'AID', color: '#3ef0a0' }); S.version++; return true;
+  log(`${u.name}: ${t}`, 'good'); xpAct('aid', u, c.name); fx('text', c.x, c.y, { text: c.stable ? 'STABLE' : 'AID', color: '#3ef0a0' }); S.version++; return true;
 }
 function dropCas(u, c) { if (c) { c.carrier = null; } u.carrying = null; }
-function atEMS(c, u) { c.state = 'transport'; c.tr = CAS_CFG.transport; c.stable = true; c.carrier = null; c.known = true; if (u) u.carrying = null;
+function atEMS(c, u) { if (u) xpAct('evac', u, c.name); c.state = 'transport'; c.tr = CAS_CFG.transport; c.stable = true; c.carrier = null; c.known = true; if (u) u.carrying = null;
   log(`EMS: ${c.name} loaded into the ambulance — transport ${tMin(c.tr)}.`, 'good'); fx('text', c.x, c.y, { text: 'EMS', color: '#3ef0a0' }); }
 /** Execution of aid / rescue / evac orders (called from unitAct). */
 function casAct(u, o, speed) {
@@ -123,7 +123,7 @@ function casAct(u, o, speed) {
   const goal = o.type === 'evac' ? (x, y) => cheb(x, y, S.ems.x, S.ems.y) <= 1 : (x, y) => x === o.dx && y === o.dy;
   const r = stepAlong(u, o, goal, sp); c.x = u.x; c.y = u.y;
   if (r === null) { dropCas(u, c); failOrders(u, 'no route while carrying'); return; }
-  if (r) { popOrder(u); if (o.type === 'evac') atEMS(c, u); else { dropCas(u, c); c.ccp = true; log(`${u.name}: ${c.name} at the casualty collection point (in cover).`, 'radio'); } }
+  if (r) { popOrder(u); if (o.type === 'evac') atEMS(c, u); else { dropCas(u, c); c.ccp = true; xpAct('rescue', u, c.name); log(`${u.name}: ${c.name} at the casualty collection point (in cover).`, 'radio'); } }
 }
 /** Per tick: mobile casualties move themselves (cover first, then to EMS). Fog flags refresh. */
 function casualtyTick() {

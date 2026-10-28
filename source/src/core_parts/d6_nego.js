@@ -71,7 +71,7 @@ function contactTry(chan) {
     if (r.chance(T.escalate)) { sp.agit = clamp(sp.agit + 8, 0, 100); negHist(`Contact refused — he shouts at us to back off. Agitation rising.`, 'alert'); }
     else { N.quiet = r.int(1, 2); negHist(`Contact refused — he has gone quiet.`, 'radio'); }
     return false; }
-  N.contact = chan; N.everContact = true; sp.talk = clamp(sp.talk + 5, 0, 100); sp.agit = clamp(sp.agit - 5, 0, 100);
+  N.contact = chan; N.everContact = true; xpAct('contact', negOnScene().filter(o => o.status === 'ok' || o.status === 'staged').map(o => o.id)); sp.talk = clamp(sp.talk + 5, 0, 100); sp.agit = clamp(sp.agit - 5, 0, 100);
   negHist(`CONTACT — he is talking to us (${chan === 'pa' ? 'shouting back over the PA' : chan === 'line' ? 'on the throw-phone' : 'on his cell'}).`, 'good'); return true;
 }
 function talkMult(chan) { const n = negOnScene(); return (0.75 + negotiatorSkill() * 0.5) * (chan === 'pa' ? NEGO_CFG.pa.eff : 1) * (n.length >= 2 ? NEGO_CFG.coach : 1); }
@@ -83,7 +83,7 @@ function runTalk() {
   const T = NEGO_CFG.temper[N.temper];
   if (k === 'call') { N.attempts; if (!N.line && r.chance(T.noAnswer)) { N.attempts++; N.refusals++; negHist('Negotiator: the phone rings out — no answer.', 'radio'); return; }
     contactTry(N.line ? 'line' : 'phone'); return; }
-  const C = NEGO_CFG.talk, m = talkMult(N.contact); N.rounds++; let gain = 0, msg = '';
+  const C = NEGO_CFG.talk, m = talkMult(N.contact); N.rounds++; xpAct('dialogue', negOnScene().map(o => o.id)); let gain = 0, msg = '';
   if (k === 'rapport') { gain = r.int(C.rapport.gain[0], C.rapport.gain[1]) * m - sp.agit * NEGO_CFG.agitDrag; sp.agit += C.rapport.agit; msg = 'building rapport — talking about his family, what he needs.'; }
   if (k === 'listen') { gain = r.int(C.listen.gain[0], C.listen.gain[1]) * m; sp.agit += C.listen.agit; msg = 'letting him vent. He is calming down.';
     if (r.chance(C.listen.intel)) { sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.located = true; msg += ` He mentions he is in the ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'house'}.`; } }

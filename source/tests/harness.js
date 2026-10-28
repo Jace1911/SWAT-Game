@@ -92,20 +92,25 @@ function policy(kind) {
     }
   };
 }
+const MAXT = +process.env.MAXT || 50, GOOD = 350; // Satisfactory or better
 function play(seed, kind) {
   const S = Core.newGame(seed); const step = policy(kind); let guard = 0;
-  while (S.phase !== 'over' && guard++ < 40) { step(); runTurn(); }
-  return { win: !!(Core.state.result && Core.state.result.win), title: Core.state.result ? Core.state.result.title : 'n/a', turns: Core.state.turn, down: Core.state.stats.down, method: Core.state.stats.method, kia: Core.state.stats.kia, lost: Core.state.stats.lost, amb: !!Core.state.nego.ambush };
+  // v7: no mission timer and no auto-fail — the harness caps the turns itself, then the "player" withdraws.
+  while (S.phase !== 'over' && guard++ < MAXT) { step(); runTurn(); }
+  const capped = S.phase !== 'over'; if (capped) Core.withdraw();
+  const M = Core.missionScore();
+  return { capped, score: M.score, grade: M.grade, good: !!(S.result && S.result.win) && M.score >= GOOD, win: !!(Core.state.result && Core.state.result.win), title: Core.state.result ? Core.state.result.title : 'n/a', turns: Core.state.turn, down: Core.state.stats.down, method: Core.state.stats.method, kia: Core.state.stats.kia, lost: Core.state.stats.lost, amb: !!Core.state.nego.ambush };
 }
 if (process.env.ONE) { for (let i = 1; i <= 12; i++) { const r = play(1000 + i * 37, 'competent'); const S = Core.state; console.log(i, r.title, r.method, S.cas.map(c => c.who + ':' + c.state + (c.carrier ? '*' : '') + '@' + c.x + ',' + c.y + ' ' + (c.known ? 'K' : '?')).join(' | ')); } process.exit(0); }
 if (NB > 0) {
   const res = {};
   for (const kind of (process.env.KINDS || 'competent,passive,reckless').split(',')) { let w = 0, down = 0, turns = 0; const titles = {}, methods = {};
-    let kia = 0, lost = 0, amb = 0;
-    for (let i = 1; i <= NB; i++) { const r = play(1000 + (i + (+process.env.OFF || 0)) * 37, kind); if (r.win) { w++; methods[r.method] = (methods[r.method] || 0) + 1; } down += r.down; turns += r.turns; kia += r.kia; lost += r.lost; amb += r.amb; titles[r.title] = (titles[r.title] || 0) + 1; }
+    let kia = 0, lost = 0, amb = 0, good = 0, capped = 0, score = 0; const grades = {};
+    for (let i = 1; i <= NB; i++) { const r = play(1000 + (i + (+process.env.OFF || 0)) * 37, kind); if (r.win) { w++; methods[r.method] = (methods[r.method] || 0) + 1; } if (r.good) good++; if (r.capped) capped++; score += r.score; grades[r.grade] = (grades[r.grade] || 0) + 1; down += r.down; turns += r.turns; kia += r.kia; lost += r.lost; amb += r.amb; titles[r.title] = (titles[r.title] || 0) + 1; }
     console.log(`  ${kind}: KIA ${kia}, lost ${lost}, ambushes ${amb}`);
-    res[kind] = w / NB; console.log(`BALANCE ${kind.padEnd(9)} win ${(100 * w / NB).toFixed(0)}%  avg officers down ${(down / NB).toFixed(2)}  avg turns ${(turns / NB).toFixed(1)}  ${JSON.stringify(titles)} ${JSON.stringify(methods)}`); }
-  const ok = res.competent >= 0.6 && res.competent <= 0.97 && res.passive <= 0.2 && res.reckless <= res.competent - 0.25;
+    res[kind] = { win: w / NB, good: good / NB, capped: capped / NB }; console.log(`BALANCE ${kind.padEnd(9)} resolved ${(100 * w / NB).toFixed(0)}%  good (resolved, score ≥${GOOD}) ${(100 * good / NB).toFixed(0)}%  ran to cap ${capped}/${NB}  avg score ${(score / NB).toFixed(0)}  ${JSON.stringify(grades)}  avg officers down ${(down / NB).toFixed(2)}  avg turns ${(turns / NB).toFixed(1)}  ${JSON.stringify(titles)} ${JSON.stringify(methods)}`); }
+  const C = res.competent || { good: 0 }, P = res.passive || { win: 0, capped: 1 }, R = res.reckless || { good: 0 };
+  const ok = C.good >= 0.55 && C.good <= 0.97 && P.win <= 0.2 && P.capped >= 0.8 && R.good <= C.good - 0.25;
   console.log(ok ? 'BALANCE OK: winnable but not trivial' : 'BALANCE OUT OF BAND'); if (!ok) process.exitCode = 2;
 }
 if (fail) process.exitCode = 1;

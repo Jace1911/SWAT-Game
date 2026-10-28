@@ -157,7 +157,7 @@ function statusCheck() {
 /** End of turn: a side nobody watches gives him a way out. */
 function sceneTurn() {
   const sc = S.scene, sp = S.suspect; if (!sc) return;
-  const sw = sideWatch(); if (sc.gap0.length && sc.gapClosed == null && !sw.gaps.some(g => sc.gap0.includes(g))) sc.gapClosed = S.turn;
+  const sw = sideWatch(); if (sc.gap0.length && sc.gapClosed == null && !sw.gaps.some(g => sc.gap0.includes(g))) { sc.gapClosed = S.turn; xpAct('contain', null); }
   if (!hostile() || sp.mode !== 'barricaded' || sp.walk || (S.nego && S.nego.contact) || S.turn < 2) { sc.gapTurns = 0; return; }
   const wins = S.windows.filter(w => w.room !== sp.room && !w.broken && sw.gaps.includes(watchPts().find(p => p.win === w.id).side));
   if (!wins.length) { sc.gapTurns = 0; return; }

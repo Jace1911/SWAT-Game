@@ -43,7 +43,7 @@ function stepAlong(u, o, goalFn, speed = 1) {
     }
     const [nx, ny] = p[0]; const e = edge(u.x, u.y, nx, ny);
     if (e.t === 'D' && e.d.state === 'closed') { e.d.state = 'open'; e.d.known = true; faceTo(u, nx, ny); noise(nx, ny, 2, 'door'); log(`${u.name}: opening ${e.d.name || 'door'}.`); return false; }
-    faceTo(u, nx, ny); u.x = nx; u.y = ny; u.waiting = false; u.moved = S.tick;
+    faceTo(u, nx, ny); u.x = nx; u.y = ny; u.waiting = false; u.moved = S.tick; if (u.slice) u.slice = null; // stepping off ends the pie slice
     if (roomAt(nx, ny) >= 0) break; // one cell per tick inside — careful movement
   }
   return goalFn(u.x, u.y);
@@ -99,13 +99,14 @@ function unitAct(u) {
     if (pc && !o.prog) { o.prog = 1; log(`${u.name}: inside the ${pc.name.toLowerCase()} — setting up at the ${pc.kind}.`); return; }
     const [hx, hy] = houseCenter(); if (pc) { u.x = pc.x; u.y = pc.y; u.perch = { id: pc.id, entry: pc.entry, kind: pc.kind, name: pc.name }; } else u.perch = { yard: true, kind: 'yard vantage', name: 'yard vantage point' };
     u.dir = Math.atan2(hy - u.y, hx - u.x); popOrder(u); const sp = spotterOf(u);
-    log(`${u.name}: OVERWATCH set — ${u.perch.kind}, ${sp ? 'spotter ' + sp.name + (sp.q ? ' (qualified)' : ' (untrained)') : 'no spotter'}.`, 'good'); return; }
+    xpAct('overwatch', u); log(`${u.name}: OVERWATCH set — ${u.perch.kind}, ${sp ? 'spotter ' + sp.name + (sp.q ? ' (qualified)' : ' (untrained)') : 'no spotter'}.`, 'good'); return; }
   const outside = roomAt(u.x, u.y) < 0;
   const speed = u.kind === 'drone' ? 2 : (u.kind === 'patrol' || u.kind === 'team') && outside && (u.impair || 0) < 0.35 ? 2 : 1;
+  if (o.type === 'corner') return cornerTick(u, o);
   if (o.type === 'move' || o.type === 'clear') {
     const r = stepAlong(u, o, (x, y) => x === o.x && y === o.y, speed);
     if (r === null) failOrders(u, 'route blocked'); else if (r) { popOrder(u); if (o.type === 'clear') { const rm = S.rooms[o.room];
-      if (!(S.suspect.room === o.room && suspectActive())) { log(`${u.name}: ${rm.name} CLEAR.`, 'good'); fx('text', u.x, u.y, { text: 'CLEAR', color: '#3ef0a0' }); } } }
+      if (!(S.suspect.room === o.room && suspectActive())) { log(`${u.name}: ${rm.name} CLEAR.`, 'good'); xpAct('clear', u, rm.name); fx('text', u.x, u.y, { text: 'CLEAR', color: '#3ef0a0' }); } } }
     return;
   }
   if (o.type === 'board') { const c = unit(o.car); if (!c || c.occ.length >= 2) { failOrders(u, 'cruiser full'); return; }
@@ -147,7 +148,7 @@ function unitAct(u) {
     const rm = S.rooms[o.room]; const tc = roomTargetCell(o.room);
     faceTo(u, tc[0], tc[1]); u.equip[o.type]--; popOrder(u);
     if (o.type === 'bang') { fx('flash', tc[0], tc[1], { fromX: u.x, fromY: u.y }); log(`${u.name}: BANG OUT — flashbang into ${rm.known ? rm.name : 'room'}.`, 'radio'); noise(tc[0], tc[1], 10, 'bang');
-      if (S.suspect.room === o.room && hostile()) { S.suspect.stun = 5; S.suspect.ambush = false; log('Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
+      if (S.suspect.room === o.room && hostile()) { S.suspect.stun = 5; S.suspect.ambush = false; xpAct('bang', u); log('Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
     else { gasDeploy(o.room); fx('gas', tc[0], tc[1], { room: o.room, fromX: u.x, fromY: u.y }); log(`${u.name}: CS gas deployed into ${rm.known ? rm.name : 'room'}.`, 'radio'); aggressive(15); }
     return;
   }
@@ -157,7 +158,7 @@ function doBreach(u, d, how) {
   d.state = 'breached'; d.known = true; d.barricaded = false; d.locked = false; S.stats.breaches++;
   const c = d.cells[Math.floor(d.cells.length / 2)]; const mx = (c[0][0] + c[1][0]) / 2, my = (c[0][1] + c[1][1]) / 2;
   fx('breach', mx, my, { how }); fx('text', mx, my, { text: 'BREACH', color: '#ffb020' });
-  log(`${u.name}: ${d.name} BREACHED (${BREACH[how] ? BREACH[how].name.toLowerCase() : how}).`, 'radio'); d.method = how;
+  xpAct('breach', u, d.name); log(`${u.name}: ${d.name} BREACHED (${BREACH[how] ? BREACH[how].name.toLowerCase() : how}).`, 'radio'); d.method = how;
   noise(mx, my, how === 'charge' ? 18 : 14, 'breach'); aggressive(how === 'charge' ? 25 : 20);
   const sp = S.suspect; if (false) { sp.stun = Math.max(sp.stun, 2); log('Suspect stunned by the blast.', 'good'); }
 }

@@ -18,6 +18,14 @@ function setupUnits(r) {
     S.officers = O.roster.map((o, i) => { const k = used[o.spec] = (used[o.spec] || 0) + 1, e = etaBy[o.spec] || [3];
       return { id: 'O' + i, careerId: o.id, last: o.last, name: (o.rank || 'Ofc.') + ' ' + o.last, spec: o.spec, skill: o.skill, status: 'enroute', eta: e[Math.min(k - 1, e.length - 1)] + (k > e.length ? 1 : 0), team: null, stable: false,
         dog: o.spec === 'k9' ? (o.dog || 'Rex') : null, quals: (o.quals || []).slice() }; }); }
+  else if (O.specs && O.specs.length) { // team level (Quick Mission): staff built from the level's specialty list; own rng so the map is identical
+    const q = makeRng((S.seed * 7 + O.specs.length * 131 + 17) >>> 0), pool = names.concat(q.shuffle(LAST2.slice())), used = {};
+    const etaBy = { leader: [1], point: [1, 2], breacher: [1, 3], negotiator: [3, 4], medic: [3, 4], marksman: [4, 5], tech: [2, 3], k9: [5, 6] };
+    const base = O.skill || 0.7;
+    S.officers = O.specs.map((sp, i) => { const k = used[sp] = (used[sp] || 0) + 1, e = etaBy[sp] || [3], last = pool[i % pool.length] + (i >= pool.length ? '-' + (i + 1) : '');
+      return { id: 'O' + i, last, name: (i === 0 ? 'Lt.' : sp === 'negotiator' ? 'Det.' : k === 1 && sp !== 'point' ? 'Cpl.' : 'Ofc.') + ' ' + last, spec: sp, skill: +clamp(base - 0.08 + q() * 0.22, 0.4, 0.95).toFixed(2),
+        status: 'enroute', eta: e[Math.min(k - 1, e.length - 1)] + Math.floor((k - 1) / e.length), team: null, stable: false, dog: sp === 'k9' ? q.pick(['Rex', 'Bruno', 'Koda', 'Max', 'Nova']) : null, quals: [] }; });
+    const cand = q.shuffle(S.officers.filter(o => !['leader', 'marksman'].includes(o.spec))); cand.slice(0, Math.max(O.spotters != null ? O.spotters : 2, 0)).forEach(o => o.quals.push('spotter')); }
   if (O.gear) for (const k in O.gear) if (k in S.armory) S.armory[k] = O.gear[k];
   S.teamMax = O.teamMax || 5;
   rebuildDyn(); setupRoadblocks(r); // three cruisers at the ends of the block, keeping traffic out
@@ -195,6 +203,14 @@ function updateVision() {
   const W = new Set(watchers());
   for (const u of S.units) { if (!W.has(u)) { u.vis = []; continue; } u.vis = computeVis(u); for (const c of u.vis) S.vis[c] = 1; }
   for (const c of S.peek) S.vis[c] = 1;
+  for (const u of W) if (u.slice && u.slice.ox === u.x && u.slice.oy === u.y && u.slice.cells.length) { for (const c of u.slice.cells) S.vis[c] = 1; u.vis = u.vis.concat(u.slice.cells); } // pie-slice reveal
+  // mutual sight: if the suspect has a clear line to one of our units inside sight range, that unit sees him too (no facing needed)
+  const sp0 = S.suspect;
+  if (sp0 && suspectActive()) { const sc = idx(sp0.x, sp0.y); for (const u of W) { if (u.kind === 'cruiser' || !u.vis || u.vis.includes(sc)) continue; const p = visParamsG(u);
+    if (dist(u.x, u.y, sp0.x, sp0.y) <= p.range && los(sp0.x, sp0.y, u.x, u.y) === 1 && los(u.x, u.y, sp0.x, sp0.y) === 1) { u.vis.push(sc); S.vis[sc] = 1; } } }
+  // per-cell memory: indoor cells we have actually had eyes on (through open doors/doorways), drawn even while the room is not yet "explored"
+  if (!S.seenCell || S.seenCell.length !== S.vis.length) S.seenCell = new Uint8Array(S.vis.length);
+  for (let c = 0; c < S.vis.length; c++) if (S.vis[c] && S.room[c] >= 0) S.seenCell[c] = 1;
   const counts = new Array(S.rooms.length).fill(0);
   for (let c = 0; c < S.vis.length; c++) if (S.vis[c]) { const rr = S.room[c]; if (rr >= 0) counts[rr]++; }
   S.rooms.forEach((rm, i) => { const occupied = S.units.some(u => unitAlive(u) && (u.kind === 'team' ? u.deployed : u.kind === 'drone' || u.kind === 'robot') && roomAt(u.x, u.y) === i);
@@ -203,7 +219,8 @@ function updateVision() {
   S.doors.forEach(d => { if (d.storm && !d.stormKnown && d.cells.some(([a, b]) => (roomAt(a[0], a[1]) < 0 && S.vis[idx(a[0], a[1])]) || (roomAt(b[0], b[1]) < 0 && S.vis[idx(b[0], b[1])]))) { d.stormKnown = true; log(`${d.name}: outer storm door spotted — pry will take longer.`, 'intel'); } });
   const sp = S.suspect;
   if (sp && suspectActive() && (S.vis[idx(sp.x, sp.y)] || (sp.walk && sp.room < 0))) { // a walk-out in the yard is watched by everyone
-    if (!sp.seen) log(`CONTACT — suspect visual in ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'yard'}!`, 'alert');
+    if (!sp.seen) { log(`CONTACT — suspect visual in ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'yard'}!`, 'alert'); const sc = idx(sp.x, sp.y), who = [];
+      for (const u of W) if (u.kind === 'team' && u.vis.includes(sc)) who.push(...teamOk(u).map(o => o.id)); xpAct('locate', who.length ? who : null); }
     sp.seen = true; sp.visible = true; sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn }; sp.heat = null;
   } else if (sp) sp.visible = false;
   containStatus();

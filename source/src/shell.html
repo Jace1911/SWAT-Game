@@ -32,8 +32,8 @@ button.on{background:linear-gradient(180deg,#1f6fd0,#124a8e);border-color:var(--
 /* top bar */
 #top{top:calc(8px + var(--sat));left:8px;right:8px;height:50px;display:flex;align-items:center;gap:12px;padding:0 10px}
 #top .logo{width:30px;height:34px;flex:none}
-#top .op{font-weight:800;letter-spacing:.14em;color:#fff;font-size:14px;white-space:nowrap}
-#top .sub{font-size:11px;color:var(--dim);letter-spacing:.08em;white-space:nowrap}
+#top .op{font-weight:800;letter-spacing:.14em;color:#fff;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#top .sub{font-size:11px;color:var(--dim);letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #top .grow{flex:1;min-width:0}
 .stat{display:flex;flex-direction:column;align-items:flex-start;padding:0 10px;border-left:1px solid var(--line);white-space:nowrap}
 .stat b{font-size:13px;color:#fff;letter-spacing:.06em}.stat span{font-size:9.5px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase}
@@ -86,9 +86,30 @@ button.on{background:linear-gradient(180deg,#1f6fd0,#124a8e);border-color:var(--
 #toast{position:fixed;left:50%;top:calc(70px + var(--sat));transform:translateX(-50%);background:rgba(60,8,14,.92);border:1px solid var(--red);color:#ffd0d5;padding:8px 16px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:40;max-width:90vw;text-align:center}
 #toast.show{opacity:1}#toast.ok{background:rgba(6,40,30,.92);border-color:var(--green);color:#c8ffe6}
 #zoom{position:fixed;right:290px;bottom:104px;display:flex;flex-direction:column;gap:5px}
+/* collapsible side panels */
+.ptog{width:24px;height:24px;font-size:15px;font-weight:800;flex:none;color:var(--cyan2)}
+#bmini{display:none}
+#left.col{width:62px}#left.col .ph{padding:6px;justify-content:center}#left.col .ph>:not(.ptog){display:none}#left.col .ph .sp{display:none}
+#left.col .scroll{padding:4px;overflow-x:hidden}#left.col .card{padding:4px;justify-content:center;margin-bottom:5px}#left.col .card>:not(.shield):not(.pbadge){display:none}
+#left.col .row,#left.col #b-form{display:none}#left.col .sec{font-size:0;letter-spacing:0;margin:6px 0 4px}#left.col .sec:after{height:1px}
+#right.col{width:190px;bottom:auto}#right.col>:not(.ph:first-child):not(#bmini){display:none}#right.col #bmini{display:block;padding:6px 10px 8px;font-size:11px}
+#right.col .ph small{display:none}
+#bmini .mr{display:flex;gap:6px;justify-content:space-between;padding:1px 0}#bmini .mr span{color:var(--dim);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase}#bmini .mr b{color:#fff;text-align:right;font-size:11px}
+#bmini .ml{margin-top:5px;padding-top:4px;border-top:1px solid var(--line);color:#bcd0e6;font-size:10.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}#bmini .ml i{font-style:normal;color:#4e6a8a;font-weight:700;margin-right:4px}
+/* collapsible dialogs (brief / intel): shrink to a title bar so the map and controls stay usable */
+.mtog{width:28px;height:28px;font-size:14px;margin-left:4px}
+.modal.mini{background:transparent;pointer-events:none;align-items:flex-start;padding-top:calc(52px + var(--sat))}.modal.mini .dlg{pointer-events:auto;width:min(420px,100%)}.modal.mini .dlg>:not(.ph){display:none}
 /* modals */
 .modal{position:fixed;inset:0;background:rgba(2,6,12,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:12px}
 .modal.show{display:flex}
+.mm .mmb{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px 12px;min-height:54px;width:100%}.mm .mmb b{font-size:14px}.mm .mmb span{font-size:11px;color:var(--dim);font-weight:400}.mm .mmb.on span{color:#dff}
+.mmq{border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}.mmg{gap:8px}
+.lvrow{display:flex;align-items:center;gap:8px;font-size:12px;color:#bcd0e6}.lvrow label{min-width:70px}.lvrow input[type=range]{flex:1;min-width:80px;accent-color:var(--cyan2);height:28px}.lvrow input[type=number]{width:58px;background:#0b1622;color:#fff;border:1px solid var(--line);border-radius:6px;padding:5px;font:inherit;font-size:14px}
+.mmt{font-size:11.5px;color:#bcd0e6;line-height:1.45;min-height:34px}
+.lvbox{display:flex;gap:12px;align-items:center;border:1px solid var(--cyan2);border-radius:8px;padding:8px 10px;margin-bottom:10px;background:rgba(40,120,170,.12)}.lvn{font-size:11px;color:var(--dim);text-align:center;line-height:1}.lvn b{display:block;font-size:28px;color:#fff}
+.lvbar{height:8px;background:#0b1622;border-radius:4px;overflow:hidden;margin:5px 0 3px;border:1px solid var(--line)}.lvbar i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan2),var(--green))}
+.calls{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.callc{display:flex;flex-direction:column;gap:3px;text-align:left;font-size:12px;color:#bcd0e6;padding:10px;font-weight:400}
+@media (max-height:560px) and (min-width:761px){.mm .mmb{min-height:40px;padding:6px 10px}.mmq{gap:3px;padding:6px}.mmt{min-height:0}.calls{grid-template-columns:repeat(3,1fr)}}
 .dlg.wide{width:min(860px,100%)}
 .tr{display:grid;grid-template-columns:62px 78px 1fr;gap:6px;padding:4px 6px;border-radius:5px;font-size:12.5px}.tr .tt{color:var(--dim);font-variant-numeric:tabular-nums}.tr .who{font-weight:800;color:var(--cyan2)}.tr.c .who{color:var(--amber)}.tr.n{color:var(--dim);font-style:italic}.tr.n .who{color:var(--dim)}.tr.on{background:rgba(43,140,255,.18)}
 .tl{border-left:2px solid var(--line2);margin:4px 0 4px 6px;padding-left:10px;font-size:12px}.tl div{margin:3px 0}.tl b{color:#fff;font-variant-numeric:tabular-nums}
@@ -124,10 +145,24 @@ kbd{font:600 10.5px ui-monospace,monospace;background:#0b1b33;border:1px solid v
 #aimbox .pt{font-weight:800;color:var(--cyan2);letter-spacing:.08em;display:flex;align-items:center;margin-bottom:3px}#aimbox .pt b{margin-left:auto;font-size:17px;color:#fff}
 #aimbox .pr{display:flex;gap:6px;align-items:baseline;color:#bcd0e6}#aimbox .pr span{width:52px;color:var(--dim);text-transform:uppercase;font-size:9.5px;letter-spacing:.08em}#aimbox .pr i{flex:1;font-style:normal;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#aimbox .pr b{color:#fff}
 #ovwf{display:none;right:6px;width:200px;padding:4px;z-index:25}#ovwf.show{display:block}#ovw2{width:100%;height:auto;border-radius:6px}
+/* ---------- compact landscape (phones / small tablets on their side) ---------- */
+@media (max-height:560px) and (min-width:761px){
+  #top{height:38px;top:calc(4px + var(--sat));left:calc(6px + var(--sal));right:calc(6px + var(--sar));gap:6px;padding:0 6px}
+  #top .logo{width:20px;height:24px}#top .sub,#top .hm2,#top .stat>span{display:none}#top .op{font-size:12px;letter-spacing:.08em}
+  #top .stat{padding:0 6px}#top .ib{width:28px;height:28px;font-size:13px}#b-wd{height:28px;padding:0 8px}
+  #left,#right{top:calc(48px + var(--sat));bottom:calc(60px + var(--sab))}#left{left:calc(6px + var(--sal))}#right{right:calc(6px + var(--sar))}
+  #left:not(.col){width:240px}#right:not(.col){width:250px}#ovw{height:110px}.ph{padding:6px 10px 5px}
+  #bottom{left:calc(6px + var(--sal));right:calc(6px + var(--sar));bottom:calc(4px + var(--sab));height:50px;padding:5px 6px;gap:6px}
+  .act{min-width:46px;height:38px;padding:2px 4px;gap:1px;font-size:8px;letter-spacing:.02em}.act .ic{font-size:14px}.act .ct{margin:-30px 0 0 30px}.vsep{height:30px}
+  #exec{height:38px;min-width:104px;font-size:12px;letter-spacing:.12em}#exec small{font-size:8px}
+  #hint{bottom:calc(60px + var(--sab));left:calc(76px + var(--sal));transform:none;max-width:calc(100vw - 340px);white-space:normal;font-size:10.5px;padding:3px 10px;border-radius:10px;line-height:1.3}#toast{top:calc(48px + var(--sat))}#aimbox{top:calc(48px + var(--sat))}
+  #zoom{gap:4px}#zoom button{width:28px;height:28px;font-size:13px}
+  .modal.mini{padding-top:calc(46px + var(--sat))}
+}
 /* ---------- phone layout ---------- */
 @media (max-width:760px){
   #top{height:44px;gap:8px;left:6px;right:6px;top:calc(6px + var(--sat))}
-  #top .stat.hm,#top .sub,#top .hm2{display:none}#top .op{font-size:12px;overflow:hidden;text-overflow:ellipsis}#b-new{padding:0 10px}.stat{padding:0 6px}
+  #top .stat.hm,#top .sub,#top .hm2,.ptog{display:none}#top .op{font-size:12px;overflow:hidden;text-overflow:ellipsis}#b-new{padding:0 10px}.stat{padding:0 6px}
   #left,#right{display:none;top:auto;bottom:calc(132px + var(--sab));left:6px;right:6px;width:auto;height:min(58vh,460px);z-index:30}
   #left.open,#right.open{display:flex}
   #chips{display:flex;position:fixed;left:6px;right:6px;top:calc(56px + var(--sat));gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px}
@@ -156,21 +191,20 @@ kbd{font:600 10.5px ui-monospace,monospace;background:#0b1b33;border:1px solid v
 <div id="top" class="panel">
   <svg class="logo" viewBox="0 0 30 34"><defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b8cff"/><stop offset="1" stop-color="#0a2a5a"/></linearGradient></defs><path d="M15 1 C20 3 25 3 28 3 L28 15 C28 24 22 29 15 33 C8 29 2 24 2 15 L2 3 C5 3 10 3 15 1Z" fill="url(#lg)" stroke="#7fe3ff" stroke-width="1.5"/><path d="M9 17 l4 4 l8 -9" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
   <div class="grow"><div class="op" id="opname">OPERATION</div><div class="sub" id="opsub">BARRICADED SUBJECT · RESIDENTIAL</div></div>
-  <div class="stat"><span>Status</span><b id="st-status">—</b></div>
-  <div class="stat" title="Mission clock — each EXECUTE advances 0:30"><span>Mission <i id="st-clock" style="font-style:normal;color:var(--dim)"></i></span><b id="st-turn">0:00</b></div>
-  <div class="stat hm"><span>Officers Down</span><b id="st-down">0</b></div>
-  <div class="stat hm"><span>Seed</span><b id="st-seed">—</b></div>
-  <button id="b-brief" class="ib" title="Mission brief &amp; 911 call">📋</button><button id="b-career" title="Career — roster, record, unlocks"><span>🎖</span> <span class="hm2">Career</span></button><button id="b-new" title="New random scenario (not counted in the career)">⟳ <span class="hm2">New Scenario</span></button>
+  <div class="stat st-s"><span>Status</span><b id="st-status">—</b></div>
+  <button id="b-brief" class="ib" title="Mission brief &amp; 911 call">📋</button><button id="b-wd" title="End mission / withdraw (no time limit — optional)"><span>⚑</span> <span class="hm2">Withdraw</span></button>
+  <button id="b-menu" class="ib" title="Menu — scenario, seed, career">☰</button>
   <button id="b-mute" class="ib" title="Sound on/off">🔊</button>
   <button id="b-help" class="ib" title="Help">?</button>
 </div>
 <div id="chips"></div>
-<div id="left" class="panel"><div class="ph">Team Units<span class="sp"></span><small id="l-count"></small><button class="ib mclose" data-close="left" style="display:none">✕</button></div><div class="scroll" id="teams"></div></div>
-<div id="right" class="panel"><div class="ph">Building Info<span class="sp"></span><small>LIVE</small><button class="ib mclose" data-close="right" style="display:none">✕</button></div>
+<div id="left" class="panel"><div class="ph"><span class="pt">Team Units</span><span class="sp"></span><small id="l-count"></small><button class="ib ptog" id="tg-left" title="Collapse / expand team units" aria-label="Collapse or expand team units">‹</button><button class="ib mclose" data-close="left" style="display:none">✕</button></div><div class="scroll" id="teams"></div></div>
+<div id="right" class="panel"><div class="ph"><button class="ib ptog" id="tg-right" title="Collapse / expand building info" aria-label="Collapse or expand building info">›</button><span class="pt">Building Info</span><span class="sp"></span><small>LIVE</small><button class="ib mclose" data-close="right" style="display:none">✕</button></div>
+  <div id="bmini"></div>
   <div class="kv" id="binfo"></div>
   <div style="padding:2px 12px 0"><div class="row" style="padding:0"><span style="font-size:10.5px;color:var(--dim);letter-spacing:.06em">INTEL LEVEL</span><span class="r" id="intelpct">0%</span></div><div class="bar"><i id="intelbar" style="width:0"></i></div></div>
   <div class="ovwh"><span>NEIGHBORHOOD · TAP TO JUMP</span></div><canvas id="ovw" aria-label="Minimap — tap or drag to jump" title="Minimap — tap or drag to jump" width="492" height="316" title="Overview — click or drag to move the view"></canvas>
-  <div class="ph" style="border-top:1px solid var(--line)">Radio / Pager Log</div>
+  <div class="ph logh" style="border-top:1px solid var(--line)">Radio / Pager Log<span class="sp"></span><small id="log-clock" title="Mission time (information only — no time limit). Each EXECUTE = 30 s">T+0:00</small></div>
   <div id="log"></div>
 </div>
 <div id="zoom"><button class="ib" id="z-in" title="Zoom in">＋</button><button class="ib" id="z-out" title="Zoom out">－</button><button class="ib" id="z-fit" title="Fit house (0)">⤢</button><button class="ib" id="z-all" title="Whole neighborhood / overview map">▦</button></div>
@@ -191,6 +225,15 @@ kbd{font:600 10.5px ui-monospace,monospace;background:#0b1b33;border:1px solid v
 <div class="modal" id="m-brief"><div class="panel dlg" id="brief-dlg"></div></div>
 <div class="modal" id="m-911"><div class="panel dlg" id="c911-dlg"></div></div>
 <div class="modal" id="m-career"><div class="panel dlg wide" id="career-dlg"></div></div>
+<div class="modal" id="m-wd"><div class="panel dlg" id="wd-dlg"></div></div>
+<div class="modal" id="m-menu"><div class="panel dlg" id="menu-dlg"><div class="ph">Menu<span class="sp"></span><button class="ib" data-close="m-menu">✕</button></div><div class="body">
+  <div class="kv" style="padding:0 0 8px"><span>Operation</span><b id="mn-op">—</b><span>Seed</span><b id="st-seed">—</b><span>Mission time</span><b id="mn-time">0:00</b></div>
+  <div class="grid2"><button id="b-new" class="cmd"><b>⟳ New Scenario</b><span>New random Quick Mission (not counted in the career)</span></button>
+  <button id="b-career" class="cmd"><b>🎖 Career</b><span id="mn-car">Roster, record, team level</span></button>
+  <button id="b-main" class="cmd"><b>⌂ Main menu</b><span>Quick Mission level, Career Mode, help</span></button>
+  <button id="b-state" class="cmd" style="display:none"><b>☎ Call State SWAT Team</b><span>Hand over the scene · keep action XP only</span></button></div></div></div></div>
+<div class="modal" id="m-main"><div class="panel dlg" id="main-dlg"></div></div>
+<div class="modal" id="m-calls"><div class="panel dlg" id="calls-dlg"></div></div>
 <div class="modal" id="m-help"><div class="panel dlg" id="help-dlg"></div></div>
 <script>
 /*__CORE__*/

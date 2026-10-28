@@ -10,7 +10,7 @@
    ===================================================================== */
 const Core = (function () {
 'use strict';
-const MAP_W = 112, MAP_H = 72, TICKS = 8, LOSE_DOWN = 3, TURN_LIMIT = 30;
+const MAP_W = 112, MAP_H = 72, TICKS = 8, LOSE_DOWN = 3; // LOSE_DOWN: kept only as the 'heavy losses' warning threshold — the mission never auto-ends on losses or time
 /* ---------- time display: logic stays turn-based; each executed turn = 30 s of scene time ---------- */
 const TURN_SEC = 30;
 function mmss(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
@@ -79,6 +79,7 @@ const SUSPECT_WEAPONS = {
 const STANCES = { return: 'Return fire', free: 'Fire at will', hold: 'Hold fire' };
 const TEAM_NAMES = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot'];
 const LAST = ['Reyes','Kim','Novak','Okafor','Brennan','Castillo','Haddad','Lindqvist','Morales','Tran','Walsh','Diaz','Petrov','Hughes','Sato','Mensah','Kowalski','Rivera'];
+const LAST2 = ['Abbott','Banks','Chen','Dorsey','Ellison','Fischer','Gomez','Hale','Ibarra','Jovanovic','Kaur','Lund','Marsh','Nakamura','Olsen','Pratt','Quinn','Rossi','Sandoval','Tate','Underwood','Varga','Whitfield','Yilmaz'];
 const PATROL = ['Miller','Grant','Shah','Ortiz','Becker'];
 const OPS = ['NIGHTFALL','IRON GATE','BLUE HERON','STONEWALL','SILENT KEY','COLD HARBOR','NORTH STAR','GLASS HOUSE','BLACKWOOD','HALCYON'];
 const STREETS = ['Maple', 'Oak Hollow', 'Linden', 'Birch', 'Willow Creek', 'Juniper', 'Aspen', 'Cedar Ridge', 'Elm', 'Sycamore'];

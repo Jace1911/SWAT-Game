@@ -167,3 +167,4 @@ for (const seed of [11, 23, 57, 101, 314]) {
   const sm = Core.careerSummary(); ok(sm.officers.length === 2 && typeof sm.score === 'number' && sm.outcome, 'careerSummary is plain data');
   const S2 = Core.newGame(77); ok(S2.officers.length === 11 && !S2.units.some(u => u.armored), 'classic (seed replay) game unaffected by career opts'); }
 console.log(`MECHANICS: ${pass} passed, ${fail} failed`); if (fail) process.exitCode = 1;
+require('./v7.js'); // v7 rules: no timer / no auto-fail / deductions / indoor LOS

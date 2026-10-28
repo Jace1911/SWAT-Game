@@ -72,6 +72,7 @@ function planOrder(u, o, sx, sy, assume) {
       if (canThrowFrom(sx, sy, o.room, assume, u, o.type)) return { ok: true, path: [], end: [sx, sy] };
       const p = pathAny(fn); if (!p) return { ok: false, reason: 'No opening into that room (breach a door or reach a window)' }; return { ok: true, path: p, end: p[p.length - 1] }; }
     case 'hold': return { ok: true, path: [], end: [sx, sy] };
+    case 'corner': { const c = cornerAt(sx, sy, u); if (!c) return { ok: false, reason: 'No corner here — stand at a hallway corner, door frame or house corner' }; return { ok: true, path: [], end: [sx, sy], corner: { px: c.px, py: c.py, n: c.hidden.length } }; }
     case 'aid': case 'rescue': case 'evac': return planCas(u, o, sx, sy, assume);
     case 'pa': { if (!hostile()) return { ok: false, reason: 'Not needed' }; if (!paInRange(sx, sy)) return { ok: false, reason: `Out of loudspeaker range — move within ~${NEGO_CFG.pa.range} m of the house` };
       if (u.orders.some(q => q !== o && q.type === 'pa')) return { ok: false, reason: 'One PA broadcast per 30 s' };
@@ -111,7 +112,7 @@ function orderReq(u, o) {
       if (o.via === 'robot' && (!(e.robot > 0) || !hasSpec(u, 'tech'))) return 'Robot delivery needs a robot and a Tech on the team'; }
     if (u.carrying && !['evac', 'rescue', 'hold'].includes(o.type) && !u.orders.some(q => q.cas === u.carrying)) return 'Carrying a casualty — Evac or Rescue first';
   } else if (u.kind === 'patrol') {
-    if (!['move', 'hold', 'shoot', 'board', 'aid', 'rescue', 'evac'].includes(o.type)) return 'Patrol officers can Move, Hold, Fire, get in a cruiser, or help casualties';
+    if (!['move', 'hold', 'shoot', 'board', 'aid', 'rescue', 'evac', 'corner'].includes(o.type)) return 'Patrol officers can Move, Hold, Fire, work a corner, get in a cruiser, or help casualties';
     if (['aid', 'rescue', 'evac'].includes(o.type) && u.inCar) return 'Get out of the cruiser first';
     if (o.type === 'shoot' && u.inCar) return 'Get out of the cruiser first (select the cruiser → Exit)';
     if (o.type === 'board') { const c = unit(o.car); if (!c || c.kind !== 'cruiser') return 'Tap a cruiser'; if (u.inCar) return 'Already in a cruiser'; if (c.occ.length >= 2) return 'Cruiser is full (2 seats)'; if (c.disabled) return 'That cruiser is disabled'; }
