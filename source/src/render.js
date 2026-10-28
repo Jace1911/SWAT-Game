@@ -17,7 +17,7 @@ let cv, ctx, VW = 0, VH = 0, dpr = 1;
 const cam = { x: 0, y: 0, z: 1 };
 let safe = { l: 0, t: 0, r: 0, b: 0 };
 const L = {};
-let builtSeed = -1, compKey = '', dynVer = -1, planVer = -1, plans = new Map();
+let builtWV = -1, builtSeed = -1, compKey = '', dynVer = -1, planVer = -1, plans = new Map();
 let anims = [], seenFx = 0;
 const prev = new Map(); let tickT0 = 0, tickDur = 280, animating = false;
 const view = { sel: null, mode: 'move', hoverDoor: null, hoverRoom: null, hint: null, hover: null };
@@ -36,6 +36,20 @@ function edgeIter(x0, y0, x1, y1, fn) {
   }
 }
 /** Generic hip roof for a rect q (cells) at scale cs. */
+const TRAILER_COL = ['#d9dde2', '#e4dccb', '#cfd8d4', '#dfe3ea', '#d8cfc4'];
+/** Mobile-home roof: flat, light metal with ribs; 'small' = neighbor scale. */
+function flatRoof(g, q, k, col, small) { const x = q.x * k, y = q.y * k, w = q.w * k, h = q.h * k;
+  g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = small ? 6 : 10; g.shadowOffsetX = 4; g.shadowOffsetY = 6; g.fillStyle = col; g.fillRect(x, y, w, h); g.restore();
+  const horiz = q.w >= q.h; g.strokeStyle = 'rgba(0,0,0,.16)'; g.lineWidth = 1; g.beginPath();
+  if (horiz) for (let yy = y + k * 0.5; yy < y + h; yy += k * 0.5) { g.moveTo(x + 2, yy); g.lineTo(x + w - 2, yy); } else for (let xx = x + k * 0.5; xx < x + w; xx += k * 0.5) { g.moveTo(xx, y + 2); g.lineTo(xx, y + h - 2); }
+  g.stroke(); g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(x + 2, y + 2, w - 4, k * 0.18); }
+/** Mobile home: skirting band around the footprint plus wooden steps / porch at each door (ground layer). */
+function trailerBase(g, H, X, k) { for (const q of H.parts) { const x = q.x * k, y = q.y * k, w = q.w * k, h = q.h * k; g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(x - k * 0.22 + 3, y - k * 0.22 + 4, w + k * 0.44, h + k * 0.44);
+    g.fillStyle = '#9a9184'; g.fillRect(x - k * 0.2, y - k * 0.2, w + k * 0.4, h + k * 0.4); g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 1; g.beginPath(); for (let xx = x; xx < x + w; xx += k * 0.3) { g.moveTo(xx, y - k * 0.2); g.lineTo(xx, y); g.moveTo(xx, y + h); g.lineTo(xx, y + h + k * 0.2); } g.stroke(); }
+  for (const s of X.steps || []) { const x = s.x * k, y = s.y * k, w = s.w * k, h = s.h * k; g.fillStyle = 'rgba(0,0,0,.4)'; g.fillRect(x + 3, y + 4, w, h);
+    g.fillStyle = s.porch ? '#8a6a48' : '#7a5c3e'; g.fillRect(x, y, w, h); g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1; g.beginPath(); for (let xx = x + k * 0.25; xx < x + w; xx += k * 0.25) { g.moveTo(xx, y); g.lineTo(xx, y + h); } g.stroke();
+    if (s.porch) { g.strokeStyle = '#5a4430'; g.lineWidth = 2.5; g.strokeRect(x + 1, y + 1, w - 2, h - 2); } } }
 function hipRoof(g, q, ov, cols, cs, r, shadow) {
   const x0 = (q.x - ov) * cs, y0 = (q.y - ov) * cs, x1 = (q.x + q.w + ov) * cs, y1 = (q.y + q.h + ov) * cs, w = x1 - x0, h = y1 - y0;
   const horiz = w >= h, rr2 = Math.min(w, h) / 2; const ra = horiz ? [x0 + rr2, (y0 + y1) / 2] : [(x0 + x1) / 2, y0 + rr2], rb = horiz ? [x1 - rr2, (y0 + y1) / 2] : [(x0 + x1) / 2, y1 - rr2];
@@ -76,7 +90,10 @@ function bakeGround() {
   for (let i = 0; i < 5000; i++) { const x = Math.floor(r() * MW), y = Math.floor(r() * MH); if (S.paved[Core.idx(x, y)] !== 1) continue; g.fillStyle = `rgba(255,255,255,${0.02 + r() * 0.03})`; g.fillRect((x + r()) * k, (y + r()) * k, 1.5, 1.5); }
   // street markings and curbs
   const my = (G.ST + G.streetW / 2) * k; g.strokeStyle = 'rgba(214,170,60,.5)'; g.lineWidth = 2; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(k, my); g.lineTo((MW - 1) * k, my); g.stroke(); g.setLineDash([]);
-  g.fillStyle = '#4a505a'; g.fillRect(k, G.ST * k - 2, (MW - 2) * k, 3); g.fillRect(k, (G.ST + G.streetW) * k - 1, (MW - 2) * k, 3);
+  g.fillStyle = '#4a505a'; const curb = (y, gap) => { if (!gap) { g.fillRect(k, y, (MW - 2) * k, 3); return; } g.fillRect(k, y, (gap.x0 - 2) * k, 3); g.fillRect((gap.x1 + 1) * k, y, (MW - gap.x1 - 2) * k, 3); };
+  curb(G.ST * k - 2, G.side); curb((G.ST + G.streetW) * k - 1, G.cross);
+  if (G.side) { const sx = (G.side.x0 + 3) * k; g.strokeStyle = 'rgba(214,170,60,.5)'; g.lineWidth = 2; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(sx, (G.rear.road1 + 1) * k); g.lineTo(sx, G.SW * k); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#4a505a'; g.fillRect((G.side.x0 - 1) * k, (G.rear.road1 + 1) * k, 3, (G.SW - G.rear.road1 - 1) * k); g.fillRect((G.side.x1 + 2) * k - 3, (G.rear.road1 + 1) * k, 3, (G.SW - G.rear.road1 - 1) * k); }
   if (G.rear) { const ry = (G.rear.road0 + (G.rear.road1 - G.rear.road0 + 1) / 2) * k; g.strokeStyle = 'rgba(214,170,60,.4)'; g.lineWidth = 2; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(k, ry); g.lineTo((MW - 1) * k, ry); g.stroke(); g.setLineDash([]);
     g.fillStyle = '#4a505a'; g.fillRect(k, G.rear.walk0 * k - 1, (MW - 2) * k, 3); }
   if (G.cross) { const cx = (G.cross.x0 + 3) * k; g.strokeStyle = 'rgba(214,170,60,.5)'; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(cx, (G.SS + 2) * k); g.lineTo(cx, (MH - 1) * k); g.stroke(); g.setLineDash([]); }
@@ -100,9 +117,10 @@ function bakeGround() {
   // sheds
   for (const q of X.sheds) hipRoof(g, q, 0.1, ROOFS[(q.hue || 0) % ROOFS.length].map(cc => shade(cc, 0.9)), k, r);
   // neighbor houses (impassable, block sight): roof plus a porch light
-  for (const nb of X.nb) { const cols = ROOFS[(nb.roof || 0) % ROOFS.length]; if (nb.garage) hipRoof(g, nb.garage, 0.3, cols.map(cc => shade(cc, 0.92)), k, r); for (const q of nb.parts) hipRoof(g, q, 0.45, cols, k, r);
+  for (const nb of X.nb) { const cols = ROOFS[(nb.roof || 0) % ROOFS.length]; if (nb.trailer) { for (const q of nb.parts) flatRoof(g, q, k, TRAILER_COL[(nb.body || 0) % TRAILER_COL.length], true); continue; } if (nb.garage) hipRoof(g, nb.garage, 0.3, cols.map(cc => shade(cc, 0.92)), k, r); for (const q of nb.parts) hipRoof(g, q, 0.45, cols, k, r);
     if (nb.storeys > 1) { const q = nb.parts[0]; g.fillStyle = 'rgba(255,255,255,.06)'; g.fillRect(q.x * k, q.y * k, q.w * k, q.h * k); } }
   if (H.dgarage) hipRoof(g, H.dgarage, 0.3, ROOFS[0].map(cc => shade(cc, 0.92)), k, r);
+  if (H.trailer) trailerBase(g, H, X, k);
   // trees (canopy over everything on the ground)
   for (const t of X.trees) { const cx = (t.x + 0.5) * k, cy = (t.y + 0.5) * k, rad = Math.min(t.r, 2.2) * k * 0.75;
     g.fillStyle = 'rgba(0,0,0,.42)'; g.beginPath(); g.ellipse(cx + rad * 0.3, cy + rad * 0.4, rad, rad * 0.92, 0, 0, 7); g.fill();
@@ -232,7 +250,9 @@ function bakeRoof() {
   const cols = ROOFS[S.seed % ROOFS.length];
   if (H.garage) hipRoof(g, H.garage, 0.45, cols.map(q => shade(q, 0.92)), CS, r);
   const parts = H.parts.slice().sort((p, q) => p.w * p.h - q.w * q.h); // largest last so the main ridge sits on top
+  if (H.trailer) { for (const q of parts) flatRoof(g, q, CS, TRAILER_COL[S.seed % TRAILER_COL.length], false); if (H.trailer === 'double') { const q = parts[parts.length - 1], mid = (q.y + q.h / 2) * CS; g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 2; g.beginPath(); g.moveTo(q.x * CS, mid); g.lineTo((q.x + q.w) * CS, mid); g.stroke(); } L.roof = c; return; }
   for (const q of parts) hipRoof(g, q, 0.6, cols, CS, r);
+  if (H.duplex) { const px = H.duplex.partyX * CS; g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 6; g.fillStyle = '#6e6a66'; g.fillRect(px - 4, (H.y0 - 0.5) * CS, 8, (H.y1 - H.y0 + 2) * CS); g.restore(); g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(px - 4, (H.y0 - 0.5) * CS, 2, (H.y1 - H.y0 + 2) * CS); }
   const m = parts[parts.length - 1], ch = { x: m.x + Math.floor(m.w * (r() < 0.5 ? 0.3 : 0.7)), y: m.y + 1 };
   g.save(); g.shadowColor = 'rgba(0,0,0,.7)'; g.shadowBlur = 10; g.shadowOffsetX = 6; g.shadowOffsetY = 8; g.fillStyle = '#5a3c34'; g.fillRect(ch.x * CS, ch.y * CS, CS * 1.2, CS * 0.9); g.restore();
   g.fillStyle = '#1a1a1a'; g.fillRect(ch.x * CS + 6, ch.y * CS + 6, CS * 1.2 - 12, CS * 0.9 - 12);
@@ -256,7 +276,7 @@ function buildComp() {
   L.comp = c; compKey = knowledgeKey();
 }
 function rebake() { bakeGround(); bakeInterior(); bakeBlueprint(); bakeRoof(); const MW = Core.MAP_W, MH = Core.MAP_H; L.fog = mk(MW, MH); L.tint = mk(MW, MH); L.gas = mk(MW, MH); L.expo = mk(MW, MH);
-  builtSeed = Core.state.seed; compKey = ''; dynVer = -1; planVer = -1; anims = []; seenFx = Core.state.fxSeq || 0; }
+  builtSeed = Core.state.seed; builtWV = (Core.state.duplex && Core.state.duplex.wallV) || 0; compKey = ''; dynVer = -1; planVer = -1; anims = []; seenFx = Core.state.fxSeq || 0; }
 let gasAny = false, peekAny = false;
 /** Line-of-sight reveal: indoor cells seen through open doors/doorways in rooms not yet explored. Lit while in view, dim once out of view. */
 function buildPeek() {
@@ -343,7 +363,7 @@ function drawStageTags(g) { const S = Core.state, X = S && S.ext; if (!X || !X.s
   g.restore(); }
 function frame(now) { if (cv) { const [w, h] = viewportSize(); if (w !== VW || h !== VH || cv.width !== Math.round(w * Math.min(2, window.devicePixelRatio || 1))) resize(); } // self-heal a missed or stale rotate event
   const S = Core.state; if (!S || !cv) return;
-  if (builtSeed !== S.seed) { rebake(); }
+  if (builtSeed !== S.seed || builtWV !== ((S.duplex && S.duplex.wallV) || 0)) { rebake(); }
   if (knowledgeKey() !== compKey) buildComp();
   if (dynVer !== S.version) updateDyn();
   syncFx();
@@ -356,7 +376,7 @@ function frame(now) { if (cv) { const [w, h] = viewportSize(); if (w !== VW || h
   const b = hbox(); g.drawImage(L.comp, b.x * CS, b.y * CS);
   if (peekAny && L.peek) g.drawImage(L.peek, b.x * CS, b.y * CS);
   g.save(); g.beginPath(); for (const rm of S.rooms) if (rm.explored) g.rect(rm.x * CS, rm.y * CS, rm.w * CS, rm.h * CS); g.clip(); g.imageSmoothingEnabled = false; g.drawImage(L.fog, 0, 0, Core.MAP_W * CS, Core.MAP_H * CS); g.restore();
-  drawDoors(g, now);
+  drawDoors(g, now); drawStruct(g, now);
   drawCruisers(g, now);
   drawCones(g, now);
   g.globalCompositeOperation = 'lighter'; g.imageSmoothingEnabled = false; g.drawImage(L.tint, 0, 0, Core.MAP_W * CS, Core.MAP_H * CS); g.imageSmoothingEnabled = true; g.globalCompositeOperation = 'source-over';
@@ -471,6 +491,24 @@ function doorVisible(d) { const S = Core.state; return d.exterior || d.rooms.som
 function safeRing(g, d, now, planned) { const [mx, my] = doorMidCell(d), R = (Core.CHARGE_SAFE + 0.5) * CS; g.save(); g.strokeStyle = planned ? 'rgba(255,176,32,.55)' : `rgba(255,90,60,${0.55 + 0.3 * Math.sin(now / 200)})`; g.lineWidth = 2 / cam.z; g.setLineDash([7 / cam.z, 5 / cam.z]);
   g.beginPath(); g.arc(mx * CS, my * CS, R, 0, 7); g.stroke(); g.setLineDash([]); g.fillStyle = planned ? 'rgba(255,176,32,.04)' : 'rgba(255,80,50,.06)'; g.fill();
   g.fillStyle = 'rgba(255,200,140,.85)'; g.font = `700 ${Math.max(9, 11 / cam.z)}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillText('SAFE STANDOFF ' + Core.CHARGE_SAFE + ' m', mx * CS, my * CS - R - 4 / cam.z); g.restore(); }
+/** v13 structure overlays: bars, cameras, duplex unit B tag and party-wall hole (world space). */
+function drawStruct(g, now) { const S = Core.state, H = S.house;
+  for (const w of S.windows) { if (!w.barred) continue; for (const [cx, cy, ox, oy] of w.edges) { const vert = cx !== ox, px = (Math.max(cx, ox) + (vert ? 0 : 0.5)) * CS, py = (Math.max(cy, oy) + (vert ? 0.5 : 0)) * CS, nx = (ox - cx) * 7, ny = (oy - cy) * 7;
+    g.strokeStyle = '#2b2f36'; g.lineWidth = 3; g.beginPath(); for (let k = -2; k <= 2; k++) { const t = k * CS * 0.18; const bx = px + (vert ? 0 : t), by = py + (vert ? t : 0); g.moveTo(bx, by); g.lineTo(bx + nx, by + ny); } g.stroke();
+    g.strokeStyle = '#8c939c'; g.lineWidth = 1.4; g.stroke(); } }
+  if (S.cams) { const dark = S.power && S.power.cut; for (const c of S.cams) { const x = (c.x + 0.5) * CS, y = (c.y + 0.5) * CS, a = Math.atan2(c.dy, c.dx);
+    if (!dark) { g.fillStyle = c.seen ? 'rgba(255,59,78,.13)' : 'rgba(255,59,78,.07)'; g.beginPath(); g.moveTo(x, y); g.arc(x, y, c.range * CS, a - c.fov / 2, a + c.fov / 2); g.closePath(); g.fill(); g.strokeStyle = 'rgba(255,59,78,.3)'; g.setLineDash([4, 6]); g.lineWidth = 1.2; g.stroke(); g.setLineDash([]); }
+    g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = '#1b1f26'; g.strokeStyle = dark ? '#6b7380' : '#ff3b4e'; g.lineWidth = 1.5; rr(g, -7, -5, 14, 10, 2); g.fill(); g.stroke(); g.fillStyle = dark ? '#3a3f47' : (Math.floor(now / 500) % 2 ? '#ff3b4e' : '#7a1520'); g.beginPath(); g.arc(4, 0, 2.5, 0, 7); g.fill(); g.restore(); } }
+  const D = S.duplex; if (H.duplex && D) { const B = S.rooms.filter(q => q.unitB); if (B.length) { const x0 = Math.min(...B.map(q => q.x)), x1 = Math.max(...B.map(q => q.x + q.w)), y0 = Math.min(...B.map(q => q.y));
+      const t = 'UNIT B · ' + (D.evac === 'empty' ? 'EMPTY' : D.evac === 'done' ? 'EVACUATED' : D.evac === 'moving' ? 'EVACUATING…' : D.residents + ' RESIDENT' + (D.residents > 1 ? 'S' : '') + ' HOME');
+      const cx = (x0 + x1) / 2 * CS, cy = (y0 + 1.3) * CS; g.font = `800 ${CS * 0.3}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; const tw = g.measureText(t).width + 14;
+      g.fillStyle = 'rgba(6,14,26,.82)'; rr(g, cx - tw / 2, cy - 11, tw, 22, 6); g.fill(); g.strokeStyle = D.evac === 'done' || D.evac === 'empty' ? '#3ddc84' : D.evac === 'moving' ? '#ffb020' : '#ff8a3d'; g.lineWidth = 1.5; g.stroke(); g.fillStyle = g.strokeStyle; g.fillText(t, cx, cy + 1); }
+    if (D.hole) { const hx = (D.hole.x + 1) * CS, ys = D.hole.ys, ya = Math.min(...ys) * CS, yb = (Math.max(...ys) + 1) * CS;
+      g.fillStyle = 'rgba(30,22,16,.9)'; g.fillRect(hx - 6, ya + 3, 12, yb - ya - 6); g.fillStyle = '#9a8f80'; for (let k = 0; k < 14; k++) { const a = k * 2.39, rd = 5 + (k * 5) % 15; g.fillRect(hx + Math.cos(a) * rd, (ya + yb) / 2 + Math.sin(a) * rd * 1.4, 3 + (k % 3), 2 + (k % 2)); }
+      g.strokeStyle = '#ffb020'; g.lineWidth = 2; g.setLineDash([4, 3]); g.strokeRect(hx - 7, ya + 2, 14, yb - ya - 4); g.setLineDash([]);
+      const t = 'PARTY WALL BREACHED'; g.font = `800 ${CS * 0.26}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; const tw = g.measureText(t).width + 12, ty = ya - CS * 0.45;
+      g.fillStyle = 'rgba(60,20,10,.88)'; rr(g, hx - tw / 2, ty - 10, tw, 20, 5); g.fill(); g.fillStyle = '#ffb020'; g.fillText(t, hx, ty + 1); } }
+}
 function drawDoors(g, now) {
   const S = Core.state;
   const cand = view.sel && (view.mode === 'breach' || view.mode === 'polecam' || view.mode === 'charge' || view.mode === 'detonate');
@@ -480,7 +518,7 @@ function drawDoors(g, now) {
     const L2 = G.len;
     if (d.kind === 'garage') { if (d.state === 'breached') { g.strokeStyle = '#ffb020'; g.setLineDash([6, 5]); g.lineWidth = 4; g.beginPath(); g.moveTo(0, 0); g.lineTo(L2, 0); g.stroke(); g.setLineDash([]); }
       else { g.fillStyle = '#8b939e'; g.fillRect(0, -5, L2, 10); g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1; for (let x = 8; x < L2; x += 10) { g.beginPath(); g.moveTo(x, -5); g.lineTo(x, 5); g.stroke(); } } }
-    else if (d.state === 'closed') { g.fillStyle = d.barricaded && d.known ? '#8a5a3a' : '#a37b55'; g.fillRect(1, -4, L2 - 2, 8); g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.5; g.strokeRect(1, -4, L2 - 2, 8);
+    else if (d.state === 'closed') { g.fillStyle = d.steel ? '#6f7882' : d.barricaded && d.known ? '#8a5a3a' : '#a37b55'; g.fillRect(1, -4, L2 - 2, 8); if (d.steel) { g.fillStyle = 'rgba(255,255,255,.25)'; for (let x = 5; x < L2 - 3; x += 7) g.fillRect(x, -3, 1.5, 1.5), g.fillRect(x, 1.5, 1.5, 1.5); } g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.5; g.strokeRect(1, -4, L2 - 2, 8);
       if (d.locked && d.known) { g.fillStyle = '#ffd36b'; g.beginPath(); g.arc(L2 - 7, 0, 2.5, 0, 7); g.fill(); }
       if (d.barricaded && d.known) { g.strokeStyle = '#5a3a22'; g.lineWidth = 3; g.beginPath(); g.moveTo(4, -oy * 8 - 3); g.lineTo(L2 - 4, -oy * 8 + 3); g.moveTo(4, -oy * 8 + 3); g.lineTo(L2 - 4, -oy * 8 - 3); g.stroke(); } }
     else if (d.state === 'open') { g.strokeStyle = 'rgba(190,160,120,.35)'; g.lineWidth = 1; g.setLineDash([3, 3]); g.beginPath(); g.arc(0, 0, L2 - 2, 0, Math.PI / 2); g.stroke(); g.setLineDash([]);

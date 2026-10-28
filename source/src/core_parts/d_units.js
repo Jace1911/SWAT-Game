@@ -60,7 +60,7 @@ function setupSuspect(r) {
   // barricade room varies: any room whose only openings are doors
   const openRoom = new Set(); for (const [k, e] of S.edges) if (e === E_OPEN) { const [t, a, b] = k.split(','); const A = +a, B = +b; const p = t === 'h' ? [[A, B - 1], [A, B]] : [[A - 1, B], [A, B]]; p.forEach(c => openRoom.add(roomAt(c[0], c[1]))); }
   const W0 = { bed: 2, bath: 1.4, office: 1.6, garage: 0.6 };
-  const cands = S.rooms.filter(q => W0[q.type] && !openRoom.has(q.id));
+  const cands = S.rooms.filter(q => W0[q.type] && !openRoom.has(q.id) && !q.unitB);
   const weights = cands.map(q => q.name === 'Master Bedroom' ? 2.6 : W0[q.type]);
   let tot = weights.reduce((a, b) => a + b, 0), pick = r() * tot, rm = cands[0];
   for (let i = 0; i < cands.length; i++) { pick -= weights[i]; if (pick <= 0) { rm = cands[i]; break; } }

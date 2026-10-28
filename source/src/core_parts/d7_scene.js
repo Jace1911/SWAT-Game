@@ -5,14 +5,14 @@
    officers hit on arrival, the mission brief and the 911 call transcript.
    ===================================================================== */
 const SCENE_CFG = {
-  variants: { good: 0.3, gap: 0.3, front: 0.2, mixed: 0.2 },   // patrol setup on arrival
+  variants: { good: 0.4, gap: 0.35, front: 0.25 },        // v14: no 'exposed officer' variant — every start is covered and out of sight   // patrol setup on arrival
   injury: 0.05,                                                // chance an officer was hit before SWAT arrived
   injuryKind: { mobile: 0.3, immobile: 0.38, critical: 0.22, kia: 0.1 },
   critImmobile: [4, 6], critCritical: [3, 4],                  // turns left without aid
   slip: 0.12, slipAfter: 2,                                    // unwatched side with windows: per-turn chance he tries to slip out (after N turns of gap)
   numberInCall: 0.3,                                           // a third-party caller gives his number
 };
-const VARIANT_TXT = { good: 'Good — patrol on two diagonal corners, every side watched', gap: 'Gap — one side left uncovered by accident', front: 'Clumped — patrol bunched at the front', mixed: 'Mixed — one officer in a bad, exposed position' };
+const VARIANT_TXT = { good: 'Good — patrol on two diagonal corners, every side watched', gap: 'Gap — one side left uncovered by accident', front: 'Clumped — both officers behind cars in the street out front', mixed: 'Mixed — one officer in a bad, exposed position' };
 const FIRST = ['Daniel', 'Marcus', 'Travis', 'Kevin', 'Luis', 'Dmitri', 'Ray', 'Calvin', 'Nate', 'Victor', 'Owen', 'Trent'];
 
 /** Cruisers start at the ends of the block (map edge or the nearest intersection), parked across the street to stop traffic. */
@@ -21,9 +21,14 @@ function setupRoadblocks(r) {
   const ends = ['W', 'E'].map(side => { const cr = G.cross && (side === 'W' ? G.cross.x1 < hcx : G.cross.x0 > hcx) ? G.cross : null;
     const x = cr ? (side === 'W' ? cr.x1 + 3 : cr.x0 - 3) : side === 'W' ? r.int(4, 6) : MAP_W - r.int(5, 7); return { side, x, kind: cr ? 'intersection' : 'map edge' }; });
   const place = (x0, y0, dir, i) => { let best = null, bs = 1e9; const c0 = { kind: 'cruiser', dir };
-    for (let dy = -3; dy <= 3; dy++) for (let dx = -8; dx <= 8; dx++) { const x = x0 + dx, y = y0 + dy; if (!inb(x, y)) continue;
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -12; dx <= 12; dx++) { const x = x0 + dx, y = y0 + dy; if (!inb(x, y)) continue;
       const fp = footprint(c0, x, y); if (!fp.every(([a, b]) => inb(a, b) && (S.drive[idx(a, b)] || S.paved[idx(a, b)] === 1) && !S.block[idx(a, b)])) continue;
-      if (!S.drive[idx(x, y)] || carClash(x, y, null)) continue; if (dist(x, y, X.van.x + 3, X.van.y) < 6) continue; const s = Math.abs(dx) + Math.abs(dy) * 1.5; if (s < bs) { bs = s; best = [x, y]; } }
+      if (!S.drive[idx(x, y)] || carClash(x, y, null)) continue; if (dist(x, y, X.van.x + 3, X.van.y) < 6) continue; let s = Math.abs(dx) + Math.abs(dy) * 1.5; if (s >= bs) continue; if (onProperty(x, y) || Math.abs(x - hcx) < 18) continue; if (suspSees(x, y)) s += 40; if (s < bs) { bs = s; best = [x, y]; } } // v14: prefer a spot he can't see from inside
+    if (best && suspSees(best[0], best[1])) { let b2 = null, s2 = 1e9; // v14: widen the search before accepting a spot he can see
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -30; dx <= 30; dx++) { const x = x0 + dx, y = y0 + dy; if (!inb(x, y)) continue; const s = Math.abs(dx) + Math.abs(dy) * 1.5; if (s >= s2) continue;
+        const fp = footprint(c0, x, y); if (!fp.every(([a, b]) => inb(a, b) && (S.drive[idx(a, b)] || S.paved[idx(a, b)] === 1) && !S.block[idx(a, b)])) continue;
+        if (!S.drive[idx(x, y)] || carClash(x, y, null) || onProperty(x, y) || Math.abs(x - hcx) < 18 || dist(x, y, X.van.x + 3, X.van.y) < 6 || suspSees(x, y)) continue; s2 = s; b2 = [x, y]; }
+      if (b2) best = b2; }
     if (!best) { dir = 0; c0.dir = 0; for (let dy = -3; dy <= 3 && !best; dy++) for (let dx = -12; dx <= 12; dx++) { const x = x0 + dx, y = y0 + dy; if (inb(x, y) && S.drive[idx(x, y)] && !carClash(x, y, null)) { best = [x, y]; break; } } }
     if (!best) best = [x0, y0];
     const u = { uid: 'C' + (i + 1), kind: 'cruiser', name: 'Cruiser ' + (i + 1), num: i + 1, x: best[0], y: best[1], dir, occ: [], orders: [], status: 'ok', hits: 0, marks: [], vis: [], disabled: false };
@@ -53,30 +58,28 @@ function setupScene(r) {
   boardCar(P[0], C[0]); boardCar(P[1], C[1]);
   const sides = houseSides(), lr = r.chance(0.5) ? ['left', 'right'] : ['right', 'left'];
   let v = 'good', pick = r(); for (const k in SCENE_CFG.variants) { pick -= SCENE_CFG.variants[k]; if (pick <= 0) { v = k; break; } }
-  const cx = s => s === 'left' ? H.x0 - 2 : H.x1 + 2, rearY = H.y0 - 2, frontY = H.y1 + 2, hc = Math.round((H.x0 + H.x1) / 2);
-  let gap = null;
-  const tryPlan = (v, lr, gap) => { let plan;
-    if (v === 'good') plan = [[cx(lr[0]), rearY, ['rear', lr[0]]], [cx(lr[1]), frontY, ['front', lr[1]]]];
-    else if (v === 'gap') { if (gap === 'rear') plan = [[H.x0 - 2, frontY, ['front', 'left']], [H.x1 + 2, frontY, ['front', 'right']]];
-      else { const o = gap === 'left' ? 'right' : 'left'; plan = [[cx(o), rearY, ['rear', o]], [cx(o), frontY, ['front', o]]]; } }
-    else if (v === 'front') plan = [[hc - 3, frontY + 2, ['front']], [hc + 1, frontY + 2, ['front']]];
-    else plan = [[cx(lr[0]), rearY, ['rear', lr[0]]], [hc + r.int(-3, 3), H.y1 + 4, ['front'], 'exposed']];
-    const taken = [];
-    plan.forEach(([x, y, want, mode], i) => { const u = P[2 + i]; u.badPos = false; let p = scenePost(x, y, want, gap, mode || (v === 'front' ? 'clump' : ''), D, taken);
-      if (!p) p = scenePost(x, y, want, null, '', D, taken) || scenePost(x, y, [], null, '', D, taken); if (!p) p = [S.ext.staging.x + 2 + i, S.ext.staging.y];
-      u.x = p[0]; u.y = p[1]; taken.push(p); if (mode === 'exposed' && shieldAt(u.x, u.y).q === 'open') u.badPos = true; });
-    return sideWatch().gaps; };
-  // place, then verify against real sight lines; if a layout can't produce the intended picture, take what the patrol actually achieved
-  if (v === 'good') { let g = tryPlan('good', lr, null); if (g.length) g = tryPlan('good', [lr[1], lr[0]], null); if (g.length) v = 'gap'; }
-  else if (v === 'gap') { const opts = r.shuffle(['left', 'right', 'rear'].filter(s => sides.includes(s))); let g = [];
-    for (const o of opts.length ? opts : ['rear']) { gap = o; g = tryPlan('gap', lr, o); if (g.length) break; } if (!g.length) { v = 'good'; gap = null; } }
-  else tryPlan(v, lr, null);
+  // v14: every officer on foot starts off the lot, ≥10 m from the house, behind a car on the street or behind cover at the side/rear,
+  // and out of the suspect's sight from inside; the variant decides which sides they manage to watch.
+  let gap = null; const cands = patrolCands(D);
+  const placed = new Set(), place = (res) => { res.forEach((c, i) => { const u = P[2 + i]; u.x = c.x; u.y = c.y; u.badPos = false; placed.add(u); }); return sideWatch().gaps; };
+  const tryPlan = (v, gapSide) => { let plans;
+    if (v === 'good') plans = [{ want: sides.filter(s => s !== 'front'), kind: 'side' }, { want: sides, kind: 'street' }];
+    else if (v === 'gap') plans = [{ want: sides.filter(s => s !== gapSide && s !== 'front'), kind: gapSide === 'front' ? '' : 'side' }, { want: sides.filter(s => s !== gapSide), kind: gapSide === 'front' ? 'side' : 'street' }];
+    else plans = [{ want: ['front'], kind: 'street' }, { want: ['front'], kind: 'street' }];
+    const res = pickPatrolPosts(cands, plans, gapSide) || pickPatrolPosts(cands, plans.map(q => ({ want: q.want, kind: '' })), gapSide) || pickPatrolPosts(cands, [{ want: [], kind: '' }, { want: [], kind: '' }], null);
+    if (!res) return null; return place(res); };
+  if (v === 'good') { let g = tryPlan('good', null); if (!g || g.length) { v = 'gap'; gap = g && g[0] || null; } }
+  else if (v === 'gap') { const opts = r.shuffle(['left', 'right', 'rear'].filter(s => sides.includes(s))); let g = null;
+    for (const o of opts.length ? opts : ['rear']) { gap = o; g = tryPlan('gap', o); if (g && g.length) break; } if (!g || !g.length) { const gg = tryPlan('good', null); v = gg && !gg.length ? 'good' : 'gap'; gap = gg && gg[0] || null; } }
+  else tryPlan('front', null);
+  if (v === 'gap' && !sideWatch().gaps.length) v = 'good';
+  for (const [i, u] of [P[2], P[3]].entries()) if (!placed.has(u)) { u.x = S.ext.staging.x + 2 + i; u.y = S.ext.staging.y; S.genErrors = (S.genErrors || []).concat('no patrol start for ' + u.name); }
   P.forEach(p => p.home = { x: p.x, y: p.y });
   const sw0 = sideWatch();
   S.scene = { variant: v, gap0: sw0.gaps.slice(), intended: gap, injury: null, gapFound: null, gapClosed: null, gapTurns: 0, slipTried: false };
   // officer hit on arrival: the second officer on foot, in the open near the front of the house
   if (r.chance(SCENE_CFG.injury)) {
-    const u = P[3]; const spot = scenePost(hc + r.int(-4, 4), H.y1 + 3, [], null, 'exposed', D, [[P[2].x, P[2].y]]) || [u.x, u.y];
+    const u = P[3]; const dn = downedSpot(r, D), spot = dn ? dn.at : [u.x, u.y];
     u.x = spot[0]; u.y = spot[1]; u.home = { x: u.x, y: u.y }; u.status = 'down'; u.orders = []; u.badPos = false;
     let kind = 'immobile', pk = r(); for (const k in SCENE_CFG.injuryKind) { pk -= SCENE_CFG.injuryKind[k]; if (pk <= 0) { kind = k; break; } }
     const c = addCasualty('patrol', u.uid, u.name, u.x, u.y, { kia: 0, mobile: 0 }); u.cas = c.id; c.initial = true; c.x = u.x; c.y = u.y;
@@ -84,8 +87,8 @@ function setupScene(r) {
     else if (kind === 'mobile') { c.state = 'mobile'; c.sev = 1; c.crit = r.int(CAS_CFG.critMobile[0], CAS_CFG.critMobile[1]); c.reported = true; }
     else if (kind === 'critical') { c.state = 'immobile'; c.sev = 3; c.crit = r.int(SCENE_CFG.critCritical[0], SCENE_CFG.critCritical[1]); c.reported = true; }
     else { c.state = 'immobile'; c.sev = 2; c.crit = r.int(SCENE_CFG.critImmobile[0], SCENE_CFG.critImmobile[1]); c.reported = true; }
-    c.crit0 = c.crit; c.known = true; S.downList.push({ x: c.x, y: c.y, name: u.name, cas: c.id }); S.scene.injury = { name: u.name, kind, cas: c.id };
-    S.scene.gap0 = sideWatch().gaps.slice();
+    c.crit0 = c.crit; c.known = true; S.downList.push({ x: c.x, y: c.y, name: u.name, cas: c.id }); S.scene.injury = { name: u.name, kind, cas: c.id, yard: dn && dn.front ? 'front' : 'side/back' };
+    S.scene.gap0 = sideWatch().gaps.slice(); if (S.scene.variant === 'good' && S.scene.gap0.length) S.scene.variant = 'gap'; // losing an officer opens a side
   }
 }
 /** Mission brief + 911 call, generated from the seed; consistent with the hidden facts (who called, weapon) but never confirms them outright. */
@@ -142,7 +145,7 @@ function makeBrief() {
     stype: ST, stypeName: stv.name || 'Barricaded subject', typeDesc: SCEN_TYPES[ST].desc, legal: stv.legal || null, variant: stv.variant || null, side: stv.side || null,
     patrol, known, officerDown: !!sc.injury, transcript: L, background: bg.sort(), phone: self || giveNum ? phone : null, giveNum, reviewed: false };
   if (ST === 'flee') fleeBrief(S.brief);
-  typeBrief(S.brief);
+  typeBrief(S.brief); typeBrief3(S.brief); structBrief(S.brief);
 }
 /** Flee calls: what the patrol and the caller believe about the number of subjects (seeded, may under-report). */
 function fleeBrief(B) { const R = patrolReport(); B.report = R; const many = R.n > 1, words = ['', 'one', 'two', 'three', 'four'];
@@ -178,7 +181,7 @@ function sceneTurn() {
   const sc = S.scene, sp = S.suspect; if (!sc) return; const G = multiSp() ? sp : sc; // gap clock: per suspect when there are several
   const sw = sideWatch(); if (sc.gap0.length && sc.gapClosed == null && !sw.gaps.some(g => sc.gap0.includes(g))) { sc.gapClosed = S.turn; xpAct('contain', null); }
   const TT = stypeCfg(); if (!hostile() || sp.mode !== 'barricaded' || sp.walk || (S.nego && S.nego.contact && !TT.vacant) || S.turn < Math.min(2, TT.slipAfter)) { G.gapTurns = 0; return; }
-  const wins = S.windows.filter(w => w.room !== sp.room && !w.broken && sw.gaps.includes(watchPts().find(p => p.win === w.id).side));
+  const wins = S.windows.filter(w => w.room !== sp.room && !w.broken && exitWin(w) && sw.gaps.includes(watchPts().find(p => p.win === w.id).side));
   if (!wins.length) { G.gapTurns = 0; return; }
   G.gapTurns = (G.gapTurns || 0) + 1; const dm = sp.disp === 'fleeing' && multiSp() ? MULTI_CFG.fleeSlip : sp.disp === 'surrendering' ? 0.5 : 1;
   if (G.gapTurns < (TT.slipAfter || SCENE_CFG.slipAfter) || !S.rng.chance(Math.min(0.6, SCENE_CFG.slip * (TT.slipMul || 1) * dm))) return;

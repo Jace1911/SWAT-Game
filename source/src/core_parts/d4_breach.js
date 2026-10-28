@@ -18,6 +18,7 @@ function breachCan(u, m) { const B = BREACH[m]; if (!B) return 'Unknown method';
 function breachP(u, d, m, layer) { const B = BREACH[m]; let p = layer === 'storm' ? B.storm : B.p;
   if (layer !== 'storm' && d.barricaded) p *= B.barr;
   if (layer !== 'storm' && d.kind === 'garage' && m !== 'charge') p *= 0.35;
+  if (layer !== 'storm') p *= doorMul(d, m);
   if (m !== 'charge' && hasSpec(u, 'breacher')) p = Math.min(0.95, p + 0.15);
   if ((u.impair || 0) > 0) p *= 1 - 0.4 * u.impair;
   return clamp(p, 0.02, 0.98); }
@@ -25,7 +26,7 @@ function defaultMethod(u, d) { const ms = breachMethods(u); if (d.barricaded || 
   for (const m of ['ram', 'charge', 'pry', 'kick']) if (ms.includes(m)) return m; return 'kick'; }
 /** Expected ticks / per-attempt success / noise for the order UI tooltip. Uses only what the player knows. */
 function breachEst(u, d, m) {
-  const ok = breachCan(u, m); const B = BREACH[m]; const knownD = { barricaded: d.barricaded && d.barrKnown, kind: d.kind };
+  const ok = breachCan(u, m); const B = BREACH[m]; const knownD = { barricaded: d.barricaded && d.barrKnown, kind: d.kind, steel: d.steel, thin: d.thin };
   const stormK = d.storm && d.stormKnown && d.stormState === 'closed';
   const pMain = breachP(u, Object.assign({}, d, knownD), m, 'main'), pStorm = stormK ? breachP(u, d, m, 'storm') : 1;
   let ticks;
@@ -70,7 +71,7 @@ function ramRelease(u) { if (!u.ramGrip) return; const o = off(u.ramGrip.oid); i
 function detonateCharge(u, d) {
   const [mx, my] = doorMid(d); const by = unit(d.charge.by) || u; d.charge = null;
   fx('blast', mx, my, { r: CHARGE_SAFE + 2 }); noise(mx, my, 60, 'blast'); // an explosive breach is heard house-wide
-  if (S.rng.chance(d.barricaded ? BREACH.charge.barr : BREACH.charge.p)) { if (d.storm) d.stormState = 'breached'; doBreach(by, d, 'charge'); }
+  if (S.rng.chance((d.barricaded ? BREACH.charge.barr : BREACH.charge.p) * doorMul(d, 'charge'))) { if (d.storm) d.stormState = 'breached'; doBreach(by, d, 'charge'); }
   else { log(`${by.name}: charge on ${d.name} fired but the door held — needs another breach.`, 'alert'); noise(mx, my, 18, 'breach'); d.barrKnown = d.barricaded; if (d.storm) d.stormState = 'breached'; }
   for (const q of S.units) { if (!onFoot(q) && q.kind !== 'team') continue; if (!unitAlive(q) || q.inCar) continue;
     const dd = dist(q.x, q.y, mx, my); if (dd < CHARGE_SAFE && los(q.x, q.y, Math.round(mx), Math.round(my))) { q.stun = 2; q.impair = Math.max(q.impair || 0, 0.5); log(`${q.name}: too close to the blast — dazed.`, 'alert'); fx('text', q.x, q.y, { text: 'DAZED', color: '#ffd080' }); } }

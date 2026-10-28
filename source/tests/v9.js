@@ -47,7 +47,7 @@ const tally = (n, f) => { const c = {}; for (let i = 0; i < n; i++) { const r = 
   ok(!T50.gear.draco && T60.gear.draco === 1, 'Draco kit at level 60'); ok(!(T60.gear.shield3) && T70.gear.shield3 >= 1, 'Level III shield ~70+');
   ok(!(T70.gear.plate) && T75.gear.plate > 0 && T75.gear.plate < 30, `plates unlock ~75 (${T75.gear.plate})`); ok(T100.gear.plate === 30 && T100.staff === 30, 'all 30 officers have plates at level 100'); }
 // 6) suspect armor
-{ let n = 0, plate = 0, N = 160; for (let s = 1; s <= N; s++) { const S = Core.newGame(s); if (S.suspect.armor !== 'none') { n++; if (S.suspect.armor === 'plate') plate++; } ok(S.suspect.armorKnown === false, 'suspect armor unknown at start'); }
+{ let n = 0, plate = 0, N = 160; for (let s = 1; s <= N; s++) { const S = Core.newGame(s); if (S.suspect.armor !== 'none') { n++; if (S.suspect.armor === 'plate') plate++; } ok(S.suspect.armorKnown === false || S.suspect.seen, 'suspect armor unknown at start (unless already seen at a window)'); }
   ok(n / N > 0.02 && n / N < 0.14, `≈7% of suspects armored (${n}/${N}, ${plate} plate)`); ok(plate <= n / 2, 'mostly soft');
   const A = Core.newGame(77), ja = JSON.stringify(A.rooms) + JSON.stringify(A.doors), aa = A.suspect.armor; const B = Core.newGame(77, { suspectArmor: 1 });
   ok(JSON.stringify(B.rooms) + JSON.stringify(B.doors) === ja && B.suspect.armor !== 'none', 'forcing suspect armor leaves the map identical'); ok(Core.newGame(77).suspect.armor === aa, 'deterministic per seed');

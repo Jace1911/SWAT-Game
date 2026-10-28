@@ -27,13 +27,14 @@ function applyTypeExtras() {
     if (sp.weapon !== 'rifle' && r.chance((capP(C.rifleBase + C.boost) - C.rifleBase) / (1 - C.rifleBase))) sp.weapon = 'rifle';
     if (!(S.opts && S.opts.suspectArmor !== undefined)) { sp.armor = r.chance(capP(ARMOR_CFG.suspect + C.boost)) ? (r.chance(ARMOR_CFG.suspectPlate) ? 'plate' : 'soft') : 'none'; sp.armorKnown = false; }
     sp.hasMask = r.chance(capP(C.maskBase + C.boost));
-    S.doors.forEach(d => { if (d.exterior && d.kind !== 'garage' && r.chance(capP(C.doorBase + C.boost))) { d.barricaded = true; d.locked = true; d.fortified = true; } });
+    S.doors.forEach(d => { if (d.exterior && !d.unitB && d.kind !== 'garage' && r.chance(capP(C.doorBase + C.boost))) { d.barricaded = true; d.locked = true; d.fortified = true; } });
     S.intel.posts = r.chance(C.postsP); }
+  applyTypeExtras3();
 }
 /** Parole absconder hide: an attic hatch or basement door in a room; he waits there out of sight. */
 function setupHide(r, kind) {
   const sp = S.suspect, pref = kind === 'attic' ? { hall: 3, bed: 2, office: 1 } : { kitchen: 3, hall: 2, living: 1, office: 1 };
-  const cands = S.rooms.filter(q => q.type !== 'garage'), wt = cands.map(q => pref[q.type] || 0.4); let tot = wt.reduce((a, b) => a + b, 0), p = r() * tot, rm = cands[0];
+  const cands = S.rooms.filter(q => q.type !== 'garage' && !q.unitB), wt = cands.map(q => pref[q.type] || 0.4); let tot = wt.reduce((a, b) => a + b, 0), p = r() * tot, rm = cands[0];
   for (let i = 0; i < cands.length; i++) { p -= wt[i]; if (p <= 0) { rm = cands[i]; break; } }
   const ext = S.doors.filter(d => d.exterior).map(d => d.cells[0][0]); let best = null, bs = -1;
   for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) { if (S.block[idx(x, y)] || roomAt(x, y) !== rm.id) continue;
@@ -97,7 +98,7 @@ function typeBrief(B) {
   if (!(ST === 'parole' && st.variant === 'caller')) B.channel = 'radio';
   B.transcript = L;
 }
-function typeExtraDebrief(out) { const st = S.stype; if (!st) return;
+function typeExtraDebrief(out) { const st = S.stype; if (!st) return; typeExtraDebrief3(out);
   if (st.key === 'parole') out.push({ k: '  Warrant', v: S.result && S.result.win ? 'Parole-violation warrant served.' : 'Warrant not served.' }, { k: '  Hide', v: S.hide ? `${S.hide.name} in the ${S.rooms[S.hide.room].name}${S.hide.found ? ' — found.' : ' — not found.'}` : 'He stayed in a room; no hide used.' });
   if (st.key === 'sovcit') { const sp = S.suspect; out.push({ k: '  Court order', v: S.result && S.result.win ? 'Order enforced; subject removed in custody.' : 'Order not enforced.' },
     { k: '  Gear', v: `${SUSPECT_WEAPONS[sp.weapon].name}${sp.armor && sp.armor !== 'none' ? ', ' + sp.armor + ' armor' : ''}${sp.hasMask ? ', gas mask' : ''}; ${S.doors.filter(d => d.fortified).length} reinforced door(s).` }); } }

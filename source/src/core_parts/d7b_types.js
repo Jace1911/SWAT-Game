@@ -16,7 +16,7 @@ const SCEN_TYPES = {
   domestic: { name: 'Domestic disturbance', short: 'Domestic', w: 0.20, agit: 50, fireMul: 1, negoMul: 1, calloutMul: 1, slipMul: 1, slipAfter: 2,
     variants: { firearm: 0.55, violent: 0.45 },
     desc: 'He assaulted his partner, who got out and is waiting at the perimeter — interview her for the layout, weapons and history.' },
-  flee: { name: 'Fleeing suspect — vacant house', short: 'Fleeing suspect', w: 0.15, agit: 60, fireMul: 1.1, negoMul: 0.5, calloutMul: 0.6, slipMul: 3, slipAfter: 1,
+  flee: { name: 'Fleeing suspect — vacant house', short: 'Fleeing suspect', w: 0.15, agit: 60, fireMul: 0.9, negoMul: 0.7, calloutMul: 0.75, slipMul: 2.4, slipAfter: 1,
     temperW: { talker: 0.1, withdrawn: 0.5, volatile: 0.4 }, vacant: true,
     desc: 'He ran from patrol into an empty house. Nobody else inside, little interest in talking — and he will leave through any side nobody watches.' },
   neighbor: { name: 'Neighbor dispute — firearm displayed', short: 'Neighbor dispute', w: 0.15, agit: 55, fireMul: 1, sideMul: 1.35, offSideMul: 0.85, negoMul: 0.9, calloutMul: 1, slipMul: 1, slipAfter: 2,
@@ -29,10 +29,17 @@ const SCEN_TYPES = {
   sovcit: { name: 'Eviction standoff — sovereign citizen', short: 'Eviction standoff', xw: 0.05, agit: 50, fireMul: 1.05, negoMul: 0.8, calloutMul: 0.6, slipMul: 0.6, slipAfter: 3,
     temperW: { talker: 0.5, withdrawn: 0.25, volatile: 0.25 }, variants: { eviction: 0.6, papers: 0.4 }, legal: { eviction: 1 }, fortified: true,
     desc: 'He refused to leave when patrol came to enforce an eviction or serve civil papers. He rejects the court\u2019s authority and argues every point. Long guns, armor, gas masks and reinforced doors are more likely.' },
+  // v13 types
+  drughouse: { name: 'Fortified drug house — narcotics warrant', short: 'Drug house', xw: 0.05, agit: 50, fireMul: 0.85, negoMul: 1.0, calloutMul: 0.9, slipMul: 0.6, slipAfter: 3,
+    temperW: { talker: 0.1, withdrawn: 0.5, volatile: 0.4 }, variants: { warrant: 0.6, buy: 0.4 }, legal: { narcotics: 1 }, fortified: true,
+    desc: 'Narcotics unit called SWAT to a fortified house: steel-reinforced doors, bars on the windows, cameras outside. Two to four suspects with long guns, possibly armor. Slow to breach; they watch the approaches.' },
+  inmates: { name: 'Escaped inmates — family fled the house', short: 'Escaped inmates', xw: 0.025, agit: 60, fireMul: 0.9, negoMul: 0.7, calloutMul: 0.8, slipMul: 2.6, slipAfter: 1,
+    temperW: { talker: 0.2, withdrawn: 0.4, volatile: 0.4 }, legal: { escape: 1 },
+    desc: 'One or two escaped inmates forced their way into an occupied house; the family got out and called 911. Nobody else inside. They want a way out — expect them to run for any side nobody watches. The family can be interviewed at the perimeter.' },
 };
 const SCEN_KEYS = Object.keys(SCEN_TYPES);
 const BASE_KEYS = SCEN_KEYS.filter(k => !SCEN_TYPES[k].xw);
-const LEGAL_TXT = { parole: 'Parole-violation warrant on file (absconded from supervision).', eviction: 'Court order on file (writ of possession / civil process).', discharge: 'He fired a round inside the house — reckless discharge charge.', warrant: 'Active warrant (failure to appear) on file.', interview: 'No crime reported — emergency mental-health evaluation (transport hold) only.' };
+const LEGAL_TXT = { narcotics: 'Narcotics search warrant on file for the residence.', escape: 'Escape from custody — statewide alert; recapture warrant.', parole: 'Parole-violation warrant on file (absconded from supervision).', eviction: 'Court order on file (writ of possession / civil process).', discharge: 'He fired a round inside the house — reckless discharge charge.', warrant: 'Active warrant (failure to appear) on file.', interview: 'No crime reported — emergency mental-health evaluation (transport hold) only.' };
 /* ============================================================ */
 function wpick(r, W) { let p = r() * Object.values(W).reduce((a, b) => a + b, 0); for (const k in W) { p -= W[k]; if (p <= 0) return k; } return Object.keys(W)[0]; }
 /** Scenario type for a seed (deterministic; independent of the map generator's random stream). */

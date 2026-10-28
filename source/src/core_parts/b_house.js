@@ -27,9 +27,16 @@ function extEdges(rm, side) { // edges of a room rect that face outside (no room
     if (inb(nx, ny) && roomAt(nx, ny) === -1) out.push([[x, y], [nx, ny]]); }
   return out;
 }
+/* ---- v13: structure type — house / duplex / mobile home. Picked on its own seeded stream, so the map of every
+   seed that stays a house is unchanged. opts.struct ('house'|'duplex'|'trailer') forces it (Quick Mission, tests). ---- */
+const STRUCT_CFG = { duplex: 0.05, trailer: 0.05, doubleWide: 0.4, park: 0.6 };
+const STRUCT_KEYS = ['house', 'duplex', 'trailer'];
+function structFor(seed, opts) { if (opts && STRUCT_KEYS.includes(opts.struct)) return opts.struct;
+  const p = makeRng(seed * 4271 + 19)(); return p < STRUCT_CFG.duplex ? 'duplex' : p < STRUCT_CFG.duplex + STRUCT_CFG.trailer ? 'trailer' : 'house'; }
 function genHouse(r, lot, frontY) {
-  const arch = r.pick(['ranch', 'ranch', 'colonial', 'lshape', 'split', 'bungalow']);
-  const side = r.chance(0.5) ? 'L' : 'R';
+  const struct = structFor(S.seed, S.opts), sr = makeRng(S.seed * 4271 + 23);
+  const arch = struct === 'duplex' ? 'duplex' : struct === 'trailer' ? (sr.chance(STRUCT_CFG.doubleWide) ? 'double' : 'single') : r.pick(['ranch', 'ranch', 'colonial', 'lshape', 'split', 'bungalow']);
+  const side = r.chance(0.5) ? 'L' : 'R'; let WA = 0, cols = null;
   let TW, TH, garage = null, parts = [], zones = [], detached = false;
   const Z = (k, x, y, w, h, extra) => zones.push(Object.assign({ k, x, y, w, h }, extra || {}));
   if (arch === 'ranch' || arch === 'bungalow') {
@@ -54,6 +61,17 @@ function genHouse(r, lot, frontY) {
     if (side === 'L') { Z('private', 0, E, W - pw, H, { bnd: 'e' }); Z('public', W - pw, E, pw, H); }
     else { Z('public', 0, E, pw, H); Z('private', pw, E, W - pw, H, { bnd: 'w' }); }
     Z('wing', wx, 0, ww, E);
+  } else if (arch === 'duplex') { // v13: side-by-side duplex — unit A (suspect) is laid out, unit B is its mirror across the party wall
+    WA = r.int(11, 13); const H = r.int(10, 11), pw = r.int(5, WA - 5); TW = 2 * WA; TH = H; parts.push({ x: 0, y: 0, w: TW, h: H });
+    if (side === 'L') { Z('public', 0, 0, pw, H); Z('private', pw, 0, WA - pw, H, { bnd: 'w' }); }
+    else { Z('private', WA, 0, WA - pw, H, { bnd: 'e' }); Z('public', 2 * WA - pw, 0, pw, H); }
+  } else if (arch === 'single') { // v13: single-wide mobile home — one row of rooms, 5 cells deep
+    cols = [['bed', r.int(4, 5)], ['bathhall', 3], ['kitchen', r.int(4, 5)], ['living', r.int(5, 6)], ['bed', r.int(3, 4)]];
+    TW = cols.reduce((a, c) => a + c[1], 0); TH = 5; parts.push({ x: 0, y: 0, w: TW, h: TH });
+  } else if (arch === 'double') { // v13: double-wide mobile home — bungalow-style zones in a long, shallow box
+    const W = r.int(17, 20), H = r.int(8, 9), pw = r.int(7, W - 8); TW = W; TH = H; parts.push({ x: 0, y: 0, w: W, h: H });
+    if (side === 'R') { Z('private', 0, 0, W - pw, H, { bnd: 'e' }); Z('public', W - pw, 0, pw, H); }
+    else { Z('public', 0, 0, pw, H); Z('private', pw, 0, W - pw, H, { bnd: 'w' }); }
   } else { // split-entry: tuck-under garage inside the footprint
     const W = r.int(19, 22), H = r.int(12, 13), G = r.int(6, 7), GH = r.int(6, 7); TW = W; TH = H; parts.push({ x: 0, y: 0, w: W, h: H });
     const gx = side === 'L' ? 0 : W - G; garage = { x: gx, y: H - GH, w: G, h: GH };
@@ -67,6 +85,13 @@ function genHouse(r, lot, frontY) {
   const R = [], openEdges = [], doorSpecs = [];
   const add = (name, type, x, y, w, h) => { const rm = { name, type, x: ox + x, y: oy + y, w, h }; R.push(rm); return rm; };
   let privRooms = [], wingRooms = [], hall = null, pub = {};
+  if (cols) { // single-wide: columns left→right (mirrored for side R); bath stacked over a short hall
+    let xx = 0; const at = w => { const x = side === 'R' ? TW - xx - w : xx; xx += w; return x; };
+    for (const [k, w] of cols) { const x = at(w);
+      if (k === 'bathhall') { privRooms.push(add('', 'bed', x, 0, w, 3)); hall = add('Hallway', 'hall', x, 3, w, 2); hall.bnd = side === 'R' ? 'w' : 'e'; }
+      else if (k === 'bed') (privRooms.length ? wingRooms : privRooms).push(add('', 'bed', x, 0, w, TH));
+      else if (k === 'kitchen') pub.kitchen = add('Kitchen', 'kitchen', x, 0, w, TH);
+      else pub.living = add('Living Room', 'living', x, 0, w, TH); } }
   for (const z of zones) {
     if (z.k === 'private') {
       if (z.h >= 8 && z.w >= 3) { const a = r.int(3, z.h - 5); hall = add('Hallway', 'hall', z.x, z.y + a, z.w, 2);
@@ -127,6 +152,12 @@ function genHouse(r, lot, frontY) {
   }
   if (garage) { let best = null, bs = 1e9; for (const A of R) { if (A === garage) continue; const sh = sharedEdges(garage, A); if (!sh.length) continue; const s = ({ kitchen: 0, hall: 1, living: 2, dining: 2, office: 3, bed: 5, bath: 9 })[A.type] + r(); if (s < bs) { bs = s; best = sh; } }
     if (best) door(interiorPick(r, best), { locked: r.chance(0.5), name: 'Garage Entry' }); }
+  const M = 2 * ox + TW - 1, mc = c => [M - c[0], c[1]], nA = R.length;
+  if (arch === 'duplex') { // mirror unit A into unit B: rooms, open walls and interior doors (never through the party wall)
+    for (let i = 0; i < nA; i++) { const q = R[i]; q.unit = 'A'; R.push({ name: q.name + ' (B)', type: q.type, x: M - (q.x + q.w - 1), y: q.y, w: q.w, h: q.h, unitB: true, unit: 'B', twin: i }); q.twin = nA + i; }
+    R.forEach((rm, i) => { rm.id = i; rm.known = false; rm.explored = false; rm.gas = 0; for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) S.room[idx(x, y)] = i; });
+    const nO = openEdges.length; for (let i = 0; i < nO; i++) openEdges.push([mc(openEdges[i][0]), mc(openEdges[i][1])]);
+    const nD = doorSpecs.length; for (let i = 0; i < nD; i++) { const d = doorSpecs[i]; doorSpecs.push({ cells: d.cells.map(([a, b]) => [mc(a), mc(b)]), locked: d.locked, unitB: true }); } }
   for (const [a, b] of openEdges) S.edges.set(ek(a[0], a[1], b[0], b[1]), E_OPEN);
   // ---- exterior doors ----
   const extPick = (rooms, sides) => { for (const rm of rooms) { if (!rm) continue; for (const sd of sides) { const e = extEdges(rm, sd); if (e.length >= 3) return interiorPick(r, e); } } return null; };
@@ -134,12 +165,15 @@ function genHouse(r, lot, frontY) {
   door(front, { exterior: true, locked: true, name: 'Front Door' });
   const back = extPick([pub.kitchen, pub.dining, pub.living, ...R.filter(q => q.type === 'office' || q.type === 'hall')], ['n']) || extPick([pub.kitchen, pub.dining, ...R.filter(q => q.type !== 'bath' && q.type !== 'garage')], ['e', 'w', 'n']);
   if (back && !(back[0][0] === front[0][0] && back[0][1] === front[0][1])) door(back, { exterior: true, locked: true, name: 'Back Door' });
+  if (arch === 'duplex') { door(front && [mc(front[0]), mc(front[1])], { exterior: true, locked: true, name: 'Unit B Front Door', unitB: true });
+    if (back && !(back[0][0] === front[0][0] && back[0][1] === front[0][1])) door([mc(back[0]), mc(back[1])], { exterior: true, locked: true, name: 'Unit B Back Door', unitB: true }); }
   if (garage) { const gf = extEdges(garage, 's').sort((p, q) => p[0][0] - q[0][0]); doorSpecs.push({ cells: gf.slice(1, -1), exterior: true, locked: true, kind: 'garage', name: 'Garage Door' });
     const gs = extPick([garage], ['e', 'w', 'n']); if (gs) door(gs, { exterior: true, locked: true, name: 'Garage Side Door' }); }
   if ((arch === 'colonial' || arch === 'lshape' || arch === 'bungalow') && r.chance(0.6)) { const sd = extPick(r.shuffle(R.filter(q => ['kitchen', 'office', 'dining', 'living'].includes(q.type))), ['e', 'w']); if (sd) door(sd, { exterior: true, locked: true, name: 'Side Door' }); }
   const used = new Set();
   S.doors = doorSpecs.filter(d => d.cells.length && d.cells.every(p => { const k = ek(p[0][0], p[0][1], p[1][0], p[1][1]); if (used.has(k)) return false; return true; }) && (d.cells.forEach(p => used.add(ek(p[0][0], p[0][1], p[1][0], p[1][1]))), true)).map((d, i) => {
     const o = { id: i, cells: d.cells, state: 'closed', locked: !!d.locked, barricaded: false, exterior: !!d.exterior, kind: d.kind || 'door', name: d.name || '', known: !!d.exterior, storm: !!d.exterior && d.kind !== 'garage' && r.chance(d.name === 'Front Door' ? 0.55 : 0.35), stormState: 'closed', stormKnown: false, charge: null };
+    if (d.unitB) o.unitB = true; if (cols || arch === 'double') { o.thin = true; o.storm = false; } // v13: hollow mobile-home doors, no storm doors
     const [a, b] = d.cells[0]; o.rooms = [roomAt(a[0], a[1]), roomAt(b[0], b[1])];
     if (!o.name) o.name = (S.rooms[o.rooms[0]] || {}).name + ' / ' + (S.rooms[o.rooms[1]] || {}).name;
     if (!o.exterior && !o.locked && r.chance(0.35)) o.state = 'open';
@@ -168,11 +202,17 @@ function genHouse(r, lot, frontY) {
     }
   }
   const P = parts.map(q => ({ x: ox + q.x, y: oy + q.y, w: q.w, h: q.h }));
-  const ARCH = { ranch: 'Ranch · attached garage', colonial: 'Colonial · detached garage', lshape: 'L-shaped · rear wing', split: 'Split-entry · tuck-under garage', bungalow: 'Bungalow' };
+  const ARCH = { ranch: 'Ranch · attached garage', colonial: 'Colonial · detached garage', lshape: 'L-shaped · rear wing', split: 'Split-entry · tuck-under garage', bungalow: 'Bungalow',
+    duplex: 'Duplex · side-by-side', single: 'Mobile home · single-wide', double: 'Mobile home · double-wide' };
   S.house = { arch, archName: ARCH[arch], parts: P, garage: garage ? { x: garage.x, y: garage.y, w: garage.w, h: garage.h } : null, detached, side,
     x0: ox, x1: ox + TW - 1, y0: oy, y1: oy + TH - 1, oy, H: TH, TW };
-  S.house.main = P[0];
+  S.house.main = P[0]; S.house.struct = struct;
+  if (struct === 'trailer') { S.house.trailer = arch; S.house.thin = true; S.house.park = sr.chance(STRUCT_CFG.park); }
+  if (struct === 'duplex') S.house.duplex = { partyX: ox + WA, aSide: side, bRooms: R.filter(q => q.unitB).map(q => q.id) }; // party wall between x = partyX-1 and partyX
 }
+/** v13: rooms of the suspect's own dwelling (a duplex's unit B is a separate home) */
+function ownRooms() { return S.rooms.filter(q => !q.unitB); }
+function isOwnRoom(i) { return i >= 0 && S.rooms[i] && !S.rooms[i].unitB; }
 /** Validation used by the generator and the test harness. */
 function validateHouse() {
   const errs = [];

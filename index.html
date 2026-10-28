@@ -431,7 +431,7 @@ function reach(sx, sy, o, maxCost) {
    an officer crouched behind a car/tree/fence close to him. */
 function losEx(ax, ay, bx, by, wantCov) {
   const dx = bx - ax, dy = by - ay, steps = Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * 3);
-  let cx = ax, cy = ay, glass = false, cov = 0;
+  let cx = ax, cy = ay, glass = false, cov = 0, leanOk = 0, tv = -1;
   const near = (x, y) => wantCov && (x - bx) * (x - bx) + (y - by) * (y - by) <= 6.8;
   for (let i = 1; i <= steps; i++) {
     const t = i / steps, nx = Math.round(ax + dx * t), ny = Math.round(ay + dy * t);
@@ -448,11 +448,22 @@ function losEx(ax, ay, bx, by, wantCov) {
     } else { if (!seeE(cx, cy, nx, ny)) return { v: 0, cov }; const e = edge(cx, cy, nx, ny); if (e.t === 'W') glass = true; if (e.t === 'F' && near(nx, ny)) cov = Math.max(cov, 1); }
     const c = idx(nx, ny);
     if (!fin) { if (S.opaque[c]) return { v: 0, cov };
+      // v14 vehicle rule: a car / van / cruiser body blocks sight and fire unless the shooter/viewer (a) is right behind it (≤2 m, leaning out)
+      const vid = vehId(c); if (vid && vid !== leanOk) { if (tv < 0) tv = vehId(idx(bx, by)); if (vid === tv) { leanOk = vid; } else if (vehNear(ax, ay, vid)) leanOk = vid; else return { v: 0, cov: 2, veh: true }; }
       if (wantCov && near(nx, ny)) { const k = S.dyn[c] && !COV_STATIC ? 2 : S.cov[c]; if (k > cov) cov = k; } }
     cx = nx; cy = ny;
   }
   return { v: glass ? 2 : 1, cov };
 }
+/* v14 vehicles: static cars + the SWAT van get ids 1..n (S.veh grid, rebuilt lazily); cruisers / the armored truck use 1000+number (S.dyn). */
+const VEH_CFG = { lean: 2 };
+function vehGrid() { if (S.veh && S.veh.length === MAP_W * MAP_H) return S.veh; const g = S.veh = new Uint16Array(MAP_W * MAP_H), W = S.world || {};
+  const list = (W.cars || []).concat(W.van ? [W.van] : []); list.forEach((q, i) => { for (let y = q.y; y < q.y + q.h; y++) for (let x = q.x; x < q.x + q.w; x++) if (inb(x, y)) g[idx(x, y)] = i + 1; }); return g; }
+function vehId(c) { const d = S.dyn && S.dyn[c]; if (d && !COV_STATIC) return 1000 + d; return S.world ? vehGrid()[c] : 0; }
+/** Is (x,y) within VEH_CFG.lean metres of any cell of vehicle vid? */
+function vehNear(x, y, vid) { const R = VEH_CFG.lean; for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) { if (dx * dx + dy * dy > R * R + 0.01 || !inb(x + dx, y + dy)) continue; if (vehId(idx(x + dx, y + dy)) === vid) return true; } return false; }
+/** Distance (m) from (x,y) to the nearest vehicle cell (static or cruiser), capped at 9. */
+function vehDist(x, y) { let b = 9; for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { if (!inb(x + dx, y + dy) || (!dx && !dy)) continue; if (vehId(idx(x + dx, y + dy))) b = Math.min(b, Math.hypot(dx, dy)); } return b; }
 function los(ax, ay, bx, by) { return losEx(ax, ay, bx, by, false).v; }
 
 /* =====================================================================
@@ -483,9 +494,16 @@ function extEdges(rm, side) { // edges of a room rect that face outside (no room
     if (inb(nx, ny) && roomAt(nx, ny) === -1) out.push([[x, y], [nx, ny]]); }
   return out;
 }
+/* ---- v13: structure type — house / duplex / mobile home. Picked on its own seeded stream, so the map of every
+   seed that stays a house is unchanged. opts.struct ('house'|'duplex'|'trailer') forces it (Quick Mission, tests). ---- */
+const STRUCT_CFG = { duplex: 0.05, trailer: 0.05, doubleWide: 0.4, park: 0.6 };
+const STRUCT_KEYS = ['house', 'duplex', 'trailer'];
+function structFor(seed, opts) { if (opts && STRUCT_KEYS.includes(opts.struct)) return opts.struct;
+  const p = makeRng(seed * 4271 + 19)(); return p < STRUCT_CFG.duplex ? 'duplex' : p < STRUCT_CFG.duplex + STRUCT_CFG.trailer ? 'trailer' : 'house'; }
 function genHouse(r, lot, frontY) {
-  const arch = r.pick(['ranch', 'ranch', 'colonial', 'lshape', 'split', 'bungalow']);
-  const side = r.chance(0.5) ? 'L' : 'R';
+  const struct = structFor(S.seed, S.opts), sr = makeRng(S.seed * 4271 + 23);
+  const arch = struct === 'duplex' ? 'duplex' : struct === 'trailer' ? (sr.chance(STRUCT_CFG.doubleWide) ? 'double' : 'single') : r.pick(['ranch', 'ranch', 'colonial', 'lshape', 'split', 'bungalow']);
+  const side = r.chance(0.5) ? 'L' : 'R'; let WA = 0, cols = null;
   let TW, TH, garage = null, parts = [], zones = [], detached = false;
   const Z = (k, x, y, w, h, extra) => zones.push(Object.assign({ k, x, y, w, h }, extra || {}));
   if (arch === 'ranch' || arch === 'bungalow') {
@@ -510,6 +528,17 @@ function genHouse(r, lot, frontY) {
     if (side === 'L') { Z('private', 0, E, W - pw, H, { bnd: 'e' }); Z('public', W - pw, E, pw, H); }
     else { Z('public', 0, E, pw, H); Z('private', pw, E, W - pw, H, { bnd: 'w' }); }
     Z('wing', wx, 0, ww, E);
+  } else if (arch === 'duplex') { // v13: side-by-side duplex — unit A (suspect) is laid out, unit B is its mirror across the party wall
+    WA = r.int(11, 13); const H = r.int(10, 11), pw = r.int(5, WA - 5); TW = 2 * WA; TH = H; parts.push({ x: 0, y: 0, w: TW, h: H });
+    if (side === 'L') { Z('public', 0, 0, pw, H); Z('private', pw, 0, WA - pw, H, { bnd: 'w' }); }
+    else { Z('private', WA, 0, WA - pw, H, { bnd: 'e' }); Z('public', 2 * WA - pw, 0, pw, H); }
+  } else if (arch === 'single') { // v13: single-wide mobile home — one row of rooms, 5 cells deep
+    cols = [['bed', r.int(4, 5)], ['bathhall', 3], ['kitchen', r.int(4, 5)], ['living', r.int(5, 6)], ['bed', r.int(3, 4)]];
+    TW = cols.reduce((a, c) => a + c[1], 0); TH = 5; parts.push({ x: 0, y: 0, w: TW, h: TH });
+  } else if (arch === 'double') { // v13: double-wide mobile home — bungalow-style zones in a long, shallow box
+    const W = r.int(17, 20), H = r.int(8, 9), pw = r.int(7, W - 8); TW = W; TH = H; parts.push({ x: 0, y: 0, w: W, h: H });
+    if (side === 'R') { Z('private', 0, 0, W - pw, H, { bnd: 'e' }); Z('public', W - pw, 0, pw, H); }
+    else { Z('public', 0, 0, pw, H); Z('private', pw, 0, W - pw, H, { bnd: 'w' }); }
   } else { // split-entry: tuck-under garage inside the footprint
     const W = r.int(19, 22), H = r.int(12, 13), G = r.int(6, 7), GH = r.int(6, 7); TW = W; TH = H; parts.push({ x: 0, y: 0, w: W, h: H });
     const gx = side === 'L' ? 0 : W - G; garage = { x: gx, y: H - GH, w: G, h: GH };
@@ -523,6 +552,13 @@ function genHouse(r, lot, frontY) {
   const R = [], openEdges = [], doorSpecs = [];
   const add = (name, type, x, y, w, h) => { const rm = { name, type, x: ox + x, y: oy + y, w, h }; R.push(rm); return rm; };
   let privRooms = [], wingRooms = [], hall = null, pub = {};
+  if (cols) { // single-wide: columns left→right (mirrored for side R); bath stacked over a short hall
+    let xx = 0; const at = w => { const x = side === 'R' ? TW - xx - w : xx; xx += w; return x; };
+    for (const [k, w] of cols) { const x = at(w);
+      if (k === 'bathhall') { privRooms.push(add('', 'bed', x, 0, w, 3)); hall = add('Hallway', 'hall', x, 3, w, 2); hall.bnd = side === 'R' ? 'w' : 'e'; }
+      else if (k === 'bed') (privRooms.length ? wingRooms : privRooms).push(add('', 'bed', x, 0, w, TH));
+      else if (k === 'kitchen') pub.kitchen = add('Kitchen', 'kitchen', x, 0, w, TH);
+      else pub.living = add('Living Room', 'living', x, 0, w, TH); } }
   for (const z of zones) {
     if (z.k === 'private') {
       if (z.h >= 8 && z.w >= 3) { const a = r.int(3, z.h - 5); hall = add('Hallway', 'hall', z.x, z.y + a, z.w, 2);
@@ -583,6 +619,12 @@ function genHouse(r, lot, frontY) {
   }
   if (garage) { let best = null, bs = 1e9; for (const A of R) { if (A === garage) continue; const sh = sharedEdges(garage, A); if (!sh.length) continue; const s = ({ kitchen: 0, hall: 1, living: 2, dining: 2, office: 3, bed: 5, bath: 9 })[A.type] + r(); if (s < bs) { bs = s; best = sh; } }
     if (best) door(interiorPick(r, best), { locked: r.chance(0.5), name: 'Garage Entry' }); }
+  const M = 2 * ox + TW - 1, mc = c => [M - c[0], c[1]], nA = R.length;
+  if (arch === 'duplex') { // mirror unit A into unit B: rooms, open walls and interior doors (never through the party wall)
+    for (let i = 0; i < nA; i++) { const q = R[i]; q.unit = 'A'; R.push({ name: q.name + ' (B)', type: q.type, x: M - (q.x + q.w - 1), y: q.y, w: q.w, h: q.h, unitB: true, unit: 'B', twin: i }); q.twin = nA + i; }
+    R.forEach((rm, i) => { rm.id = i; rm.known = false; rm.explored = false; rm.gas = 0; for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) S.room[idx(x, y)] = i; });
+    const nO = openEdges.length; for (let i = 0; i < nO; i++) openEdges.push([mc(openEdges[i][0]), mc(openEdges[i][1])]);
+    const nD = doorSpecs.length; for (let i = 0; i < nD; i++) { const d = doorSpecs[i]; doorSpecs.push({ cells: d.cells.map(([a, b]) => [mc(a), mc(b)]), locked: d.locked, unitB: true }); } }
   for (const [a, b] of openEdges) S.edges.set(ek(a[0], a[1], b[0], b[1]), E_OPEN);
   // ---- exterior doors ----
   const extPick = (rooms, sides) => { for (const rm of rooms) { if (!rm) continue; for (const sd of sides) { const e = extEdges(rm, sd); if (e.length >= 3) return interiorPick(r, e); } } return null; };
@@ -590,12 +632,15 @@ function genHouse(r, lot, frontY) {
   door(front, { exterior: true, locked: true, name: 'Front Door' });
   const back = extPick([pub.kitchen, pub.dining, pub.living, ...R.filter(q => q.type === 'office' || q.type === 'hall')], ['n']) || extPick([pub.kitchen, pub.dining, ...R.filter(q => q.type !== 'bath' && q.type !== 'garage')], ['e', 'w', 'n']);
   if (back && !(back[0][0] === front[0][0] && back[0][1] === front[0][1])) door(back, { exterior: true, locked: true, name: 'Back Door' });
+  if (arch === 'duplex') { door(front && [mc(front[0]), mc(front[1])], { exterior: true, locked: true, name: 'Unit B Front Door', unitB: true });
+    if (back && !(back[0][0] === front[0][0] && back[0][1] === front[0][1])) door([mc(back[0]), mc(back[1])], { exterior: true, locked: true, name: 'Unit B Back Door', unitB: true }); }
   if (garage) { const gf = extEdges(garage, 's').sort((p, q) => p[0][0] - q[0][0]); doorSpecs.push({ cells: gf.slice(1, -1), exterior: true, locked: true, kind: 'garage', name: 'Garage Door' });
     const gs = extPick([garage], ['e', 'w', 'n']); if (gs) door(gs, { exterior: true, locked: true, name: 'Garage Side Door' }); }
   if ((arch === 'colonial' || arch === 'lshape' || arch === 'bungalow') && r.chance(0.6)) { const sd = extPick(r.shuffle(R.filter(q => ['kitchen', 'office', 'dining', 'living'].includes(q.type))), ['e', 'w']); if (sd) door(sd, { exterior: true, locked: true, name: 'Side Door' }); }
   const used = new Set();
   S.doors = doorSpecs.filter(d => d.cells.length && d.cells.every(p => { const k = ek(p[0][0], p[0][1], p[1][0], p[1][1]); if (used.has(k)) return false; return true; }) && (d.cells.forEach(p => used.add(ek(p[0][0], p[0][1], p[1][0], p[1][1]))), true)).map((d, i) => {
     const o = { id: i, cells: d.cells, state: 'closed', locked: !!d.locked, barricaded: false, exterior: !!d.exterior, kind: d.kind || 'door', name: d.name || '', known: !!d.exterior, storm: !!d.exterior && d.kind !== 'garage' && r.chance(d.name === 'Front Door' ? 0.55 : 0.35), stormState: 'closed', stormKnown: false, charge: null };
+    if (d.unitB) o.unitB = true; if (cols || arch === 'double') { o.thin = true; o.storm = false; } // v13: hollow mobile-home doors, no storm doors
     const [a, b] = d.cells[0]; o.rooms = [roomAt(a[0], a[1]), roomAt(b[0], b[1])];
     if (!o.name) o.name = (S.rooms[o.rooms[0]] || {}).name + ' / ' + (S.rooms[o.rooms[1]] || {}).name;
     if (!o.exterior && !o.locked && r.chance(0.35)) o.state = 'open';
@@ -624,11 +669,17 @@ function genHouse(r, lot, frontY) {
     }
   }
   const P = parts.map(q => ({ x: ox + q.x, y: oy + q.y, w: q.w, h: q.h }));
-  const ARCH = { ranch: 'Ranch · attached garage', colonial: 'Colonial · detached garage', lshape: 'L-shaped · rear wing', split: 'Split-entry · tuck-under garage', bungalow: 'Bungalow' };
+  const ARCH = { ranch: 'Ranch · attached garage', colonial: 'Colonial · detached garage', lshape: 'L-shaped · rear wing', split: 'Split-entry · tuck-under garage', bungalow: 'Bungalow',
+    duplex: 'Duplex · side-by-side', single: 'Mobile home · single-wide', double: 'Mobile home · double-wide' };
   S.house = { arch, archName: ARCH[arch], parts: P, garage: garage ? { x: garage.x, y: garage.y, w: garage.w, h: garage.h } : null, detached, side,
     x0: ox, x1: ox + TW - 1, y0: oy, y1: oy + TH - 1, oy, H: TH, TW };
-  S.house.main = P[0];
+  S.house.main = P[0]; S.house.struct = struct;
+  if (struct === 'trailer') { S.house.trailer = arch; S.house.thin = true; S.house.park = sr.chance(STRUCT_CFG.park); }
+  if (struct === 'duplex') S.house.duplex = { partyX: ox + WA, aSide: side, bRooms: R.filter(q => q.unitB).map(q => q.id) }; // party wall between x = partyX-1 and partyX
 }
+/** v13: rooms of the suspect's own dwelling (a duplex's unit B is a separate home) */
+function ownRooms() { return S.rooms.filter(q => !q.unitB); }
+function isOwnRoom(i) { return i >= 0 && S.rooms[i] && !S.rooms[i].unitB; }
 /** Validation used by the generator and the test harness. */
 function validateHouse() {
   const errs = [];
@@ -701,9 +752,11 @@ function genFurniture(r) {
    Neighbor buildings are impassable AND opaque (S.opaque) — they block
    sight and fire, so officers can run behind them for cover.
    ===================================================================== */
+/* v14 lot layout: no road between the target and its side neighbours except on corner lots (side street); 20% of maps have a back alley */
+const GEO_CFG = { alley: 0.2, corner: 0.12 };
 function genGeo(r) {
   const O = REAR_OFF - 1, SW = O + r.int(36, 38), sw = r.int(6, 7), ST = SW + 2, SB = ST + sw - 1, SS = SB + 1;
-  const alley = r.chance(0.55);
+  const alley = r() < GEO_CFG.alley; // v14: 20% of maps have a back alley
   let cross = null;
   if (r.chance(0.55)) { const left = r.chance(0.5), x0 = left ? r.int(12, 22) : r.int(MAP_W - 28, MAP_W - 18); cross = { x0, x1: x0 + 5 }; }
   const ny0 = O + (alley ? 4 : 1), RW = 1 + REAR_CFG.road, ry0 = RW + REAR_CFG.walk, ry1 = REAR_OFF - 1;
@@ -717,8 +770,19 @@ function genGeo(r) {
   if (cross) { split(1, cross.x0 - 1, 's', SS + 2, MAP_H - 2); split(cross.x1 + 1, MAP_W - 2, 's', SS + 2, MAP_H - 2); }
   else split(1, MAP_W - 2, 's', SS + 2, MAP_H - 2);
   const nFront = lots.length; split(1, MAP_W - 2, 's', ry0, ry1); for (let i = nFront; i < lots.length; i++) lots[i].rear = true;
+  // v14 corner lot: occasionally a side street runs down one side of the target lot (from the rear road to the main street, continuing south
+  // as the cross street). Drawn from a separate stream so the house layouts stay identical; otherwise the neighbours sit right next door.
+  const rs = makeRng(S.seed * 17 + 11), corner = rs() < GEO_CFG.corner; let sideSt = null;
+  if (corner) { const left = rs() < 0.5, sx0 = left ? tx0 - 7 : tx0 + tw + 1; sideSt = { x0: sx0, x1: sx0 + 5, side: left ? 'left' : 'right' }; cross = { x0: sideSt.x0, x1: sideSt.x1, corner: true };
+    const keep = lots.filter(l => l.target);
+    const rsSplit = (a, b, side, y0, y1) => { const tmp = []; let x = a; while (b - x + 1 >= 20) { let w = rs.int(22, 32); if (b - (x + w) + 1 < 18) w = b - x + 1; tmp.push({ x0: x, x1: x + w - 1, y0, y1, side }); x += w; }
+      if (x <= b && tmp.length) tmp[tmp.length - 1].x1 = b; else if (x <= b) tmp.push({ x0: x, x1: b, y0, y1, side, tiny: true }); return tmp; };
+    const segs = [[1, sideSt.x0 - 2], [sideSt.x1 + 2, MAP_W - 2]], segN = left ? [[1, sideSt.x0 - 2], [tx0 + tw, MAP_W - 2]] : [[1, tx0 - 1], [sideSt.x1 + 2, MAP_W - 2]];
+    const nW = rsSplit(segN[0][0], segN[0][1], 'n', ny0, SW - 1), nE = rsSplit(segN[1][0], segN[1][1], 'n', ny0, SW - 1), south = [], rear = [];
+    for (const [a, b] of segs) { south.push(...rsSplit(a, b, 's', SS + 2, MAP_H - 2)); rear.push(...rsSplit(a, b, 's', ry0, ry1).map(l => Object.assign(l, { rear: true }))); }
+    lots.length = 0; lots.push(...nW, ...keep, ...nE, ...south, ...rear); }
   lots.forEach((l, i) => { l.id = i; l.lawn = r(); });
-  S.geo = { rear: { road0: 1, road1: REAR_CFG.road, walk0: RW, walk1: ry0 - 1, y0: ry0, y1: ry1 }, SW, ST, SB, SS, streetW: sw, alley, cross, lots, target, name: r.pick(STREETS) + (r.chance(0.5) ? ' Street' : ' Drive') };
+  S.geo = { rear: { road0: 1, road1: REAR_CFG.road, walk0: RW, walk1: ry0 - 1, y0: ry0, y1: ry1 }, SW, ST, SB, SS, streetW: sw, alley, cross, side: sideSt, corner, lots, target, name: r.pick(STREETS) + (r.chance(0.5) ? ' Street' : ' Drive') };
   return target;
 }
 function markRect(q, f) { for (let y = q.y; y < q.y + q.h; y++) for (let x = q.x; x < q.x + q.w; x++) if (inb(x, y)) f(idx(x, y), x, y); }
@@ -728,7 +792,7 @@ function fenceH(x0, x1, y, gates) { for (let x = x0; x <= x1; x++) { if (gates.s
 function fenceV(x, y0, y1, gates) { for (let y = y0; y <= y1; y++) { if (gates.some(g => y >= g && y < g + 2)) continue; if (S.paved[idx(x, y)] || S.paved[idx(x - 1, y)]) continue; S.edges.set(ek(x - 1, y, x, y), E_FENCE); } }
 
 function genNeighborhood(r) {
-  const G = S.geo, H = S.house, W = S.world = { trees: [], hedges: [], sheds: [], mail: [], cars: [], lamps: [], drives: [], walks: [], nb: [], patios: [], boxes: [], added: [] };
+  S.veh = null; const G = S.geo, H = S.house, W = S.world = { trees: [], hedges: [], sheds: [], mail: [], cars: [], lamps: [], drives: [], walks: [], nb: [], patios: [], boxes: [], added: [], steps: [] };
   // borders and paving
   for (let x = 0; x < MAP_W; x++) { S.block[idx(x, 0)] = 1; S.block[idx(x, MAP_H - 1)] = 1; }
   for (let y = 0; y < MAP_H; y++) { S.block[idx(0, y)] = 1; S.block[idx(MAP_W - 1, y)] = 1; }
@@ -736,6 +800,7 @@ function genNeighborhood(r) {
   pave({ x: 1, y: G.SW, w: MAP_W - 2, h: 2 }, 2); pave({ x: 1, y: G.ST, w: MAP_W - 2, h: G.streetW }, 1); pave({ x: 1, y: G.SS, w: MAP_W - 2, h: 2 }, 2);
   if (G.cross) { pave({ x: G.cross.x0 - 1, y: G.SS, w: 1, h: MAP_H - G.SS - 1 }, 2); pave({ x: G.cross.x0, y: G.SS, w: 6, h: MAP_H - G.SS - 1 }, 1); pave({ x: G.cross.x1 + 1, y: G.SS, w: 1, h: MAP_H - G.SS - 1 }, 2); }
   if (G.alley) pave({ x: 1, y: REAR_OFF, w: MAP_W - 2, h: 3 }, 3);
+  if (G.side) { const q = G.side, y0 = G.rear.road0, h = G.SW - y0; pave({ x: q.x0 - 1, y: y0, w: 1, h }, 2); pave({ x: q.x0, y: y0, w: 6, h }, 1); pave({ x: q.x1 + 1, y: y0, w: 1, h }, 2); }
   pave({ x: 1, y: G.rear.road0, w: MAP_W - 2, h: REAR_CFG.road }, 1); pave({ x: 1, y: G.rear.walk0, w: MAP_W - 2, h: REAR_CFG.walk }, 2);
   // ---- target lot: driveway, walk, patio, detached garage ----
   const T = G.target, fd = S.doors.find(d => d.name === 'Front Door'), fdo = fd.cells[0].find(c => roomAt(c[0], c[1]) < 0) || fd.cells[0][1];
@@ -748,22 +813,29 @@ function genNeighborhood(r) {
   W.walks.push({ x: fdo[0], y: fdo[1], w: 1, h: G.SW - fdo[1] });
   const bd = S.doors.find(d => d.name === 'Back Door');
   if (bd) { const bo = bd.cells[0].find(c => roomAt(c[0], c[1]) < 0) || bd.cells[0][1]; W.patios.push({ x: bo[0] - 2, y: bo[1] - (bo[1] < H.y0 + 1 ? 2 : 1), w: 5, h: 3 }); }
+  // v13: duplex unit B gets its own walk and patio; mobile homes get wooden steps at each door
+  const outOf = d => d && (d.cells[0].find(c => roomAt(c[0], c[1]) < 0) || d.cells[0][1]);
+  if (H.duplex) { const bf = outOf(S.doors.find(d => d.name === 'Unit B Front Door')), bb = outOf(S.doors.find(d => d.name === 'Unit B Back Door'));
+    if (bf) W.walks.push({ x: bf[0], y: bf[1], w: 1, h: G.SW - bf[1], unitB: true }); if (bb) W.patios.push({ x: bb[0] - 2, y: bb[1] - (bb[1] < H.y0 + 1 ? 2 : 1), w: 5, h: 3, unitB: true }); }
+  if (H.trailer) for (const d of S.doors.filter(q => q.exterior)) { const o = outOf(d), north = o[1] < H.y0;
+    W.steps.push({ x: o[0] - 1, y: north ? o[1] - 1 : o[1], w: 3, h: 2, door: d.id, porch: d.name === 'Front Door' }); }
   W.drives.forEach(q => pave(q, 4)); W.walks.forEach(q => pave(q, 5)); W.patios.forEach(q => markRect(q, c => { if (S.room[c] < 0 && !S.paved[c]) S.paved[c] = 6; }));
   if (H.dgarage) solid(H.dgarage, 10, true);
   // ---- neighbor houses ----
   for (const L of G.lots) {
     if (L.target || L.x1 - L.x0 < 17) continue;
     const north = L.side === 'n', lw = L.x1 - L.x0 + 1;
-    const w = r.int(10, Math.min(18, lw - 10)), h = r.int(8, north ? 12 : 10);
+    let w = r.int(10, Math.min(18, lw - 10)), h = r.int(8, north ? 12 : 10);
+    const park = !!(H.park && north && !L.rear); if (park) { h = h >= 10 ? 8 : 5; w = Math.max(w, Math.min(16, lw - 10)); } // v13: trailer-park cluster
     let setback = north ? r.int(6, 10) : r.int(4, 7); if (L.rear) setback = Math.min(setback, 5);
     const y = north ? L.y1 - setback - h + 1 : L.y0 + setback;
-    const hasG = r.chance(0.5) && lw - w >= 17, gl = r.chance(0.5);
+    const hasG = r.chance(0.5) && lw - w >= 17 && !park, gl = r.chance(0.5);
     const x = clamp(L.x0 + Math.floor((lw - w - (hasG ? 6 : 0)) / 2) + r.int(-2, 2) + (hasG && gl ? 6 : 0), L.x0 + 3 + (hasG && gl ? 6 : 0), L.x1 - w - 3 - (hasG && !gl ? 6 : 0));
     const parts = [{ x, y, w, h }];
-    if (r.chance(0.45)) { const ww = r.int(4, Math.max(4, Math.floor(w / 2))), wh = r.int(3, 4), wx = r.chance(0.5) ? x : x + w - ww; parts.push({ x: wx, y: north ? y - wh : y + h, w: ww, h: wh }); }
+    if (r.chance(0.45) && !park) { const ww = r.int(4, Math.max(4, Math.floor(w / 2))), wh = r.int(3, 4), wx = r.chance(0.5) ? x : x + w - ww; parts.push({ x: wx, y: north ? y - wh : y + h, w: ww, h: wh }); }
     let garage = null; if (hasG) { const gh = Math.min(h, r.int(6, 7)); garage = { x: gl ? x - 6 : x + w, y: north ? y + h - gh : y, w: 6, h: gh }; parts.push(garage); }
     if (!parts.every(q => q.y >= L.y0 + 1 && q.y + q.h <= L.y1 && q.x >= L.x0 + 2 && q.x + q.w <= L.x1 - 1 && rectFree(q, 1))) continue;
-    const nb = { lot: L.id, parts, garage, north, rear: !!L.rear, roof: r.int(0, 5), body: r.int(0, 4), storeys: r.chance(0.5) ? 2 : 1 };
+    const nb = { lot: L.id, parts, garage, north, rear: !!L.rear, roof: r.int(0, 5), body: r.int(0, 4), storeys: r.chance(0.5) ? 2 : 1 }; if (park) { nb.trailer = h >= 8 ? 'double' : 'single'; nb.storeys = 1; }
     parts.forEach(q => solid(q, 5, true));
     // driveway
     const dq = garage ? { x: garage.x, w: 6 } : { x: r.chance(0.5) ? Math.max(L.x0 + 1, x - 4) : Math.min(L.x1 - 3, x + w + 1), w: 3 };
@@ -782,7 +854,7 @@ function genNeighborhood(r) {
   const lotsN = G.lots.filter(l => l.side === 'n'), lotsS = G.lots.filter(l => l.side === 's');
   const backOf = (L) => { const nb = W.nb.find(n => n.lot === L.id); if (L.target) return { y0: H.y0, y1: H.y1, x0: H.x0, x1: H.x1 }; if (!nb) return null;
     const ys = nb.parts.map(q => [q.y, q.y + q.h - 1]).flat(), xs = nb.parts.map(q => [q.x, q.x + q.w - 1]).flat(); return { y0: Math.min(...ys), y1: Math.max(...ys), x0: Math.min(...xs), x1: Math.max(...xs) }; };
-  for (let i = 1; i < lotsN.length; i++) { const L = lotsN[i], P = lotsN[i - 1]; const a = backOf(L), b = backOf(P); const yEnd = Math.min(a ? a.y1 - 2 : L.y1 - 10, b ? b.y1 - 2 : L.y1 - 10);
+  for (let i = 1; i < lotsN.length; i++) { const L = lotsN[i], P = lotsN[i - 1]; if (P.x1 + 1 !== L.x0) continue; const a = backOf(L), b = backOf(P); const yEnd = Math.min(a ? a.y1 - 2 : L.y1 - 10, b ? b.y1 - 2 : L.y1 - 10);
     if (r.chance(0.85)) fenceV(L.x0, L.y0, yEnd, [r.int(L.y0 + 1, Math.max(L.y0 + 1, yEnd - 3))]); }
   for (let i = 1; i < lotsS.length; i++) { const L = lotsS[i], P = lotsS[i - 1]; if (P.x1 + 1 !== L.x0) continue; const a = backOf(L), b = backOf(P); const yS = Math.max(a ? a.y0 + 2 : L.y0 + 8, b ? b.y0 + 2 : L.y0 + 8);
     if (r.chance(0.8)) fenceV(L.x0, yS, L.y1, [r.int(yS + 1, Math.max(yS + 1, L.y1 - 3))]); }
@@ -838,7 +910,7 @@ function genNeighborhood(r) {
     const q = { x, y, w: L, h: 2 }; solid(q, 3, false); W.cars.push({ x, y, w: L, h: 2, vert: false, color: r.int(0, 7), type, street: true, flip: r.chance(0.5) }); nc--; if (Math.abs(x + L / 2 - hcx) < 16) near--; }
   // parked cars on the rear street (north curb), never in front of a rear driveway
   for (let n = r.int(2, 4), g = 0; n > 0 && g++ < 80;) { const [type, L] = r.pick(TYPES), x = r.int(4, MAP_W - 10), y = G.rear.road0;
-    if (W.drives.some(d => d.y === G.rear.y0 && x + L > d.x - 1 && x < d.x + d.w + 1) || W.cars.some(c => c.street && c.y === y && x + L + 2 > c.x && x < c.x + c.w + 2)) continue;
+    if ((G.side && x + L >= G.side.x0 - 2 && x <= G.side.x1 + 2) || W.drives.some(d => d.y === G.rear.y0 && x + L > d.x - 1 && x < d.x + d.w + 1) || W.cars.some(c => c.street && c.y === y && x + L + 2 > c.x && x < c.x + c.w + 2)) continue;
     let ok = true; markRect({ x: x - 1, y, w: L + 2, h: 2 }, c => { if (S.block[c]) ok = false; }); if (!ok) continue;
     solid({ x, y, w: L, h: 2 }, 3, false); W.cars.push({ x, y, w: L, h: 2, vert: false, color: r.int(0, 7), type, street: true, rear: true, flip: r.chance(0.5) }); n--; }
   S.ext = W;
@@ -1102,7 +1174,7 @@ function setupSuspect(r) {
   // barricade room varies: any room whose only openings are doors
   const openRoom = new Set(); for (const [k, e] of S.edges) if (e === E_OPEN) { const [t, a, b] = k.split(','); const A = +a, B = +b; const p = t === 'h' ? [[A, B - 1], [A, B]] : [[A - 1, B], [A, B]]; p.forEach(c => openRoom.add(roomAt(c[0], c[1]))); }
   const W0 = { bed: 2, bath: 1.4, office: 1.6, garage: 0.6 };
-  const cands = S.rooms.filter(q => W0[q.type] && !openRoom.has(q.id));
+  const cands = S.rooms.filter(q => W0[q.type] && !openRoom.has(q.id) && !q.unitB);
   const weights = cands.map(q => q.name === 'Master Bedroom' ? 2.6 : W0[q.type]);
   let tot = weights.reduce((a, b) => a + b, 0), pick = r() * tot, rm = cands[0];
   for (let i = 0; i < cands.length; i++) { pick -= weights[i]; if (pick <= 0) { rm = cands[i]; break; } }
@@ -1641,7 +1713,7 @@ function suspectGasTurn() { // per turn: may relocate to clean air, run, or give
   const pMove = clamp(0.2 + 0.7 * g, 0, 0.9); if (!S.rng.chance(pMove)) return;
   // gas-free room vs exit
   if (S.rng.chance(0.35 + 0.3 * g)) { startFlee(); if (sp.mode === 'fleeing') return; }
-  let best = null, bs = 1e9; for (const q of S.rooms) { if (q.id === sp.room || q.type === 'hall' && S.rng.chance(0.5)) continue; const c = [q.x + (q.w >> 1), q.y + (q.h >> 1)]; if (S.room[idx(c[0], c[1])] !== q.id) continue;
+  let best = null, bs = 1e9; for (const q of S.rooms) { if (q.id === sp.room || (q.unitB && !(S.duplex && S.duplex.hole)) || q.type === 'hall' && S.rng.chance(0.5)) continue; const c = [q.x + (q.w >> 1), q.y + (q.h >> 1)]; if (S.room[idx(c[0], c[1])] !== q.id) continue;
     const s = q.gas * 10 + dist(sp.x, sp.y, c[0], c[1]) * 0.05; if (s < bs) { bs = s; best = c; } }
   if (best && gasAt(best[0], best[1]) < g * 0.6) { sp.home = { x: best[0], y: best[1] }; sp.mode = sp.mode === 'barricaded' ? 'alert' : sp.mode; log('Movement inside — someone is relocating away from the gas.', 'alert'); }
 }
@@ -1665,6 +1737,7 @@ function breachCan(u, m) { const B = BREACH[m]; if (!B) return 'Unknown method';
 function breachP(u, d, m, layer) { const B = BREACH[m]; let p = layer === 'storm' ? B.storm : B.p;
   if (layer !== 'storm' && d.barricaded) p *= B.barr;
   if (layer !== 'storm' && d.kind === 'garage' && m !== 'charge') p *= 0.35;
+  if (layer !== 'storm') p *= doorMul(d, m);
   if (m !== 'charge' && hasSpec(u, 'breacher')) p = Math.min(0.95, p + 0.15);
   if ((u.impair || 0) > 0) p *= 1 - 0.4 * u.impair;
   return clamp(p, 0.02, 0.98); }
@@ -1672,7 +1745,7 @@ function defaultMethod(u, d) { const ms = breachMethods(u); if (d.barricaded || 
   for (const m of ['ram', 'charge', 'pry', 'kick']) if (ms.includes(m)) return m; return 'kick'; }
 /** Expected ticks / per-attempt success / noise for the order UI tooltip. Uses only what the player knows. */
 function breachEst(u, d, m) {
-  const ok = breachCan(u, m); const B = BREACH[m]; const knownD = { barricaded: d.barricaded && d.barrKnown, kind: d.kind };
+  const ok = breachCan(u, m); const B = BREACH[m]; const knownD = { barricaded: d.barricaded && d.barrKnown, kind: d.kind, steel: d.steel, thin: d.thin };
   const stormK = d.storm && d.stormKnown && d.stormState === 'closed';
   const pMain = breachP(u, Object.assign({}, d, knownD), m, 'main'), pStorm = stormK ? breachP(u, d, m, 'storm') : 1;
   let ticks;
@@ -1717,7 +1790,7 @@ function ramRelease(u) { if (!u.ramGrip) return; const o = off(u.ramGrip.oid); i
 function detonateCharge(u, d) {
   const [mx, my] = doorMid(d); const by = unit(d.charge.by) || u; d.charge = null;
   fx('blast', mx, my, { r: CHARGE_SAFE + 2 }); noise(mx, my, 60, 'blast'); // an explosive breach is heard house-wide
-  if (S.rng.chance(d.barricaded ? BREACH.charge.barr : BREACH.charge.p)) { if (d.storm) d.stormState = 'breached'; doBreach(by, d, 'charge'); }
+  if (S.rng.chance((d.barricaded ? BREACH.charge.barr : BREACH.charge.p) * doorMul(d, 'charge'))) { if (d.storm) d.stormState = 'breached'; doBreach(by, d, 'charge'); }
   else { log(`${by.name}: charge on ${d.name} fired but the door held — needs another breach.`, 'alert'); noise(mx, my, 18, 'breach'); d.barrKnown = d.barricaded; if (d.storm) d.stormState = 'breached'; }
   for (const q of S.units) { if (!onFoot(q) && q.kind !== 'team') continue; if (!unitAlive(q) || q.inCar) continue;
     const dd = dist(q.x, q.y, mx, my); if (dd < CHARGE_SAFE && los(q.x, q.y, Math.round(mx), Math.round(my))) { q.stun = 2; q.impair = Math.max(q.impair || 0, 0.5); log(`${q.name}: too close to the blast — dazed.`, 'alert'); fx('text', q.x, q.y, { text: 'DAZED', color: '#ffd080' }); } }
@@ -1770,14 +1843,14 @@ function dracoTick(c, o) {
     syncCar(c); if (!(c.x === o.x && c.y === o.y)) return; }
   c.dracoAim = Math.atan2(my - c.y, mx - c.x); c.dracoOut = S.turn;
   if ((o.prog = (o.prog || 0) + 1) <= DRACO_CFG.deployTicks) { log(`${c.name}: Draco arm deploying toward the ${o.door != null ? S.doors[o.door].name : S.rooms[S.windows[o.win].room].name + ' window'}…`, 'radio'); noise(mx, my, 6, 'engine'); return; }
-  if (o.win !== undefined && o.win !== null) { const w = S.windows[o.win]; w.broken = true; w.cleared = true; S.stats.breaches++;
+  if (o.win !== undefined && o.win !== null) { const w = S.windows[o.win], wasBarred = !!w.barred; w.broken = true; w.cleared = true; w.barred = false; if (S.duplex) S.duplex.wallV++; S.stats.breaches++;
     fx('breach', mx, my, { how: 'draco' }); fx('text', mx, my, { text: 'WINDOW OUT', color: '#ffb020' }); noise(mx, my, DRACO_CFG.noise, 'breach'); aggressive(15);
-    log(`${c.name}: Draco arm tore out the ${S.rooms[w.room].name} window and frame — the opening is clear.`, 'radio'); popOrder(c); return; }
+    log(`${c.name}: Draco arm tore out the ${S.rooms[w.room].name} window${wasBarred ? ', bars' : ''} and frame — the opening is clear.`, 'radio'); popOrder(c); return; }
   const d = S.doors[o.door], C = DRACO_CFG.door;
   if (d.storm && d.stormState === 'closed') { d.stormKnown = true; if (S.rng.chance(C.storm)) { d.stormState = 'breached'; log(`${c.name}: storm door on ${d.name} ripped off by the Draco arm.`, 'radio'); fx('thud', mx, my); noise(mx, my, DRACO_CFG.noise - 4, 'door'); }
     else { log(`${c.name}: Draco arm on the storm door — re-gripping.`); noise(mx, my, 10, 'ram'); } return; }
   if (d.state !== 'closed') { popOrder(c); return; }
-  const p = C.p * (d.barricaded ? C.barr : 1) * (d.kind === 'garage' ? C.garage : 1);
+  const p = Math.min(0.97, C.p * (d.barricaded ? C.barr : 1) * (d.kind === 'garage' ? C.garage : 1) * doorMul(d, 'draco'));
   if (S.rng.chance(p)) { doBreach(c, d, 'draco'); d.frame = 'down'; noise(mx, my, DRACO_CFG.noise, 'breach'); log(`${c.name}: ${d.name} and frame pulled down — breach point open.`, 'radio'); popOrder(c); }
   else { if (d.barricaded) d.barrKnown = true; log(`${c.name}: Draco arm pulling on ${d.name} — still holding${d.barricaded ? ' (barricaded)' : ''}.`); noise(mx, my, 12, 'ram'); fx('thud', mx, my); }
 }
@@ -2201,14 +2274,14 @@ function negoSummary() { const N = S.nego, sp = S.suspect;
    officers hit on arrival, the mission brief and the 911 call transcript.
    ===================================================================== */
 const SCENE_CFG = {
-  variants: { good: 0.3, gap: 0.3, front: 0.2, mixed: 0.2 },   // patrol setup on arrival
+  variants: { good: 0.4, gap: 0.35, front: 0.25 },        // v14: no 'exposed officer' variant — every start is covered and out of sight   // patrol setup on arrival
   injury: 0.05,                                                // chance an officer was hit before SWAT arrived
   injuryKind: { mobile: 0.3, immobile: 0.38, critical: 0.22, kia: 0.1 },
   critImmobile: [4, 6], critCritical: [3, 4],                  // turns left without aid
   slip: 0.12, slipAfter: 2,                                    // unwatched side with windows: per-turn chance he tries to slip out (after N turns of gap)
   numberInCall: 0.3,                                           // a third-party caller gives his number
 };
-const VARIANT_TXT = { good: 'Good — patrol on two diagonal corners, every side watched', gap: 'Gap — one side left uncovered by accident', front: 'Clumped — patrol bunched at the front', mixed: 'Mixed — one officer in a bad, exposed position' };
+const VARIANT_TXT = { good: 'Good — patrol on two diagonal corners, every side watched', gap: 'Gap — one side left uncovered by accident', front: 'Clumped — both officers behind cars in the street out front', mixed: 'Mixed — one officer in a bad, exposed position' };
 const FIRST = ['Daniel', 'Marcus', 'Travis', 'Kevin', 'Luis', 'Dmitri', 'Ray', 'Calvin', 'Nate', 'Victor', 'Owen', 'Trent'];
 
 /** Cruisers start at the ends of the block (map edge or the nearest intersection), parked across the street to stop traffic. */
@@ -2217,9 +2290,14 @@ function setupRoadblocks(r) {
   const ends = ['W', 'E'].map(side => { const cr = G.cross && (side === 'W' ? G.cross.x1 < hcx : G.cross.x0 > hcx) ? G.cross : null;
     const x = cr ? (side === 'W' ? cr.x1 + 3 : cr.x0 - 3) : side === 'W' ? r.int(4, 6) : MAP_W - r.int(5, 7); return { side, x, kind: cr ? 'intersection' : 'map edge' }; });
   const place = (x0, y0, dir, i) => { let best = null, bs = 1e9; const c0 = { kind: 'cruiser', dir };
-    for (let dy = -3; dy <= 3; dy++) for (let dx = -8; dx <= 8; dx++) { const x = x0 + dx, y = y0 + dy; if (!inb(x, y)) continue;
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -12; dx <= 12; dx++) { const x = x0 + dx, y = y0 + dy; if (!inb(x, y)) continue;
       const fp = footprint(c0, x, y); if (!fp.every(([a, b]) => inb(a, b) && (S.drive[idx(a, b)] || S.paved[idx(a, b)] === 1) && !S.block[idx(a, b)])) continue;
-      if (!S.drive[idx(x, y)] || carClash(x, y, null)) continue; if (dist(x, y, X.van.x + 3, X.van.y) < 6) continue; const s = Math.abs(dx) + Math.abs(dy) * 1.5; if (s < bs) { bs = s; best = [x, y]; } }
+      if (!S.drive[idx(x, y)] || carClash(x, y, null)) continue; if (dist(x, y, X.van.x + 3, X.van.y) < 6) continue; let s = Math.abs(dx) + Math.abs(dy) * 1.5; if (s >= bs) continue; if (onProperty(x, y) || Math.abs(x - hcx) < 18) continue; if (suspSees(x, y)) s += 40; if (s < bs) { bs = s; best = [x, y]; } } // v14: prefer a spot he can't see from inside
+    if (best && suspSees(best[0], best[1])) { let b2 = null, s2 = 1e9; // v14: widen the search before accepting a spot he can see
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -30; dx <= 30; dx++) { const x = x0 + dx, y = y0 + dy; if (!inb(x, y)) continue; const s = Math.abs(dx) + Math.abs(dy) * 1.5; if (s >= s2) continue;
+        const fp = footprint(c0, x, y); if (!fp.every(([a, b]) => inb(a, b) && (S.drive[idx(a, b)] || S.paved[idx(a, b)] === 1) && !S.block[idx(a, b)])) continue;
+        if (!S.drive[idx(x, y)] || carClash(x, y, null) || onProperty(x, y) || Math.abs(x - hcx) < 18 || dist(x, y, X.van.x + 3, X.van.y) < 6 || suspSees(x, y)) continue; s2 = s; b2 = [x, y]; }
+      if (b2) best = b2; }
     if (!best) { dir = 0; c0.dir = 0; for (let dy = -3; dy <= 3 && !best; dy++) for (let dx = -12; dx <= 12; dx++) { const x = x0 + dx, y = y0 + dy; if (inb(x, y) && S.drive[idx(x, y)] && !carClash(x, y, null)) { best = [x, y]; break; } } }
     if (!best) best = [x0, y0];
     const u = { uid: 'C' + (i + 1), kind: 'cruiser', name: 'Cruiser ' + (i + 1), num: i + 1, x: best[0], y: best[1], dir, occ: [], orders: [], status: 'ok', hits: 0, marks: [], vis: [], disabled: false };
@@ -2249,30 +2327,28 @@ function setupScene(r) {
   boardCar(P[0], C[0]); boardCar(P[1], C[1]);
   const sides = houseSides(), lr = r.chance(0.5) ? ['left', 'right'] : ['right', 'left'];
   let v = 'good', pick = r(); for (const k in SCENE_CFG.variants) { pick -= SCENE_CFG.variants[k]; if (pick <= 0) { v = k; break; } }
-  const cx = s => s === 'left' ? H.x0 - 2 : H.x1 + 2, rearY = H.y0 - 2, frontY = H.y1 + 2, hc = Math.round((H.x0 + H.x1) / 2);
-  let gap = null;
-  const tryPlan = (v, lr, gap) => { let plan;
-    if (v === 'good') plan = [[cx(lr[0]), rearY, ['rear', lr[0]]], [cx(lr[1]), frontY, ['front', lr[1]]]];
-    else if (v === 'gap') { if (gap === 'rear') plan = [[H.x0 - 2, frontY, ['front', 'left']], [H.x1 + 2, frontY, ['front', 'right']]];
-      else { const o = gap === 'left' ? 'right' : 'left'; plan = [[cx(o), rearY, ['rear', o]], [cx(o), frontY, ['front', o]]]; } }
-    else if (v === 'front') plan = [[hc - 3, frontY + 2, ['front']], [hc + 1, frontY + 2, ['front']]];
-    else plan = [[cx(lr[0]), rearY, ['rear', lr[0]]], [hc + r.int(-3, 3), H.y1 + 4, ['front'], 'exposed']];
-    const taken = [];
-    plan.forEach(([x, y, want, mode], i) => { const u = P[2 + i]; u.badPos = false; let p = scenePost(x, y, want, gap, mode || (v === 'front' ? 'clump' : ''), D, taken);
-      if (!p) p = scenePost(x, y, want, null, '', D, taken) || scenePost(x, y, [], null, '', D, taken); if (!p) p = [S.ext.staging.x + 2 + i, S.ext.staging.y];
-      u.x = p[0]; u.y = p[1]; taken.push(p); if (mode === 'exposed' && shieldAt(u.x, u.y).q === 'open') u.badPos = true; });
-    return sideWatch().gaps; };
-  // place, then verify against real sight lines; if a layout can't produce the intended picture, take what the patrol actually achieved
-  if (v === 'good') { let g = tryPlan('good', lr, null); if (g.length) g = tryPlan('good', [lr[1], lr[0]], null); if (g.length) v = 'gap'; }
-  else if (v === 'gap') { const opts = r.shuffle(['left', 'right', 'rear'].filter(s => sides.includes(s))); let g = [];
-    for (const o of opts.length ? opts : ['rear']) { gap = o; g = tryPlan('gap', lr, o); if (g.length) break; } if (!g.length) { v = 'good'; gap = null; } }
-  else tryPlan(v, lr, null);
+  // v14: every officer on foot starts off the lot, ≥10 m from the house, behind a car on the street or behind cover at the side/rear,
+  // and out of the suspect's sight from inside; the variant decides which sides they manage to watch.
+  let gap = null; const cands = patrolCands(D);
+  const placed = new Set(), place = (res) => { res.forEach((c, i) => { const u = P[2 + i]; u.x = c.x; u.y = c.y; u.badPos = false; placed.add(u); }); return sideWatch().gaps; };
+  const tryPlan = (v, gapSide) => { let plans;
+    if (v === 'good') plans = [{ want: sides.filter(s => s !== 'front'), kind: 'side' }, { want: sides, kind: 'street' }];
+    else if (v === 'gap') plans = [{ want: sides.filter(s => s !== gapSide && s !== 'front'), kind: gapSide === 'front' ? '' : 'side' }, { want: sides.filter(s => s !== gapSide), kind: gapSide === 'front' ? 'side' : 'street' }];
+    else plans = [{ want: ['front'], kind: 'street' }, { want: ['front'], kind: 'street' }];
+    const res = pickPatrolPosts(cands, plans, gapSide) || pickPatrolPosts(cands, plans.map(q => ({ want: q.want, kind: '' })), gapSide) || pickPatrolPosts(cands, [{ want: [], kind: '' }, { want: [], kind: '' }], null);
+    if (!res) return null; return place(res); };
+  if (v === 'good') { let g = tryPlan('good', null); if (!g || g.length) { v = 'gap'; gap = g && g[0] || null; } }
+  else if (v === 'gap') { const opts = r.shuffle(['left', 'right', 'rear'].filter(s => sides.includes(s))); let g = null;
+    for (const o of opts.length ? opts : ['rear']) { gap = o; g = tryPlan('gap', o); if (g && g.length) break; } if (!g || !g.length) { const gg = tryPlan('good', null); v = gg && !gg.length ? 'good' : 'gap'; gap = gg && gg[0] || null; } }
+  else tryPlan('front', null);
+  if (v === 'gap' && !sideWatch().gaps.length) v = 'good';
+  for (const [i, u] of [P[2], P[3]].entries()) if (!placed.has(u)) { u.x = S.ext.staging.x + 2 + i; u.y = S.ext.staging.y; S.genErrors = (S.genErrors || []).concat('no patrol start for ' + u.name); }
   P.forEach(p => p.home = { x: p.x, y: p.y });
   const sw0 = sideWatch();
   S.scene = { variant: v, gap0: sw0.gaps.slice(), intended: gap, injury: null, gapFound: null, gapClosed: null, gapTurns: 0, slipTried: false };
   // officer hit on arrival: the second officer on foot, in the open near the front of the house
   if (r.chance(SCENE_CFG.injury)) {
-    const u = P[3]; const spot = scenePost(hc + r.int(-4, 4), H.y1 + 3, [], null, 'exposed', D, [[P[2].x, P[2].y]]) || [u.x, u.y];
+    const u = P[3]; const dn = downedSpot(r, D), spot = dn ? dn.at : [u.x, u.y];
     u.x = spot[0]; u.y = spot[1]; u.home = { x: u.x, y: u.y }; u.status = 'down'; u.orders = []; u.badPos = false;
     let kind = 'immobile', pk = r(); for (const k in SCENE_CFG.injuryKind) { pk -= SCENE_CFG.injuryKind[k]; if (pk <= 0) { kind = k; break; } }
     const c = addCasualty('patrol', u.uid, u.name, u.x, u.y, { kia: 0, mobile: 0 }); u.cas = c.id; c.initial = true; c.x = u.x; c.y = u.y;
@@ -2280,8 +2356,8 @@ function setupScene(r) {
     else if (kind === 'mobile') { c.state = 'mobile'; c.sev = 1; c.crit = r.int(CAS_CFG.critMobile[0], CAS_CFG.critMobile[1]); c.reported = true; }
     else if (kind === 'critical') { c.state = 'immobile'; c.sev = 3; c.crit = r.int(SCENE_CFG.critCritical[0], SCENE_CFG.critCritical[1]); c.reported = true; }
     else { c.state = 'immobile'; c.sev = 2; c.crit = r.int(SCENE_CFG.critImmobile[0], SCENE_CFG.critImmobile[1]); c.reported = true; }
-    c.crit0 = c.crit; c.known = true; S.downList.push({ x: c.x, y: c.y, name: u.name, cas: c.id }); S.scene.injury = { name: u.name, kind, cas: c.id };
-    S.scene.gap0 = sideWatch().gaps.slice();
+    c.crit0 = c.crit; c.known = true; S.downList.push({ x: c.x, y: c.y, name: u.name, cas: c.id }); S.scene.injury = { name: u.name, kind, cas: c.id, yard: dn && dn.front ? 'front' : 'side/back' };
+    S.scene.gap0 = sideWatch().gaps.slice(); if (S.scene.variant === 'good' && S.scene.gap0.length) S.scene.variant = 'gap'; // losing an officer opens a side
   }
 }
 /** Mission brief + 911 call, generated from the seed; consistent with the hidden facts (who called, weapon) but never confirms them outright. */
@@ -2338,7 +2414,7 @@ function makeBrief() {
     stype: ST, stypeName: stv.name || 'Barricaded subject', typeDesc: SCEN_TYPES[ST].desc, legal: stv.legal || null, variant: stv.variant || null, side: stv.side || null,
     patrol, known, officerDown: !!sc.injury, transcript: L, background: bg.sort(), phone: self || giveNum ? phone : null, giveNum, reviewed: false };
   if (ST === 'flee') fleeBrief(S.brief);
-  typeBrief(S.brief);
+  typeBrief(S.brief); typeBrief3(S.brief); structBrief(S.brief);
 }
 /** Flee calls: what the patrol and the caller believe about the number of subjects (seeded, may under-report). */
 function fleeBrief(B) { const R = patrolReport(); B.report = R; const many = R.n > 1, words = ['', 'one', 'two', 'three', 'four'];
@@ -2374,7 +2450,7 @@ function sceneTurn() {
   const sc = S.scene, sp = S.suspect; if (!sc) return; const G = multiSp() ? sp : sc; // gap clock: per suspect when there are several
   const sw = sideWatch(); if (sc.gap0.length && sc.gapClosed == null && !sw.gaps.some(g => sc.gap0.includes(g))) { sc.gapClosed = S.turn; xpAct('contain', null); }
   const TT = stypeCfg(); if (!hostile() || sp.mode !== 'barricaded' || sp.walk || (S.nego && S.nego.contact && !TT.vacant) || S.turn < Math.min(2, TT.slipAfter)) { G.gapTurns = 0; return; }
-  const wins = S.windows.filter(w => w.room !== sp.room && !w.broken && sw.gaps.includes(watchPts().find(p => p.win === w.id).side));
+  const wins = S.windows.filter(w => w.room !== sp.room && !w.broken && exitWin(w) && sw.gaps.includes(watchPts().find(p => p.win === w.id).side));
   if (!wins.length) { G.gapTurns = 0; return; }
   G.gapTurns = (G.gapTurns || 0) + 1; const dm = sp.disp === 'fleeing' && multiSp() ? MULTI_CFG.fleeSlip : sp.disp === 'surrendering' ? 0.5 : 1;
   if (G.gapTurns < (TT.slipAfter || SCENE_CFG.slipAfter) || !S.rng.chance(Math.min(0.6, SCENE_CFG.slip * (TT.slipMul || 1) * dm))) return;
@@ -2396,6 +2472,77 @@ function sceneDebrief() {
 }
 
 /* =====================================================================
+   v14 PATROL START POSITIONS — where the first officers stand when SWAT
+   arrives. Uninjured officers are always OFF the suspect's property, at
+   least PATROL_CFG.minHouse m from the house, either on the street behind
+   a parked car / cruiser (≤2 m, the car between them and the house) or
+   behind cover at the side / rear (neighbour lots, alley, side street).
+   Every start is validated against sight lines from inside the house
+   (each window pane and doorway, plus the cells beside them): the suspect
+   must not be able to see any of them. Downed officers (hit before SWAT
+   arrived) lie where they fell: 90% in the front yard, 10% side/back yard.
+   ===================================================================== */
+const PATROL_CFG = { minHouse: 10, maxHouse: 34, downFront: 0.9 };
+/** Distance from (x,y) to the house footprint rectangle. */
+function houseRectDist(x, y) { const H = S.house, dx = Math.max(H.x0 - x, 0, x - H.x1), dy = Math.max(H.y0 - y, 0, y - H.y1); return Math.hypot(dx, dy); }
+/** Is (x,y) on the suspect's lot? */
+function onProperty(x, y) { const T = S.geo.target; return x >= T.x0 && x <= T.x1 && y >= T.y0 && y <= T.y1; }
+/** Interior points a suspect could look out from: each window's inside cell (+ its neighbours along the wall) and each exterior doorway. */
+function suspEyePts() {
+  if (S._eyePts) return S._eyePts; const out = [], seen = new Set(), add = (x, y) => { if (!inb(x, y)) return; const k = idx(x, y); if (seen.has(k)) return; seen.add(k); out.push({ x, y }); };
+  for (const w of S.windows) for (const e of w.edges) { const [ix, iy, ox, oy] = e; add(ix, iy); const r0 = roomAt(ix, iy); if (r0 < 0) continue;
+    const along = ix === ox ? [[1, 0], [-1, 0]] : [[0, 1], [0, -1]]; for (const [ax, ay] of along) if (roomAt(ix + ax, iy + ay) === r0) add(ix + ax, iy + ay); }
+  for (const d of S.doors) if (d.exterior) for (const [a, b] of d.cells) { add(a[0], a[1]); add(b[0], b[1]); }
+  return (S._eyePts = out);
+}
+/** Can the suspect (anywhere at a window or doorway) see (x,y)? Uses the full sight rule, vehicles included. */
+function suspSees(x, y) { for (const p of suspEyePts()) { if (p.x === x && p.y === y) return true; if (los(p.x, p.y, x, y)) return true; } return false; }
+/** 'street' = behind a vehicle within 2 m that sits between the officer and the house; 'side' = behind other cover off the lot; '' = not a start. */
+function patrolCoverKind(x, y) {
+  const G = S.geo, hd = houseRectDist(x, y);
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { if (dx * dx + dy * dy > 4.01 || !inb(x + dx, y + dy)) continue; if (vehId(idx(x + dx, y + dy)) && houseRectDist(x + dx, y + dy) < hd) return y >= G.SW ? 'street' : 'side'; }
+  if (y >= G.SW && !(G.side && x >= G.side.x0 - 1 && x <= G.side.x1 + 1)) return '';
+  const a = coverAdj(x, y); if (!a || /hedge|fence|mailbox/.test(a.name)) return ''; const [hx, hy] = houseCenter(); return (a.dx * (hx - x) + a.dy * (hy - y)) > 0 ? 'side' : '';
+}
+/** Start-position candidates (cheap filters only; sight lines are checked lazily). */
+function patrolCands(D) {
+  const H = S.house, R = PATROL_CFG.maxHouse, out = [];
+  for (let y = Math.max(1, H.y0 - R); y <= Math.min(MAP_H - 2, H.y1 + R); y++) for (let x = Math.max(1, H.x0 - R); x <= Math.min(MAP_W - 2, H.x1 + R); x++) {
+    const c = idx(x, y); if (D[c] >= 1e9 || onProperty(x, y) || !cellOk(x, y, { outdoor: true }) || S.dyn[c]) continue;
+    const hd = houseRectDist(x, y); if (hd < PATROL_CFG.minHouse || hd > R) continue;
+    const kind = patrolCoverKind(x, y); if (!kind) continue;
+    out.push({ x, y, kind, hd, sides: null });
+  }
+  return out;
+}
+function vehDist0(x, y) { return vehDist(x, y) <= VEH_CFG.lean; }
+/** A start is valid: off the lot, far enough, covered, and invisible from inside. */
+function patrolStartOk(x, y) { return !onProperty(x, y) && houseRectDist(x, y) >= PATROL_CFG.minHouse - 1e-9 && !!patrolCoverKind(x, y) && !suspSees(x, y); }
+/** Pick the posts for the two officers on foot. want: list of side-sets to aim for per officer; kinds: preferred cover kind per officer. */
+function pickPatrolPosts(cands, plans, avoid) {
+  const taken = [], res = [];
+  for (const pl of plans) { let best = null, bs = 1e9;
+    const pool = cands.filter(c => !taken.some(t => cheb(t.x, t.y, c.x, c.y) < 3) && (!pl.kind || c.kind === pl.kind)).map(c => { const pre = Math.abs(c.hd - 14) * 0.15; return { c, pre }; }).sort((a, b) => a.pre - b.pre);
+    for (const { c, pre } of pool) { if (pre >= bs) break;
+      if (!c.sides) c.sides = watchAt(c.x, c.y).sides; const sides = c.sides;
+      if (avoid && sides.has(avoid)) continue;
+      const miss = pl.want.filter(w => !sides.has(w) && !res.some(q => q.sides.has(w))).length;
+      const s = pre + miss * 6 + (sides.size ? 0 : 3); if (s >= bs) continue;
+      if (c.ok === undefined) c.ok = !suspSees(c.x, c.y); if (!c.ok) continue;
+      bs = s; best = c; }
+    if (!best) return null; taken.push(best); res.push(best); }
+  return res;
+}
+/** Downed officer: where he fell — 90% front yard, 10% side/back yard (on the lot, outside the house). */
+function downedSpot(r, D) {
+  const H = S.house, T = S.geo.target, front = r() < PATROL_CFG.downFront, cells = [];
+  for (let y = T.y0 + 1; y <= T.y1; y++) for (let x = T.x0 + 1; x <= T.x1 - 1; x++) { const c = idx(x, y); if (D[c] >= 1e9 || !cellOk(x, y, { outdoor: true }) || S.dyn[c] || nearDoorOut(x, y, 1)) continue;
+    const inFront = y > H.y1 + 1 && x >= H.x0 - 3 && x <= H.x1 + 3, inSide = !inFront && y <= H.y1 + 1 && houseRectDist(x, y) >= 1.5 && houseRectDist(x, y) <= 8;
+    if (front ? inFront && y <= H.y1 + 7 : inSide) cells.push([x, y]); }
+  if (!cells.length) return null; return { at: cells[r.int(0, cells.length - 1)], front };
+}
+
+/* =====================================================================
    SCENARIO TYPES — data-driven call types, picked from the seed (or forced
    by opts.stype). Each type tunes suspect temperament, negotiation, fire
    readiness, escape drive, the 911 call / brief and the debrief bonuses.
@@ -2412,7 +2559,7 @@ const SCEN_TYPES = {
   domestic: { name: 'Domestic disturbance', short: 'Domestic', w: 0.20, agit: 50, fireMul: 1, negoMul: 1, calloutMul: 1, slipMul: 1, slipAfter: 2,
     variants: { firearm: 0.55, violent: 0.45 },
     desc: 'He assaulted his partner, who got out and is waiting at the perimeter — interview her for the layout, weapons and history.' },
-  flee: { name: 'Fleeing suspect — vacant house', short: 'Fleeing suspect', w: 0.15, agit: 60, fireMul: 1.1, negoMul: 0.5, calloutMul: 0.6, slipMul: 3, slipAfter: 1,
+  flee: { name: 'Fleeing suspect — vacant house', short: 'Fleeing suspect', w: 0.15, agit: 60, fireMul: 0.9, negoMul: 0.7, calloutMul: 0.75, slipMul: 2.4, slipAfter: 1,
     temperW: { talker: 0.1, withdrawn: 0.5, volatile: 0.4 }, vacant: true,
     desc: 'He ran from patrol into an empty house. Nobody else inside, little interest in talking — and he will leave through any side nobody watches.' },
   neighbor: { name: 'Neighbor dispute — firearm displayed', short: 'Neighbor dispute', w: 0.15, agit: 55, fireMul: 1, sideMul: 1.35, offSideMul: 0.85, negoMul: 0.9, calloutMul: 1, slipMul: 1, slipAfter: 2,
@@ -2425,10 +2572,17 @@ const SCEN_TYPES = {
   sovcit: { name: 'Eviction standoff — sovereign citizen', short: 'Eviction standoff', xw: 0.05, agit: 50, fireMul: 1.05, negoMul: 0.8, calloutMul: 0.6, slipMul: 0.6, slipAfter: 3,
     temperW: { talker: 0.5, withdrawn: 0.25, volatile: 0.25 }, variants: { eviction: 0.6, papers: 0.4 }, legal: { eviction: 1 }, fortified: true,
     desc: 'He refused to leave when patrol came to enforce an eviction or serve civil papers. He rejects the court\u2019s authority and argues every point. Long guns, armor, gas masks and reinforced doors are more likely.' },
+  // v13 types
+  drughouse: { name: 'Fortified drug house — narcotics warrant', short: 'Drug house', xw: 0.05, agit: 50, fireMul: 0.85, negoMul: 1.0, calloutMul: 0.9, slipMul: 0.6, slipAfter: 3,
+    temperW: { talker: 0.1, withdrawn: 0.5, volatile: 0.4 }, variants: { warrant: 0.6, buy: 0.4 }, legal: { narcotics: 1 }, fortified: true,
+    desc: 'Narcotics unit called SWAT to a fortified house: steel-reinforced doors, bars on the windows, cameras outside. Two to four suspects with long guns, possibly armor. Slow to breach; they watch the approaches.' },
+  inmates: { name: 'Escaped inmates — family fled the house', short: 'Escaped inmates', xw: 0.025, agit: 60, fireMul: 0.9, negoMul: 0.7, calloutMul: 0.8, slipMul: 2.6, slipAfter: 1,
+    temperW: { talker: 0.2, withdrawn: 0.4, volatile: 0.4 }, legal: { escape: 1 },
+    desc: 'One or two escaped inmates forced their way into an occupied house; the family got out and called 911. Nobody else inside. They want a way out — expect them to run for any side nobody watches. The family can be interviewed at the perimeter.' },
 };
 const SCEN_KEYS = Object.keys(SCEN_TYPES);
 const BASE_KEYS = SCEN_KEYS.filter(k => !SCEN_TYPES[k].xw);
-const LEGAL_TXT = { parole: 'Parole-violation warrant on file (absconded from supervision).', eviction: 'Court order on file (writ of possession / civil process).', discharge: 'He fired a round inside the house — reckless discharge charge.', warrant: 'Active warrant (failure to appear) on file.', interview: 'No crime reported — emergency mental-health evaluation (transport hold) only.' };
+const LEGAL_TXT = { narcotics: 'Narcotics search warrant on file for the residence.', escape: 'Escape from custody — statewide alert; recapture warrant.', parole: 'Parole-violation warrant on file (absconded from supervision).', eviction: 'Court order on file (writ of possession / civil process).', discharge: 'He fired a round inside the house — reckless discharge charge.', warrant: 'Active warrant (failure to appear) on file.', interview: 'No crime reported — emergency mental-health evaluation (transport hold) only.' };
 /* ============================================================ */
 function wpick(r, W) { let p = r() * Object.values(W).reduce((a, b) => a + b, 0); for (const k in W) { p -= W[k]; if (p <= 0) return k; } return Object.keys(W)[0]; }
 /** Scenario type for a seed (deterministic; independent of the map generator's random stream). */
@@ -2498,6 +2652,14 @@ const MULTI_CFG = {
   hideFire: 0.6, fightFire: 1.15, fleeSlip: 1.6, surrTalk: 40, injImpair: 0.25,
   report: { exact: 0.45, under: 0.35, atleast: 0.20 } // what the patrol tells dispatch about the number of subjects
 };
+/* v13: per-call-type multi-suspect profiles (fields missing here fall back to MULTI_CFG) */
+const MULTI_TYPES = {
+  flee: {},
+  drughouse: { countW: [0, 0.5, 0.35, 0.15], dispW: { fighting: 0.3, hiding: 0.4, fleeing: 0.1, surrendering: 0.15, injured: 0.05 }, weapons: ['rifle', 'shotgun', 'handgun', 'rifle', 'shotgun'], armor: 0.2, leadDisp: 'fighting', mask: 0.1 },
+  inmates: { countW: [0.45, 0.55], dispW: { fleeing: 0.5, hiding: 0.3, fighting: 0.15, surrendering: 0.05 }, weapons: ['handgun', 'shotgun', 'none', 'handgun'], leadDisp: 'fleeing', mask: 0 }
+};
+function multiType(k) { k = k || (S.stype && S.stype.key); return !!(k && MULTI_TYPES[k]); }
+function mcfg(f, k) { k = k || (S.stype && S.stype.key); const T = MULTI_TYPES[k] || {}; return T[f] !== undefined ? T[f] : MULTI_CFG[f]; }
 const SUS_LETTERS = 'ABCD';
 let SP_DEPTH = 0;
 function suspList() { return S.suspects && S.suspects.length ? S.suspects : (S.suspect ? [S.suspect] : []); }
@@ -2526,19 +2688,19 @@ function devTarget(sx, sy) { const L = suspList().filter(spActive); if (L.length
 function suspectAtCell(x, y) { return suspList().find(s => spActive(s) && s.x === x && s.y === y) || null; }
 function spInRoom(rm, pred = spActive) { return suspList().some(s => pred(s) && s.room === rm); }
 /** Seeded count draw: separate stream so the map / scenario are unchanged by the count. */
-function fleeCount(seed, opts) { if (opts && opts.suspects) return clamp(Math.round(opts.suspects), 1, 4);
-  const r = makeRng(seed * 6101 + 29), W = MULTI_CFG.countW, tot = W.reduce((a, b) => a + b, 0); let p = r() * tot;
+function fleeCount(seed, opts, key) { if (opts && opts.suspects) return clamp(Math.round(opts.suspects), 1, 4);
+  const r = makeRng(seed * 6101 + 29), W = mcfg('countW', key || 'flee'), tot = W.reduce((a, b) => a + b, 0); let p = r() * tot;
   for (let i = 0; i < W.length; i++) { p -= W[i]; if (p <= 0) return i + 1; } return 1; }
 function wpick(r, W) { const ks = Object.keys(W); let p = r() * ks.reduce((a, k) => a + W[k], 0); for (const k of ks) { p -= W[k]; if (p <= 0) return k; } return ks[0]; }
 /** Tag the classic suspect, then (flee calls only) add the extra suspects, each with its own spot, weapon, armor, mask and starting state. */
 function setupSuspects() {
   const lead = S.suspect; lead.sid = 0; lead.key = 'S'; lead.label = 'A'; lead.disp = lead.disp || null; S.suspects = [lead];
-  const n = S.stype && S.stype.key === 'flee' ? fleeCount(S.seed, S.opts) : 1;
+  const n = multiType() ? fleeCount(S.seed, S.opts, S.stype.key) : 1;
   S.intel.suspSeen = 0; S.intel.suspConfirmed = null;
   if (n < 2) { setupSuspectArmor(); S.susCount = 1; return; }
   const r = makeRng(S.seed * 4421 + 71), used = [[lead.x, lead.y]];
-  lead.disp = 'fleeing';
-  const rooms = S.rooms.map((q, i) => i).filter(i => i !== lead.room && S.rooms[i].type !== 'hall');
+  lead.disp = mcfg('leadDisp') || 'fleeing';
+  const rooms = S.rooms.map((q, i) => i).filter(i => i !== lead.room && S.rooms[i].type !== 'hall' && !S.rooms[i].unitB);
   for (let k = 1; k < n; k++) {
     let best = null, bs = -1e9;
     for (let t = 0; t < 60; t++) { const ri = rooms.length && r.chance(0.85) ? r.pick(rooms) : lead.room; const q = S.rooms[ri];
@@ -2547,10 +2709,10 @@ function setupSuspects() {
       const sameRoom = S.suspects.some(s => s.room === ri); const s = near * 0.3 - (sameRoom ? 3 : 0) + r();
       if (s > bs) { bs = s; best = [x, y, ri]; } }
     if (!best) break; used.push([best[0], best[1]]);
-    const disp = wpick(r, MULTI_CFG.dispW);
+    const disp = wpick(r, mcfg('dispW'));
     const sp = { x: best[0], y: best[1], home: { x: best[0], y: best[1] }, room: best[2], mode: disp === 'fighting' ? 'alert' : 'barricaded', stun: 0, agit: lead.agit, cd: 0, ambush: false,
-      hasMask: r.chance(MULTI_CFG.mask), maskOn: false, maskSeen: false, maskDon: 0, impair: 0, phone: false, talk: 0, seen: false, lastKnown: null, heat: null, unseenTurns: 0, path: null, dir: r() * 6.28,
-      weapon: r.pick(MULTI_CFG.weapons), atWindow: false, suppressed: 0, duck: 0, sid: k, key: 'S' + (k + 1), label: SUS_LETTERS[k], disp };
+      hasMask: r.chance(mcfg('mask')), maskOn: false, maskSeen: false, maskDon: 0, impair: 0, phone: false, talk: 0, seen: false, lastKnown: null, heat: null, unseenTurns: 0, path: null, dir: r() * 6.28,
+      weapon: r.pick(mcfg('weapons')), atWindow: false, suppressed: 0, duck: 0, sid: k, key: 'S' + (k + 1), label: SUS_LETTERS[k], disp };
     if (disp === 'fighting') sp.agit = clamp(sp.agit + 15, 0, 100);
     if (disp === 'surrendering') { sp.talk = MULTI_CFG.surrTalk; sp.agit = clamp(sp.agit - 20, 0, 100); }
     if (disp === 'injured') { sp.injured = true; sp.hurt = MULTI_CFG.injImpair; sp.impair = MULTI_CFG.injImpair; }
@@ -2559,22 +2721,22 @@ function setupSuspects() {
   S.susCount = S.suspects.length; S.suspects.forEach(s => { s.label = null; s.labelled = false; }); // letters are given in the order they are first seen
   // armor per suspect: the lead keeps the classic stream, extras get their own
   setupSuspectArmor();
-  const p = S.opts && S.opts.suspectArmor !== undefined ? S.opts.suspectArmor : ARMOR_CFG.suspect;
-  S.suspects.slice(1).forEach(sp => { const ra = makeRng(S.seed * 977 + 13 + sp.sid * 131); sp.armor = ra.chance(p) ? (ra.chance(ARMOR_CFG.suspectPlate) ? 'plate' : 'soft') : 'none'; sp.armorKnown = false; });
+  const p = S.opts && S.opts.suspectArmor !== undefined ? S.opts.suspectArmor : (mcfg('armor') != null ? mcfg('armor') : ARMOR_CFG.suspect);
+  S.suspects.slice(mcfg('armor') != null && !(S.opts && S.opts.suspectArmor !== undefined) ? 0 : 1).forEach(sp => { const ra = makeRng(S.seed * 977 + 13 + sp.sid * 131); sp.armor = ra.chance(p) ? (ra.chance(ARMOR_CFG.suspectPlate) ? 'plate' : 'soft') : 'none'; sp.armorKnown = false; });
 }
 /** What the patrol reported: { n, kind: 'exact'|'under'|'atleast', text }. Seeded, separate stream. */
-function patrolReport() { const n = S.susCount || 1; if (!(S.stype && S.stype.key === 'flee')) return { n: 1, kind: 'exact', text: 'one subject' };
+function patrolReport() { const n = S.susCount || 1; if (!multiType()) return { n: 1, kind: 'exact', text: 'one subject' };
   const r = makeRng(S.seed * 3331 + 5); let kind = wpick(r, MULTI_CFG.report); if (kind === 'under' && n === 1) kind = 'exact';
   const said = kind === 'exact' ? n : kind === 'under' ? r.int(1, n - 1) : 1; const words = ['', 'one', 'two', 'three', 'four'];
   const text = kind === 'atleast' ? 'at least one subject — possibly more' : said === 1 ? 'one subject' : words[said] + ' subjects';
   return { n: said, kind, text }; }
 /** Status-panel view of the suspect count: unknown until every suspect has been seen. */
-function suspectCountInfo() { const L = suspList(), seen = L.filter(s => s.seen).length; const flee = S.stype && S.stype.key === 'flee'; const conf = !flee || !!S.intel.suspConfirmed || S.phase === 'over';
+function suspectCountInfo() { const L = suspList(), seen = L.filter(s => s.seen).length; const flee = multiType(); const conf = !flee || !!S.intel.suspConfirmed || S.phase === 'over';
   const R = S.brief && S.brief.report; return { seen, total: conf ? L.length : null, confirmed: !!conf, belief: R ? R.text : 'one subject',
     custody: L.filter(s => s.mode === 'detained').length, down: L.filter(s => s.mode === 'incapacitated').length, active: L.filter(spHostile).length }; }
 /** Reveal bookkeeping after a vision pass: when every suspect has been seen, the count is confirmed. */
-function countObserve() { const L = suspList(); if (!(S.stype && S.stype.key === 'flee') || S.intel.suspConfirmed) return; const seen = L.filter(s => s.seen).length;
-  const all = seen === L.length && S.rooms.every(q => q.explored || q.type === 'hall');
+function countObserve() { const L = suspList(); if (!multiType() || S.intel.suspConfirmed) return; const seen = L.filter(s => s.seen).length;
+  const all = seen === L.length && S.rooms.every(q => q.explored || q.type === 'hall' || q.unitB);
   if (seen > (S.intel.suspSeen || 0)) { S.intel.suspSeen = seen; if (!all) log(`${seen} suspect${seen > 1 ? 's' : ''} seen so far — the house is not cleared, there may be more.`, 'intel'); }
   // confirmation: all have been seen, and every room has been explored or the count is fully in view
   if (all) { S.intel.suspConfirmed = S.turn + 1; log(`Suspect count confirmed: ${L.length}.`, 'intel'); } }
@@ -2618,13 +2780,14 @@ function applyTypeExtras() {
     if (sp.weapon !== 'rifle' && r.chance((capP(C.rifleBase + C.boost) - C.rifleBase) / (1 - C.rifleBase))) sp.weapon = 'rifle';
     if (!(S.opts && S.opts.suspectArmor !== undefined)) { sp.armor = r.chance(capP(ARMOR_CFG.suspect + C.boost)) ? (r.chance(ARMOR_CFG.suspectPlate) ? 'plate' : 'soft') : 'none'; sp.armorKnown = false; }
     sp.hasMask = r.chance(capP(C.maskBase + C.boost));
-    S.doors.forEach(d => { if (d.exterior && d.kind !== 'garage' && r.chance(capP(C.doorBase + C.boost))) { d.barricaded = true; d.locked = true; d.fortified = true; } });
+    S.doors.forEach(d => { if (d.exterior && !d.unitB && d.kind !== 'garage' && r.chance(capP(C.doorBase + C.boost))) { d.barricaded = true; d.locked = true; d.fortified = true; } });
     S.intel.posts = r.chance(C.postsP); }
+  applyTypeExtras3();
 }
 /** Parole absconder hide: an attic hatch or basement door in a room; he waits there out of sight. */
 function setupHide(r, kind) {
   const sp = S.suspect, pref = kind === 'attic' ? { hall: 3, bed: 2, office: 1 } : { kitchen: 3, hall: 2, living: 1, office: 1 };
-  const cands = S.rooms.filter(q => q.type !== 'garage'), wt = cands.map(q => pref[q.type] || 0.4); let tot = wt.reduce((a, b) => a + b, 0), p = r() * tot, rm = cands[0];
+  const cands = S.rooms.filter(q => q.type !== 'garage' && !q.unitB), wt = cands.map(q => pref[q.type] || 0.4); let tot = wt.reduce((a, b) => a + b, 0), p = r() * tot, rm = cands[0];
   for (let i = 0; i < cands.length; i++) { p -= wt[i]; if (p <= 0) { rm = cands[i]; break; } }
   const ext = S.doors.filter(d => d.exterior).map(d => d.cells[0][0]); let best = null, bs = -1;
   for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) { if (S.block[idx(x, y)] || roomAt(x, y) !== rm.id) continue;
@@ -2688,10 +2851,140 @@ function typeBrief(B) {
   if (!(ST === 'parole' && st.variant === 'caller')) B.channel = 'radio';
   B.transcript = L;
 }
-function typeExtraDebrief(out) { const st = S.stype; if (!st) return;
+function typeExtraDebrief(out) { const st = S.stype; if (!st) return; typeExtraDebrief3(out);
   if (st.key === 'parole') out.push({ k: '  Warrant', v: S.result && S.result.win ? 'Parole-violation warrant served.' : 'Warrant not served.' }, { k: '  Hide', v: S.hide ? `${S.hide.name} in the ${S.rooms[S.hide.room].name}${S.hide.found ? ' — found.' : ' — not found.'}` : 'He stayed in a room; no hide used.' });
   if (st.key === 'sovcit') { const sp = S.suspect; out.push({ k: '  Court order', v: S.result && S.result.win ? 'Order enforced; subject removed in custody.' : 'Order not enforced.' },
     { k: '  Gear', v: `${SUSPECT_WEAPONS[sp.weapon].name}${sp.armor && sp.armor !== 'none' ? ', ' + sp.armor + ' armor' : ''}${sp.hasMask ? ', gas mask' : ''}; ${S.doors.filter(d => d.fortified).length} reinforced door(s).` }); } }
+
+/* =====================================================================
+   v13 CALL TYPES + STRUCTURES — fortified drug house, escaped inmates,
+   duplex (party wall / unit B evacuation) and mobile homes (thin walls).
+   Rules only (no DOM). Neutral wording. Every random draw uses its own
+   seeded stream so the map and the base scenario stay identical per seed.
+   ===================================================================== */
+/* ================== TUNABLE ================== */
+const DRUG_CFG = { barred: 0.85, cams: [2, 4], camRange: 9, camFov: 1.75, camFirst: 5, camTick: 1, powerAgit: 8, powerFrom: 1 };
+const INMATE_CFG = { weapons: { handgun: 0.45, shotgun: 0.3, none: 0.25 }, familyN: [3, 5] };
+const DUPLEX_CFG = { residentsW: [0.15, 0.3, 0.3, 0.15, 0.1], breakFrom: 20, base: 0.03, per: 0.012, cap: 0.25, phoneMul: 0.5, evacTurns: 2, riskPen: -150, evacBonus: 50 };
+const TRAILER_CFG = { wallShot: 0.13, wallHit: 0.18, wallAgit: 55, hearDist: 2, hearEvery: 3 };
+const DOOR_MUL = { steel: { ram: 0.35, pry: 0.3, kick: 0.15, charge: 0.85, draco: 0.7 }, thin: { kick: 2.2, ram: 1.6, pry: 1.4, charge: 1, draco: 1.2 } };
+/* ============================================= */
+/** Door-material multiplier on breach success (steel-reinforced drug-house doors, hollow mobile-home doors). */
+function doorMul(d, m) { let k = 1; if (d.steel) k *= DOOR_MUL.steel[m] || 1; else if (d.thin) k *= DOOR_MUL.thin[m] || 1; return k; }
+/** A window a suspect could climb out of (bars stop it; unit B of a duplex is not his until the party wall is open). */
+function exitWin(w) { return !w.barred && (isOwnRoom(w.room) || !!(S.duplex && S.duplex.hole)); }
+function roomInPlay(q) { return !q.unitB || !!(S.duplex && S.duplex.hole); }
+function applyTypeExtras3() {
+  const st = S.stype; if (!st) return; const sp = S.suspect;
+  if (st.key === 'drughouse') { const r = makeRng(S.seed * 8117 + 31), C = DRUG_CFG;
+    sp.weapon = r.pick(MULTI_TYPES.drughouse.weapons);
+    S.doors.forEach(d => { if (d.exterior && !d.unitB) { d.barricaded = true; d.locked = true; d.fortified = true; d.barrKnown = true; if (d.kind !== 'garage') { d.steel = true; d.storm = false; } } });
+    S.windows.forEach(w => { if (isOwnRoom(w.room) && r.chance(C.barred)) w.barred = true; });
+    setupCams(r); S.power = { cut: false, at: null }; }
+  if (st.key === 'inmates') { const r = makeRng(S.seed * 8123 + 37);
+    sp.weapon = wpick(r, INMATE_CFG.weapons); if (sp.weapon === 'none' && S.scene && S.scene.injury) sp.weapon = 'handgun';
+    S.inmFamily = { n: r.int(INMATE_CFG.familyN[0], INMATE_CFG.familyN[1]), done: false }; }
+  if (S.house.duplex) { const r = makeRng(S.seed * 8147 + 43), C = DUPLEX_CFG; const res = +wpick(r, Object.fromEntries(C.residentsW.map((w, i) => [i, w])));
+    S.duplex = { residents: res, evac: res ? 'none' : 'empty', evacAt: null, hole: null, risk: false, wallV: 0 }; }
+}
+/** Security cameras on a fortified house: over the front door, then corners. Each has a view cone. */
+function setupCams(r) { const H = S.house, C = DRUG_CFG, out = [];
+  const fd = S.doors.find(d => d.name === 'Front Door'), bd = S.doors.find(d => d.name === 'Back Door'), oc = d => d && (d.cells[0].find(c => roomAt(c[0], c[1]) < 0) || d.cells[0][1]);
+  const f = oc(fd); if (f) out.push({ x: f[0], y: f[1], dx: 0, dy: 1, name: 'front door' });
+  const corners = r.shuffle([[H.x0 - 1, H.y1 + 1, -1, 1, 'front-left corner'], [H.x1 + 1, H.y1 + 1, 1, 1, 'front-right corner'], [H.x0 - 1, H.y0 - 1, -1, -1, 'rear-left corner'], [H.x1 + 1, H.y0 - 1, 1, -1, 'rear-right corner']]);
+  const b = oc(bd); if (b) corners.splice(1, 0, [b[0], b[1], 0, -1, 'back door']);
+  const n = r.int(C.cams[0], C.cams[1]); for (const c of corners) { if (out.length >= n) break; out.push({ x: c[0], y: c[1], dx: c[2], dy: c[3], name: c[4] }); }
+  S.cams = out.map((c, i) => Object.assign(c, { id: i, range: C.camRange, fov: C.camFov, seen: false })); }
+function camSees(c, x, y) { if (S.power && S.power.cut) return false; const d = dist(c.x, c.y, x, y); if (d > c.range || d < 0.5) return false;
+  let a = Math.atan2(y - c.y, x - c.x) - Math.atan2(c.dy, c.dx); while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI;
+  return Math.abs(a) <= c.fov / 2 && los(c.x, c.y, x, y) === 1; }
+function camTurn() { if (!S.cams || !S.cams.length || (S.power && S.power.cut)) return; let hit = null;
+  for (const u of S.units) { if (!unitAlive(u) || !onFoot(u) || u.status === 'staged' || roomAt(u.x, u.y) >= 0) continue; const c = S.cams.find(c => camSees(c, u.x, u.y)); if (c) { hit = [c, u]; break; } }
+  if (!hit) return; const [c, u] = hit; S.camHits = (S.camHits || 0) + 1;
+  eachSp(sp => { if (hostile()) sp.agit = clamp(sp.agit + (c.seen ? DRUG_CFG.camTick : DRUG_CFG.camFirst), 0, 100); });
+  if (!c.seen) { c.seen = true; log(`${u.name} is in view of the camera at the ${c.name} — they can see us coming. Cut the power or stay out of its view.`, 'alert'); } }
+/** Unit B of a duplex: evacuation clock and the extended-barricade party-wall breach. */
+function duplexTurn() { const D = S.duplex, C = DUPLEX_CFG; if (!D) return; const sp = S.suspect;
+  if (D.evac === 'moving' && S.turn >= D.evacAt) { D.evac = 'done'; D.evacDone = S.turn; log(`Patrol: Unit B is clear — ${D.residents === 1 ? 'the resident is' : 'all ' + D.residents + ' residents are'} out through the far door and at the perimeter.`, 'good'); }
+  if (D.hole || S.phase === 'over' || S.turn < C.breakFrom || !hostile() || sp.walk || !['barricaded', 'alert'].includes(sp.mode) || sp.room < 0 || !isOwnRoom(sp.room)) return;
+  const p = Math.min(C.cap, C.base + C.per * (S.turn - C.breakFrom)) * (S.nego && S.nego.contact ? C.phoneMul : 1);
+  if (!S.rng.chance(p)) return; partyBreach(sp); }
+/** Open 1-2 edges of the party wall next to the suspect's side and move him through. Returns the hole or null. */
+function partyBreach(sp) { const D = S.duplex, H = S.house, px = H.duplex.partyX, aLeft = H.duplex.aSide === 'L', ax = aLeft ? px - 1 : px, bx = aLeft ? px : px - 1;
+  const ys = []; for (let y = H.y0; y <= H.y1; y++) { const a = roomAt(ax, y), b = roomAt(bx, y); if (a >= 0 && b >= 0 && S.rooms[b].unitB && S.rooms[a].type !== 'hall' && !S.block[idx(bx, y)]) ys.push(y); }
+  if (!ys.length) return null; ys.sort((a, b) => Math.abs(a - sp.y) - Math.abs(b - sp.y)); const y0 = ys[0], y1 = ys.includes(y0 + 1) ? y0 + 1 : ys.includes(y0 - 1) ? y0 - 1 : null;
+  const cells = [y0].concat(y1 == null ? [] : [y1]); cells.forEach(y => S.edges.set(ek(ax, y, bx, y), E_OPEN));
+  D.hole = { x: Math.min(ax, bx), ax, bx, ys: cells, turn: S.turn, roomA: roomAt(ax, y0), roomB: roomAt(bx, y0) }; D.wallV++;
+  const stepIn = aLeft ? 1 : -1, tx = !S.block[idx(bx + stepIn, y0)] && roomAt(bx + stepIn, y0) === D.hole.roomB ? bx + stepIn : bx;
+  sp.x = tx; sp.y = y0; sp.room = roomAt(tx, y0); sp.home = { x: tx, y: y0 }; sp.mode = 'alert'; S.intel.located = true; sp.heat = { room: sp.room, x: tx, y: y0, turn: S.turn };
+  S.stats.partyWall = S.turn;
+  log(`Loud impacts on the party wall — ${spName()} has broken through into Unit B (${S.rooms[sp.room].name})!`, 'bad');
+  if (D.residents > 0 && D.evac !== 'done') { D.risk = true; log(`Unit B residents are still inside — get them out now!`, 'bad'); }
+  else if (D.residents > 0) log('Unit B was already evacuated — nobody on that side is at risk.', 'good');
+  rebuildDyn(); return D.hole; }
+/** Mobile home: thin walls — rounds can come through them, and both sides hear each other. Runs per suspect. */
+function thinWallTurn() { const sp = S.suspect, C = TRAILER_CFG; if (!S.house.thin || !hostile() || sp.walk || sp.room < 0 || sp.stun > 0) return;
+  const rm = S.rooms[sp.room], near = S.units.filter(u => unitAlive(u) && onFoot(u) && roomAt(u.x, u.y) < 0 && u.x >= rm.x - 1 && u.x <= rm.x + rm.w && u.y >= rm.y - 1 && u.y <= rm.y + rm.h);
+  const hear = S.units.filter(u => unitAlive(u) && onFoot(u) && roomAt(u.x, u.y) < 0 && Math.max(Math.abs(u.x - sp.x), Math.abs(u.y - sp.y)) <= C.hearDist + 1);
+  if (hear.length) { sp.agit = clamp(sp.agit + 3, 0, 100);
+    if (!sp.heat || S.turn - (sp.heard || -99) >= C.hearEvery) { sp.heard = S.turn; sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.located = true; log(`${hear[0].name}: thin walls — we can hear movement in the ${rm.name}.`, 'intel'); } }
+  if (!near.length || sp.cd > 0 || sp.agit < C.wallAgit || sp.weapon === 'none' || sp.mode === 'surrendered' || !S.rng.chance(C.wallShot)) return;
+  const T = near.sort((a, b) => dist(a.x, a.y, sp.x, sp.y) - dist(b.x, b.y, sp.x, sp.y))[0], d = dist(T.x, T.y, sp.x, sp.y);
+  S.stats.shots++; S.stats.wallShots = (S.stats.wallShots || 0) + 1; sp.cd = 2; fx('muzzle', sp.x, sp.y, { suspect: true }); fx('shot', sp.x, sp.y, { tx: T.x, ty: T.y }); S.intel.threat = 1;
+  if (S.rng.chance(C.wallHit * accImpair())) { const v = T.kind === 'team' ? pickVictim(T, sp.x, sp.y) : null; shotOfficer(T, SUSPECT_CAL[sp.weapon] || 'pistol', d, sp.x, sp.y, `${rm.name} — through the wall`, v ? { victim: v } : null); }
+  else log(`SHOTS FIRED through the wall of the ${rm.name} at ${T.name} — no hits. Thin walls do not stop rounds: keep off the walls.`, 'alert'); }
+function types3Turn() { camTurn(); duplexTurn(); eachSp(thinWallTurn); }
+/** Commands added in v13. */
+function runCommand3(key) { const sp = S.suspect;
+  if (key === 'evacB') { const D = S.duplex; D.evac = 'moving'; D.evacAt = S.turn + DUPLEX_CFG.evacTurns; log(`Patrol: evacuating Unit B — ${D.residents === 1 ? 'one resident' : D.residents + ' residents'}, out through the far door, away from his side. ETA ${tMin(DUPLEX_CFG.evacTurns)}.`, 'radio'); }
+  if (key === 'power') { S.power.cut = true; S.power.at = S.turn; eachSp(s => { if (hostile()) s.agit = clamp(s.agit + DRUG_CFG.powerAgit, 0, 100); });
+    log('Utility crew: power to the house is cut — the cameras are dark. Movement inside; they noticed the lights go out.', 'intel'); }
+  if (key === 'inmfamily') { const F = S.inmFamily; F.done = true; S.intel.floors = true; S.intel.weapon = true; S.intel.threat = Math.max(S.intel.threat, 1); S.intel.suspConfirmed = S.turn + 1; ownRooms().forEach(q => q.known = true);
+    const n = suspList().length, w = suspList().map(s => SUSPECT_WEAPONS[s.weapon].name), srm = S.rooms[sp.room];
+    log(`Family interview: "It's our house — ${ownRooms().length} rooms, ${ownRooms().filter(q => q.type === 'bed').length} bedrooms. ${n === 1 ? 'One man came in' : n + ' men came in'}. ${w.every(x => x === 'no firearm') ? 'They did not have guns with them — but we keep a shotgun in the closet, I think it is still locked.' : `They found the ${[...new Set(w.filter(x => x !== 'no firearm'))].join(' and the ')} we keep in the house.`} Last time I saw ${n === 1 ? 'him' : 'them'} ${n === 1 ? 'he was' : 'one was'} in the ${srm ? srm.name : 'back'}."`, 'intel');
+    log(`Suspect count confirmed by the family: ${n}.`, 'intel'); }
+}
+/** Brief and call rewrite for the v13 types (after typeBrief). */
+function typeBrief3(B) { const st = S.stype, ST = st.key; if (ST !== 'drughouse' && ST !== 'inmates') return; const r = makeRng(S.seed * 9161 + 7), sp = S.suspect;
+  const L = [], t0 = B.callAt, add = (who, text) => L.push({ t: t0, who, text }), R = patrolReport(); B.report = R; const words = ['', 'one', 'two', 'three', 'four'], many = R.n > 1;
+  B.legal = st.legal; B.typeDesc = SCEN_TYPES[ST].desc; B.self = false; B.phone = null; B.giveNum = false;
+  if (ST === 'drughouse') { B.type = st.variant === 'buy' ? 'controlled buy — fortified house' : 'narcotics search warrant — fortified house'; B.caller = 'No 911 call — narcotics unit'; B.channel = 'radio';
+    const barred = S.windows.filter(w => w.barred).length, cams = (S.cams || []).length;
+    add('Narcotics', `Dispatch, narcotics unit at ${B.addr}. ${st.variant === 'buy' ? 'The controlled buy went bad — our buyer got out, they locked the place down behind him.' : 'We have a search warrant for the residence. They saw us coming and locked it down.'}`);
+    add('Narcotics', `Steel doors front and back, bars on ${barred > 4 ? 'most of' : 'some of'} the windows${cams ? `, ${cams} cameras on the outside` : ''}.`);
+    add('Dispatcher', 'Copy. How many inside?'); add('Narcotics', `Informant says ${R.kind === 'atleast' ? 'at least two — maybe more' : R.text}. Long guns, ${r.chance(0.6) ? 'and they have vests' : 'possibly vests'}. We are holding the perimeter, requesting SWAT.`);
+    B.occupants = `Informant: ${R.kind === 'atleast' ? 'at least two people, possibly more' : R.text} inside. No residents other than the suspects believed inside. Count not confirmed.`;
+    B.belief = `Officer belief: ${R.kind === 'atleast' ? 'at least two suspects — possibly more' : words[R.n] + ' suspect' + (many ? 's' : '')} with long guns. Not confirmed.`;
+    B.known = [LEGAL_TXT.narcotics, 'Steel-reinforced exterior doors, braced from inside: ram, pry and kick are slow — an explosive charge or the Draco arm works best.',
+      `Bars on ${barred} window${barred === 1 ? '' : 's'}: nobody climbs in or out of those; the Draco arm can tear them out.`, cams ? `${cams} security camera${cams > 1 ? 's' : ''} watch the approaches — Cut Power takes them offline (they will notice).` : 'No cameras seen.',
+      'Long guns and body armor are likely on this type of call. Several suspects.'];
+    B.sawGun = true; B.shots = !!B.officerDown;
+    B.patrol.splice(B.patrol.length - 1, 0, `Narcotics unit: ${R.kind === 'atleast' ? 'at least two subjects' : R.text} inside, doors steel-reinforced.`); }
+  if (ST === 'inmates') { const F = S.inmFamily || { n: 4 }; B.type = 'escaped inmates — family fled the house'; B.caller = 'Homeowner (got out with the family)';
+    add('Dispatcher', '911, what is the address of your emergency?');
+    add('Caller', `${B.addr} — ${R.kind === 'atleast' ? 'at least one man, maybe more,' : many ? words[R.n] + ' men' : 'a man'} just came in through our back door. ${many || R.kind === 'atleast' ? 'They are the ones' : 'He is the one'} from the news, the escape — I'm sure of it.`);
+    add('Dispatcher', 'Is everyone out of the house?'); add('Caller', `Yes — we grabbed the kids and ran out the front. All ${F.n} of us are at the neighbor's.`);
+    add('Dispatcher', 'Are they armed?'); add('Caller', sp.weapon === 'none' ? 'I did not see a gun. We have a shotgun in the closet but it is locked up.' : `We keep a ${SUSPECT_WEAPONS[sp.weapon].name} in the house. They could have found it.`);
+    add('Dispatcher', 'Stay where you are. Officers will come to you — they will want to talk to you about the house.');
+    B.occupants = `Family of ${F.n} got out and is at the perimeter with patrol. Inside: only the escapee${many || R.kind === 'atleast' ? 's' : ''} (${R.text}). Count not confirmed.`;
+    B.belief = `Officer belief: ${R.kind === 'atleast' ? 'at least one suspect, possibly more' : words[R.n] + ' suspect' + (many ? 's' : '')}. Not confirmed.`;
+    B.known = [LEGAL_TXT.escape, 'Homeowner keeps a firearm in the house — treat them as armed until confirmed.', 'They want a way out, not a standoff: expect them to try any side nobody watches.',
+      'The family is at the perimeter — Family Interview gives the full layout, weapons and the exact count.'];
+    B.sawGun = false; B.shots = !!B.officerDown; }
+  if (!B.shots) { B.patrol = B.patrol.filter(t => !/heard (one shot|shots) from inside/.test(t)); for (const k of Object.keys(B)) if (Array.isArray(B[k]) && k !== 'transcript') B[k] = B[k].filter(t => typeof t !== 'string' || !/a loud bang/.test(t)); }
+  B.transcript = L; }
+/** Brief notes about the structure (any call type). */
+function structBrief(B) { const H = S.house; if (!B || !B.known) return;
+  if (H.duplex && S.duplex) B.known.push(`Duplex: he is in ${H.duplex.aSide === 'L' ? 'the left' : 'the right'} unit. The other unit (Unit B) is a separate home — ${S.duplex.residents ? (S.duplex.residents === 1 ? 'one resident' : S.duplex.residents + ' residents') + ' may be home: evacuate it early' : 'believed empty'}. A long standoff can end with him breaking through the shared wall.`);
+  if (H.trailer) B.known.push(`Mobile home (${H.trailer}-wide): thin walls and hollow doors — easy to breach, but rounds go through the walls and he can hear officers outside.${H.park ? ' Trailer park: neighbors close on both sides.' : ''}`); }
+function typeExtraDebrief3(out) { const st = S.stype, H = S.house, D = S.duplex;
+  if (st && st.key === 'drughouse') out.push({ k: '  Fortified house', v: `${S.doors.filter(d => d.steel).length} steel door(s), ${S.windows.filter(w => w.barred).length} barred window(s); cameras ${S.power && S.power.cut ? 'cut at ' + elapsedAt(S.power.at) : 'left running'}${S.camHits ? ` — officers were on camera ${S.camHits} turn(s)` : ''}.` });
+  if (st && st.key === 'inmates') out.push({ k: '  Family interview', v: S.inmFamily && S.inmFamily.done ? 'Done — layout, weapons and count from the homeowner.' : 'Not done.' });
+  if (D) out.push({ k: '  Duplex — Unit B', v: (D.residents ? `${D.residents} resident(s); ${D.evac === 'done' ? 'evacuated at ' + elapsedAt(D.evacDone) : D.evac === 'moving' ? 'evacuation under way' : 'not evacuated'}` : 'Empty') + (D.hole ? `. Party wall breached at ${elapsedAt(D.hole.turn)}${D.risk ? ' — RISK FLAG: residents were still inside' : ' — nobody at risk'}` : '. Party wall held') + '.' });
+  if (H.thin && S.stats.wallShots) out.push({ k: '  Thin walls', v: `${S.stats.wallShots} shot(s) through the mobile-home walls.` }); }
+function typeScore3(add) { const D = S.duplex, C = DUPLEX_CFG; if (!D) return;
+  if (D.risk) add('Unit B residents at risk (party wall breached before evacuation)', C.riskPen);
+  else if (D.residents && D.evac === 'done') add('Unit B evacuated in time', C.evacBonus); }
 
 /* =====================================================================
    PER-ACTION EXPERIENCE · STATE TEAM HAND-OVER · SCENARIO PREVIEW
@@ -2731,9 +3024,10 @@ function callState() { if (S.phase === 'over') return { ok: false, reason: 'Miss
 /** Scenario facts for the call-in screen, without disturbing the current game. diff: 1 (routine) … 3 (high risk). */
 function preview(seed, opts) { const keep = S; let out;
   try { newGame(seed, opts || {}); const B = S.brief, sp = S.suspect;
-    let diff = 1 + (B.shots ? 0.5 : 0) + (B.officerDown ? 0.8 : 0) + (sp.weapon !== 'handgun' ? 0.4 : 0) + (S.rooms.length >= 9 ? 0.3 : 0) + (S.scene && S.scene.variant === 'gap' ? 0.2 : 0);
+    let diff = 1 + (B.shots ? 0.5 : 0) + (B.officerDown ? 0.8 : 0) + (sp.weapon !== 'handgun' ? 0.4 : 0) + (ownRooms().length >= 9 ? 0.3 : 0) + (S.scene && S.scene.variant === 'gap' ? 0.2 : 0)
+      + 0.3 * (suspList().length - 1) + (S.stype.key === 'drughouse' ? 0.5 : 0) + (suspList().some(q => q.armor && q.armor !== 'none') ? 0.2 : 0) + (S.duplex && S.duplex.residents ? 0.1 : 0);
     diff = +clamp(diff, 1, 3).toFixed(1);
-    out = { seed: S.seed, op: S.opName, type: B.type, stype: S.stype.key, stypeName: S.stype.name, addr: B.addr, time: B.time, shots: !!B.shots, officerDown: !!B.officerDown, sawGun: !!B.sawGun, area: S.geo.name, arch: S.house.archName, diff,
+    out = { seed: S.seed, op: S.opName, type: B.type, stype: S.stype.key, stypeName: S.stype.name, addr: B.addr, time: B.time, shots: !!B.shots, officerDown: !!B.officerDown, sawGun: !!B.sawGun, area: S.geo.name, arch: S.house.archName, struct: S.house.struct || 'house', diff,
       label: diff >= 2.3 ? 'HIGH RISK' : diff >= 1.6 ? 'ELEVATED' : 'ROUTINE' }; }
   finally { S = keep; }
   return out; }
@@ -3068,20 +3362,27 @@ const COMMANDS = {
   status:    { name: 'Perimeter Status Check', desc: 'Radio roll call: each patrol officer reports which sides of the house he can actually see. Reveals any gap in containment.', avail: () => true, instant: true },
   partner:   { name: 'Partner Interview', desc: 'His partner is at the perimeter with patrol: full layout, his weapons, history, and likely his number.', only: 'domestic', avail: () => S.intel.partner ? 'Already done' : true },
   emseval:   { name: 'EMS Evaluation', desc: 'Stage paramedics and the county crisis team at the EMS point for a mental-health evaluation once he is out. Instant.', only: 'mental', instant: true, avail: () => S.intel.emsEval ? 'Already arranged' : !S.ems ? 'Set an EMS point first' : true },
-  family:    { name: 'Family Interview', desc: 'His sister has reached the command post: likely his number and how he reacts under pressure.', avail: () => S.vacant ? 'No family — vacant house' : S.intel.family ? 'Already done' : S.turn < NEGO_CFG.familyTurn ? `Family arrive at ${elapsedAt(NEGO_CFG.familyTurn)}` : true },
+  family:    { name: 'Family Interview', desc: 'His sister has reached the command post: likely his number and how he reacts under pressure.', not: ['drughouse', 'inmates'], avail: () => S.vacant ? 'No family — vacant house' : S.intel.family ? 'Already done' : S.turn < NEGO_CFG.familyTurn ? `Family arrive at ${elapsedAt(NEGO_CFG.familyTurn)}` : true },
+  inmfamily: { name: 'Family Interview (homeowner)', desc: 'The family who fled is at the perimeter with patrol: full layout, the guns kept in the house, and the exact count.', only: 'inmates', avail: () => S.inmFamily && S.inmFamily.done ? 'Already done' : true },
+  power:     { name: 'Cut Power', desc: 'Utility crew cuts power to the house: the security cameras go dark. They will notice (agitation up).', only: 'drughouse', avail: () => !S.power ? 'No cameras' : S.power.cut ? 'Power already cut' : S.turn < DRUG_CFG.powerFrom ? `Utility crew arrives at ${elapsedAt(DRUG_CFG.powerFrom)}` : true },
+  evacB:     { name: 'Evacuate Unit B', desc: 'Patrol walks the residents of the other unit of the duplex out through the far door (about 1 min). Do it before a long standoff.', when: () => !!S.duplex, avail: () => !S.duplex ? 'Not a duplex' : S.duplex.evac === 'empty' ? 'Unit B is empty' : S.duplex.evac === 'moving' ? 'Evacuation under way' : S.duplex.evac === 'done' ? 'Already evacuated' : true },
 };
+/** Is a command offered on this call (call type / structure)? */
+function cmdShown(key) { const c = COMMANDS[key], k = S.stype && S.stype.key; if (!c) return false; if (c.only && k !== c.only) return false; if (c.not && c.not.includes(k)) return false; if (c.when && !c.when()) return false; return true; }
 function setCommand(key) { if (S.phase !== 'planning') return { ok: false, reason: 'Busy' }; if (key === null) { S.cmd = null; S.version++; return { ok: true }; }
-  if (!COMMANDS[key]) return { ok: false, reason: 'Unknown command' }; if (COMMANDS[key].only && !(S.stype && S.stype.key === COMMANDS[key].only)) return { ok: false, reason: 'Not available on this call' };
+  if (!COMMANDS[key]) return { ok: false, reason: 'Unknown command' }; if (!cmdShown(key)) return { ok: false, reason: 'Not available on this call' };
   const a = COMMANDS[key].avail(); if (a !== true) return { ok: false, reason: a }; if (COMMANDS[key].instant) { runCommand(key); S.version++; return { ok: true, instant: true }; } S.cmd = key; S.version++; return { ok: true }; }
 function runCommand(key) {
   const sp = S.suspect, r = S.rng;
   switch (key) {
+    case 'inmfamily': case 'power': case 'evacB': runCommand3(key); break;
     case 'interview': { S.intel.interview = true; S.intel.floors = true; S.intel.threat = 1; S.intel.weapon = true;
       S.rooms.filter(q => ['living', 'kitchen', 'dining', 'garage'].includes(q.type)).forEach(q => q.known = true);
       const srm = S.rooms[sp.room]; const side = (srm.y + srm.h / 2 < S.house.oy + S.house.H / 2 ? 'back' : 'front') + (srm.x + srm.w / 2 < (S.house.x0 + S.house.x1) / 2 ? '-left' : '-right');
-      if (S.vacant) log(`Neighbor: "Nobody lives there — it's been empty since spring. ${S.rooms.filter(q => q.type === 'bed').length} bedrooms. He went in the back. I think he had a gun."`, 'intel');
+      if (S.vacant) log(`Neighbor: "Nobody lives there — it's been empty since spring. ${ownRooms().filter(q => q.type === 'bed').length} bedrooms. He went in the back. I think he had a gun."`, 'intel');
       else if (S.stype && S.stype.key === 'neighbor') log(`Neighbor: "He pointed a ${SUSPECT_WEAPONS[sp.weapon].name} at me over the fence on the ${S.stype.side} side. He's furious with me — keep people away from my side. I saw him at a ${side} window."`, 'intel');
-      else log(`Neighbor: "It's a single-storey ${S.house.archName.split(' ·')[0].toLowerCase()}, ${S.rooms.filter(q => q.type === 'bed').length} bedrooms. He has a ${SUSPECT_WEAPONS[sp.weapon].name} — I saw him at a ${side} window."`, 'intel');
+      else log(`Neighbor: "It's a single-storey ${S.house.archName.split(' ·')[0].toLowerCase()}, ${ownRooms().filter(q => q.type === 'bed').length} bedrooms. He has a ${SUSPECT_WEAPONS[sp.weapon].name} — I saw him at a ${side} window."`, 'intel');
+      if (S.duplex) log(`Neighbor: "It's a duplex — the other side is a separate unit. ${S.duplex.residents ? (S.duplex.residents === 1 ? 'One person lives' : S.duplex.residents + ' people live') + ' over there, I think they are home.' : 'I think that side is empty right now.'}"`, 'intel');
       if (r.chance(NEGO_CFG.number.interview)) learnNumber('neighbor'); break; }
     case 'blueprint': S.intel.blueprint = S.turn + 2; log('Records desk: blueprints requested, ETA 1 min.', 'intel'); break;
     case 'flyby': { S.intel.flybyReady = S.turn + 3; S.rooms.forEach(q => { if (S.windows.some(w => w.room === q.id)) q.known = true; });
@@ -3091,7 +3392,7 @@ function runCommand(key) {
       log(`Drone flyby: thermal signature ${S.rooms[sp.room] ? 'in the ' + S.rooms[sp.room].name : 'near the house'}. Window rooms mapped.`, 'intel'); fx('flyby', S.house.x0, S.house.y0); break; }
     case 'partner': { S.intel.partner = true; S.intel.floors = true; S.intel.threat = Math.max(S.intel.threat, 1); S.rooms.forEach(q => q.known = true); const T = NEGO_CFG.temper[S.nego.temper]; S.nego.read = T.hint;
       const srm = S.rooms[sp.room], v = S.stype && S.stype.variant; if (v === 'firearm') S.intel.weapon = true;
-      log(`Partner: "I know every room — ${S.rooms.length} rooms. He usually goes to the ${srm.name} when he's like this. ${v === 'firearm' ? `He has a ${SUSPECT_WEAPONS[sp.weapon].name}; he keeps it loaded.` : 'He grabbed a knife; he used to have a gun but I don\u2019t know where it is.'}"`, 'intel');
+      log(`Partner: "I know every room — ${ownRooms().length} rooms. He usually goes to the ${srm.name} when he's like this. ${v === 'firearm' ? `He has a ${SUSPECT_WEAPONS[sp.weapon].name}; he keeps it loaded.` : 'He grabbed a knife; he used to have a gun but I don\u2019t know where it is.'}"`, 'intel');
       log(`Partner (history): "${T.hint} Police have been here twice before."`, 'intel');
       if (r.chance(0.9)) learnNumber('partner'); break; }
     case 'emseval': S.intel.emsEval = true; log('EMS: paramedics and the county crisis team are staged at the EMS point for an evaluation once he is out.', 'good'); break;
@@ -3542,7 +3843,7 @@ function deviceTick1(u, o) { const sp = S.suspect;
 }
 
 function startFlee() {
-  const sp = S.suspect; const wins = S.windows.filter(w => w.room !== sp.room);
+  const sp = S.suspect; const wins = S.windows.filter(w => w.room !== sp.room && exitWin(w));
   let best = null, bp = null;
   for (const w of wins) { const [cx, cy] = w.edges[0]; const p = findPath(sp.x, sp.y, (x, y) => x === cx && y === cy, { suspect: true, canOpen: true }); if (p && (!bp || p.length < bp.length)) { bp = p; best = w; } }
   if (!best) return; sp.mode = 'fleeing'; sp.flee = best.id; log(`${spName()} is moving — ${multiSp() ? 'trying' : 'he is trying'} to get out of the gas!`, 'alert');
@@ -3617,7 +3918,7 @@ function endTurn() {
   S.turn++; S.phase = 'planning'; S.tick = 0; S.peek = []; syncAll(); // weapons become ready again
   for (const u of S.units) { u.orders = u.orders.filter(o => o.type !== 'hold' && o.type !== 'shoot' && !DEVICE_ORDERS.includes(o.type)); u.holding = false; u.waiting = false; u.exiting = null;
     if ((u.kind === 'drone' || u.kind === 'robot') && unitAlive(u)) { u.battery--; if (u.battery <= 0) { u.status = 'down'; log(`${u.name}: battery depleted.`); } } }
-  gasTurn(); eachSp(suspectGasTurn); casualtyTurn(); negoTurn(); eachSp(sceneTurn);
+  gasTurn(); eachSp(suspectGasTurn); casualtyTurn(); negoTurn(); eachSp(sceneTurn); types3Turn();
   if (S.intel.blueprint && S.intel.blueprint === S.turn) { S.rooms.forEach(q => q.known = true); S.doors.forEach(d => d.known = true); S.intel.floors = true; log('Blueprints received — full floor plan on screen.', 'intel'); }
   for (const o of S.officers) { if (o.status === 'enroute') { if (o.eta <= S.turn) { o.status = 'staged'; log(`PAGER: ${o.name} (${SPECS[o.spec].name}) on scene at staging.`, 'pager'); S.events.push({ type: 'pager' }); } } }
   eachSp(sp => { if (hostile()) { sp.agit = clamp(sp.agit - 4, 0, 100); if (!sp.visible) sp.unseenTurns++; else sp.unseenTurns = 0;
@@ -3663,7 +3964,7 @@ function missionScore() {
   const hh = hos.filter(c => !lostSt(c)).length, hk = hos.filter(lostSt).length; if (hh) add(`Hostages hurt (${hh})`, hh * SCORE.hostageHurt); if (hk) add(`Hostages killed (${hk})`, hk * SCORE.hostageKilled);
   const lostN = suspList().filter(s => s.deceased).length; if (lostN) add(lostN > 1 ? `Suspects who did not survive (${lostN})` : 'Suspect did not survive', lostN * SCORE.suspectLost);
   const init = S.cas.find(c => c.initial && c.state !== 'kia'); if (init && (init.state === 'evacuated' || init.state === 'transport' || init.stable)) add('Rescued officer down on arrival', SCORE.rescued);
-  typeScore(add);
+  typeScore(add); typeScore3(add);
   if (S.scene && S.scene.gap0.length && S.scene.gapClosed != null && !S.scene.slipTried) add('Closed perimeter gap', SCORE.gapClosed);
   const sc = items.reduce((a, i) => a + i.pts, 0), sg = v => (v > 0 ? '+' : '−') + Math.abs(v);
   const grade = sc >= 1000 ? 'Medal of Valor' : sc >= 650 ? 'Unit Commendation' : sc >= 350 ? 'Satisfactory' : sc >= 0 ? 'Needs Review' : 'Board of Inquiry';
@@ -3738,13 +4039,13 @@ function renameTeam(uid, name) { const t = unit(uid); if (t && name && name.trim
 
 /* ---------- derived info for HUD ---------- */
 function intelInfo() {
-  const known = S.rooms.filter(q => q.known).length, exp = S.rooms.filter(q => q.explored).length, sp = S.suspect;
-  const lvl = Math.round(100 * (0.55 * known / S.rooms.length + 0.15 * (S.intel.threat ? 1 : 0) + 0.15 * (S.intel.floors ? 1 : 0) + 0.15 * (sp.seen || S.intel.located ? 1 : 0)));
-  const CI = suspectCountInfo(), flee = S.stype && S.stype.key === 'flee', vis = suspList().filter(s => s.visible && spActive(s));
+  const OR = ownRooms(), known = OR.filter(q => q.known).length, exp = OR.filter(q => q.explored).length, sp = S.suspect;
+  const lvl = Math.round(100 * (0.55 * known / OR.length + 0.15 * (S.intel.threat ? 1 : 0) + 0.15 * (S.intel.floors ? 1 : 0) + 0.15 * (sp.seen || S.intel.located ? 1 : 0)));
+  const CI = suspectCountInfo(), flee = multiType(), vis = suspList().filter(s => s.visible && spActive(s));
   let threat = 'UNKNOWN'; if (S.intel.threat) threat = !flee ? (sp.weapon === 'none' && S.intel.weapon ? '1 SUSPECT — NO FIREARM' : '1 ARMED SUSPECT') : CI.confirmed ? `${CI.total} ARMED SUSPECT${CI.total > 1 ? 'S' : ''}` : 'ARMED — COUNT UNCONFIRMED';
   if (flee && vis.length > 1) threat = `VISUAL — ${vis.length} SUSPECTS`; else if (sp.visible) threat = 'VISUAL — ' + (S.rooms[sp.room] ? S.rooms[sp.room].name.toUpperCase() : 'YARD'); else if (sp.heat) threat = 'LOCATED (THERMAL/K9)';
   const status = { barricaded: 'BARRICADED', alert: 'ALERTED', fleeing: 'FLEEING', surrendered: 'SURRENDERED', incapacitated: 'INCAPACITATED', detained: 'IN CUSTODY', escaped: 'ESCAPED' }[sp.mode];
-  return { arch: S.intel.floors ? S.house.archName : 'UNKNOWN', weapon: S.intel.weapon ? SUSPECT_WEAPONS[sp.weapon].name : 'UNKNOWN', floors: S.intel.floors ? '1 (single storey)' : 'UNKNOWN', roomsKnown: known, roomsTotal: S.intel.floors ? S.rooms.length : '?', explored: exp, level: clamp(lvl, 0, 100), threat,
+  return { arch: S.intel.floors ? S.house.archName : 'UNKNOWN', weapon: S.intel.weapon ? SUSPECT_WEAPONS[sp.weapon].name : 'UNKNOWN', floors: S.intel.floors ? '1 (single storey)' : 'UNKNOWN', roomsKnown: known, roomsTotal: S.intel.floors ? OR.length : '?', explored: exp, level: clamp(lvl, 0, 100), threat,
     suspect: (sp.seen || S.intel.threat || !hostile()) ? status : 'UNKNOWN', contain: S.contain.filter(c => c.covered).length, containTotal: S.contain.length, containKnown: !!S.intel.status, sides: (() => { const w = sideWatch(); return { n: w.watched.length, of: w.all.length, gaps: w.gaps }; })(), down: S.stats.down, downMax: LOSE_DOWN, talk: Math.round(sp.talk), phone: !!S.nego.contact, mood: moodWord(), rapport: rapportWord(),
     cas: S.cas.filter(c => casActive(c) && c.known && c.who !== 'suspect').length,
     count: CI, multiType: !!flee, suspects: suspList().filter(s => s.seen || S.phase === 'over').map(s => ({ key: s.key, name: spName(s), state: spState(s), visible: !!s.visible, weapon: s.seen ? SUSPECT_WEAPONS[s.weapon].name : '?', armor: s.armorKnown ? s.armor : null })) };
@@ -3779,7 +4080,7 @@ function newGame(seed, opts) {
   setupStaging2(); S.ems = defaultEMS(); initNego(seed); makeBrief();
   updateVision();
   log(`${S.opName} — seed ${seed}. ${S.house.archName}, ${S.geo.name}.`, 'system');
-  const B = S.brief; log(`Dispatch ${B.time}: ${B.type} at ${B.addr}. ${B.shots ? 'Shots fired. ' : ''}${S.stype.key === 'flee' ? (S.brief.report && S.brief.report.kind === 'atleast' ? 'At least one suspect — possibly more — fled from patrol into a vacant house.' : S.brief.report && S.brief.report.n > 1 ? `${S.brief.report.n} suspects fled from patrol into a vacant house.` : 'Suspect fled from patrol into a vacant house.') : S.stype.key === 'mental' ? 'Adult male in crisis, armed, alone inside.' : 'Adult male barricaded inside.'} Patrol cruisers blocking traffic at both ends of the block.`, 'alert');
+  const B = S.brief; log(`Dispatch ${B.time}: ${B.type} at ${B.addr}. ${B.shots ? 'Shots fired. ' : ''}${S.stype.key === 'drughouse' ? `Narcotics unit requests SWAT — fortified house, ${S.brief.report && S.brief.report.kind === 'atleast' ? 'at least two suspects' : S.brief.report ? S.brief.report.text : 'several suspects'} inside.` : S.stype.key === 'inmates' ? `Escaped inmate${S.brief.report && (S.brief.report.n > 1 || S.brief.report.kind === 'atleast') ? 's' : ''} forced into an occupied house — the family got out.` : S.stype.key === 'flee' ? (S.brief.report && S.brief.report.kind === 'atleast' ? 'At least one suspect — possibly more — fled from patrol into a vacant house.' : S.brief.report && S.brief.report.n > 1 ? `${S.brief.report.n} suspects fled from patrol into a vacant house.` : 'Suspect fled from patrol into a vacant house.') : S.stype.key === 'mental' ? 'Adult male in crisis, armed, alone inside.' : 'Adult male barricaded inside.'} Patrol cruisers blocking traffic at both ends of the block.`, 'alert');
   if (S.scene.injury) { const c = casById(S.scene.injury.cas), mate = S.units.find(u => u.kind === 'patrol' && u.status === 'ok' && !u.inCar);
     log(c.state === 'kia' ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit in the front yard — he's not moving. We can't get to him!"` : c.state === 'mobile' ? `${c.name}: "I'm hit — I can move. I'm in the open out front, need cover!"` : c.sev === 3 ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit out front, his condition is critical — we need help NOW!"` : `${c.name}: "I'm hit — I can't move. Front yard. Somebody get me out of here!"`, 'bad'); }
   log('SWAT team paged. Set containment from cover while the team responds.', 'system');
@@ -3789,10 +4090,10 @@ function newGame(seed, opts) {
   return S;
 }
 
-return { PAROLE_CFG, SOVCIT_CFG, BASE_KEYS, hiddenNow, applyTypeExtras, NEGO_FLAVOR, SCEN_TYPES, SCEN_KEYS, typeForSeed, stypeCfg, resolvedNoForce, onNeighborSide, typeFireMul, LEGAL_TXT, typeDebrief, SHOOT_CFG, MAX_RETURN_FIRE, returnFirers, returnFire, memberWeapon, primaryOf, suspectTick, suspectFire, TASER_CFG, doorExposed, FORM_CFG, wallSpots, doorStack, pickVictim, LL_CFG, DEVICE_ORDERS, deviceUser, deviceWhyNot, deviceShotReq, deviceChance, ARMOR, ARMOR_CFG, SHIELDS, SHIELD_CFG, SUSPECT_CAL, armorOf, shieldOf, armorHit, shotOfficer, suspectArmorStops, hasShield, teamArmor, revealSuspectArmor, officerDown, suspectHit, fireAt, DRACO_CFG, bearcat, installTicks, dracoTick, passE, edge, dracoTargetReq, openingMid,
+return { DRUG_CFG, INMATE_CFG, DUPLEX_CFG, TRAILER_CFG, DOOR_MUL, doorMul, exitWin, roomInPlay, camSees, camTurn, duplexTurn, partyBreach, thinWallTurn, types3Turn, cmdShown, structFor, STRUCT_CFG, STRUCT_KEYS, ownRooms, isOwnRoom, MULTI_TYPES, multiType, PAROLE_CFG, SOVCIT_CFG, BASE_KEYS, hiddenNow, applyTypeExtras, NEGO_FLAVOR, SCEN_TYPES, SCEN_KEYS, typeForSeed, stypeCfg, resolvedNoForce, onNeighborSide, typeFireMul, LEGAL_TXT, typeDebrief, SHOOT_CFG, MAX_RETURN_FIRE, returnFirers, returnFire, memberWeapon, primaryOf, suspectTick, suspectFire, TASER_CFG, doorExposed, FORM_CFG, wallSpots, doorStack, pickVictim, LL_CFG, DEVICE_ORDERS, deviceUser, deviceWhyNot, deviceShotReq, deviceChance, ARMOR, ARMOR_CFG, SHIELDS, SHIELD_CFG, SUSPECT_CAL, armorOf, shieldOf, armorHit, shotOfficer, suspectArmorStops, hasShield, teamArmor, revealSuspectArmor, officerDown, suspectHit, fireAt, DRACO_CFG, bearcat, installTicks, dracoTick, passE, edge, dracoTargetReq, openingMid,
   REAR_CFG, REAR_OFF, reach, newGame, get state() { return S; }, MULTI_CFG, suspList, multiSp, spName, spState, suspectCountInfo, fleeCount, patrolReport, suspById, withSp, eachSp, spHostile, spActive, setLead, MAP_W, MAP_H, TICKS, LOSE_DOWN, SCORE, withdraw, forceLeft, updateVision, computeVis, checkEnd, EQUIP, SPECS, QUALS, WEAPONS, SUSPECT_WEAPONS, STANCES, COVER_NAMES, COMMANDS, idx, roomAt, edge, los, losEx, findPath, planFor, queueOrder, undoOrder, clearOrders,
   setCommand, execute, stepTick, formTeam, assign, equip, renameTeam, intelInfo, unit, off, teamOk, hasSpec, teamSkill, nearStaging, orderReq, setStance, BREACH, CHARGE_SAFE, breachEst, breachMethods, breachCan, defaultMethod, doorMid, gasAt, gasTurn, gasDeploy, gasCond, gasExpose, suspectGas, suspectGasTurn, masked, impairAcc, impairVis, donMasks, detonateCharge, dist, hitChance, coverInfo, expoAt, computeExpo,
-  validateHouse, sceneTurn, validateWorld, footprint, carAxis, houseSideOf, exitCell, spotterOf, perchAt, owCone, weaponOf, onFoot, skillOf, houseCenter, carAt, snapCover, shieldAt, validateContain, COVER_CFG, exposedOrders, ITEM_CFG, INV_CFG, invAct, invView, invOf, isReady, teamWeapon, syncEquip, setTeamOrder, atEquipment, stagePos, CAR_SEATS, carSeats, seatsUsed, TURN_SEC, missionScore, careerSummary, ACT_XP, xpAct, xpSummary, callState, preview, cornerAt, cornerAvail, CORNER_CFG, FIRE_CFG, fireImpair, formationFor, FORM_CFG, initialArrivals, ARRIVE_CFG, mmss, tDur, tMin, clockAt, elapsedAt, sideWatch, watchAt, houseSides, statusCheck, review911, roadblockHeld, withVirtualCar, SCENE_CFG, VARIANT_TXT, setupScene, sceneDebrief, T_HIT, T_TRY,
+  validateHouse, patrolStartOk, patrolCoverKind, suspSees, houseRectDist, onProperty, suspEyePts, vehId, vehDist, vehNear, VEH_CFG, PATROL_CFG, GEO_CFG, downedSpot, losEx, sceneTurn, validateWorld, footprint, carAxis, houseSideOf, exitCell, spotterOf, perchAt, owCone, weaponOf, onFoot, skillOf, houseCenter, carAt, snapCover, shieldAt, validateContain, COVER_CFG, exposedOrders, ITEM_CFG, INV_CFG, invAct, invView, invOf, isReady, teamWeapon, syncEquip, setTeamOrder, atEquipment, stagePos, CAR_SEATS, carSeats, seatsUsed, TURN_SEC, missionScore, careerSummary, ACT_XP, xpAct, xpSummary, callState, preview, cornerAt, cornerAvail, CORNER_CFG, FIRE_CFG, fireImpair, formationFor, FORM_CFG, initialArrivals, ARRIVE_CFG, mmss, tDur, tMin, clockAt, elapsedAt, sideWatch, watchAt, houseSides, statusCheck, review911, roadblockHeld, withVirtualCar, SCENE_CFG, VARIANT_TXT, setupScene, sceneDebrief, T_HIT, T_TRY,
   CAS_CFG, NEGO_CFG, TALK_KEYS, TALK_NAMES, casById, casActive, casKnow, sevWord, casLabel, setEMS, emsCheck, ccpFor, setSurrenderSpot, surrSpot, setTalk, talkAvail, negoSummary, negOnScene, paCapable, paInRange, paUnits, protocolNow, ambushChance, ambushRisk, walkout, addCasualty, officerDown, suspectHit, robotPhoneGoal, defaultEMS, hostile, contactTry, runTalk, paAct, casualtyTurn, applyAid };
 })();
 
@@ -3817,7 +4118,7 @@ let cv, ctx, VW = 0, VH = 0, dpr = 1;
 const cam = { x: 0, y: 0, z: 1 };
 let safe = { l: 0, t: 0, r: 0, b: 0 };
 const L = {};
-let builtSeed = -1, compKey = '', dynVer = -1, planVer = -1, plans = new Map();
+let builtWV = -1, builtSeed = -1, compKey = '', dynVer = -1, planVer = -1, plans = new Map();
 let anims = [], seenFx = 0;
 const prev = new Map(); let tickT0 = 0, tickDur = 280, animating = false;
 const view = { sel: null, mode: 'move', hoverDoor: null, hoverRoom: null, hint: null, hover: null };
@@ -3836,6 +4137,20 @@ function edgeIter(x0, y0, x1, y1, fn) {
   }
 }
 /** Generic hip roof for a rect q (cells) at scale cs. */
+const TRAILER_COL = ['#d9dde2', '#e4dccb', '#cfd8d4', '#dfe3ea', '#d8cfc4'];
+/** Mobile-home roof: flat, light metal with ribs; 'small' = neighbor scale. */
+function flatRoof(g, q, k, col, small) { const x = q.x * k, y = q.y * k, w = q.w * k, h = q.h * k;
+  g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = small ? 6 : 10; g.shadowOffsetX = 4; g.shadowOffsetY = 6; g.fillStyle = col; g.fillRect(x, y, w, h); g.restore();
+  const horiz = q.w >= q.h; g.strokeStyle = 'rgba(0,0,0,.16)'; g.lineWidth = 1; g.beginPath();
+  if (horiz) for (let yy = y + k * 0.5; yy < y + h; yy += k * 0.5) { g.moveTo(x + 2, yy); g.lineTo(x + w - 2, yy); } else for (let xx = x + k * 0.5; xx < x + w; xx += k * 0.5) { g.moveTo(xx, y + 2); g.lineTo(xx, y + h - 2); }
+  g.stroke(); g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(x + 2, y + 2, w - 4, k * 0.18); }
+/** Mobile home: skirting band around the footprint plus wooden steps / porch at each door (ground layer). */
+function trailerBase(g, H, X, k) { for (const q of H.parts) { const x = q.x * k, y = q.y * k, w = q.w * k, h = q.h * k; g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(x - k * 0.22 + 3, y - k * 0.22 + 4, w + k * 0.44, h + k * 0.44);
+    g.fillStyle = '#9a9184'; g.fillRect(x - k * 0.2, y - k * 0.2, w + k * 0.4, h + k * 0.4); g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 1; g.beginPath(); for (let xx = x; xx < x + w; xx += k * 0.3) { g.moveTo(xx, y - k * 0.2); g.lineTo(xx, y); g.moveTo(xx, y + h); g.lineTo(xx, y + h + k * 0.2); } g.stroke(); }
+  for (const s of X.steps || []) { const x = s.x * k, y = s.y * k, w = s.w * k, h = s.h * k; g.fillStyle = 'rgba(0,0,0,.4)'; g.fillRect(x + 3, y + 4, w, h);
+    g.fillStyle = s.porch ? '#8a6a48' : '#7a5c3e'; g.fillRect(x, y, w, h); g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1; g.beginPath(); for (let xx = x + k * 0.25; xx < x + w; xx += k * 0.25) { g.moveTo(xx, y); g.lineTo(xx, y + h); } g.stroke();
+    if (s.porch) { g.strokeStyle = '#5a4430'; g.lineWidth = 2.5; g.strokeRect(x + 1, y + 1, w - 2, h - 2); } } }
 function hipRoof(g, q, ov, cols, cs, r, shadow) {
   const x0 = (q.x - ov) * cs, y0 = (q.y - ov) * cs, x1 = (q.x + q.w + ov) * cs, y1 = (q.y + q.h + ov) * cs, w = x1 - x0, h = y1 - y0;
   const horiz = w >= h, rr2 = Math.min(w, h) / 2; const ra = horiz ? [x0 + rr2, (y0 + y1) / 2] : [(x0 + x1) / 2, y0 + rr2], rb = horiz ? [x1 - rr2, (y0 + y1) / 2] : [(x0 + x1) / 2, y1 - rr2];
@@ -3876,7 +4191,10 @@ function bakeGround() {
   for (let i = 0; i < 5000; i++) { const x = Math.floor(r() * MW), y = Math.floor(r() * MH); if (S.paved[Core.idx(x, y)] !== 1) continue; g.fillStyle = `rgba(255,255,255,${0.02 + r() * 0.03})`; g.fillRect((x + r()) * k, (y + r()) * k, 1.5, 1.5); }
   // street markings and curbs
   const my = (G.ST + G.streetW / 2) * k; g.strokeStyle = 'rgba(214,170,60,.5)'; g.lineWidth = 2; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(k, my); g.lineTo((MW - 1) * k, my); g.stroke(); g.setLineDash([]);
-  g.fillStyle = '#4a505a'; g.fillRect(k, G.ST * k - 2, (MW - 2) * k, 3); g.fillRect(k, (G.ST + G.streetW) * k - 1, (MW - 2) * k, 3);
+  g.fillStyle = '#4a505a'; const curb = (y, gap) => { if (!gap) { g.fillRect(k, y, (MW - 2) * k, 3); return; } g.fillRect(k, y, (gap.x0 - 2) * k, 3); g.fillRect((gap.x1 + 1) * k, y, (MW - gap.x1 - 2) * k, 3); };
+  curb(G.ST * k - 2, G.side); curb((G.ST + G.streetW) * k - 1, G.cross);
+  if (G.side) { const sx = (G.side.x0 + 3) * k; g.strokeStyle = 'rgba(214,170,60,.5)'; g.lineWidth = 2; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(sx, (G.rear.road1 + 1) * k); g.lineTo(sx, G.SW * k); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#4a505a'; g.fillRect((G.side.x0 - 1) * k, (G.rear.road1 + 1) * k, 3, (G.SW - G.rear.road1 - 1) * k); g.fillRect((G.side.x1 + 2) * k - 3, (G.rear.road1 + 1) * k, 3, (G.SW - G.rear.road1 - 1) * k); }
   if (G.rear) { const ry = (G.rear.road0 + (G.rear.road1 - G.rear.road0 + 1) / 2) * k; g.strokeStyle = 'rgba(214,170,60,.4)'; g.lineWidth = 2; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(k, ry); g.lineTo((MW - 1) * k, ry); g.stroke(); g.setLineDash([]);
     g.fillStyle = '#4a505a'; g.fillRect(k, G.rear.walk0 * k - 1, (MW - 2) * k, 3); }
   if (G.cross) { const cx = (G.cross.x0 + 3) * k; g.strokeStyle = 'rgba(214,170,60,.5)'; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(cx, (G.SS + 2) * k); g.lineTo(cx, (MH - 1) * k); g.stroke(); g.setLineDash([]); }
@@ -3900,9 +4218,10 @@ function bakeGround() {
   // sheds
   for (const q of X.sheds) hipRoof(g, q, 0.1, ROOFS[(q.hue || 0) % ROOFS.length].map(cc => shade(cc, 0.9)), k, r);
   // neighbor houses (impassable, block sight): roof plus a porch light
-  for (const nb of X.nb) { const cols = ROOFS[(nb.roof || 0) % ROOFS.length]; if (nb.garage) hipRoof(g, nb.garage, 0.3, cols.map(cc => shade(cc, 0.92)), k, r); for (const q of nb.parts) hipRoof(g, q, 0.45, cols, k, r);
+  for (const nb of X.nb) { const cols = ROOFS[(nb.roof || 0) % ROOFS.length]; if (nb.trailer) { for (const q of nb.parts) flatRoof(g, q, k, TRAILER_COL[(nb.body || 0) % TRAILER_COL.length], true); continue; } if (nb.garage) hipRoof(g, nb.garage, 0.3, cols.map(cc => shade(cc, 0.92)), k, r); for (const q of nb.parts) hipRoof(g, q, 0.45, cols, k, r);
     if (nb.storeys > 1) { const q = nb.parts[0]; g.fillStyle = 'rgba(255,255,255,.06)'; g.fillRect(q.x * k, q.y * k, q.w * k, q.h * k); } }
   if (H.dgarage) hipRoof(g, H.dgarage, 0.3, ROOFS[0].map(cc => shade(cc, 0.92)), k, r);
+  if (H.trailer) trailerBase(g, H, X, k);
   // trees (canopy over everything on the ground)
   for (const t of X.trees) { const cx = (t.x + 0.5) * k, cy = (t.y + 0.5) * k, rad = Math.min(t.r, 2.2) * k * 0.75;
     g.fillStyle = 'rgba(0,0,0,.42)'; g.beginPath(); g.ellipse(cx + rad * 0.3, cy + rad * 0.4, rad, rad * 0.92, 0, 0, 7); g.fill();
@@ -4032,7 +4351,9 @@ function bakeRoof() {
   const cols = ROOFS[S.seed % ROOFS.length];
   if (H.garage) hipRoof(g, H.garage, 0.45, cols.map(q => shade(q, 0.92)), CS, r);
   const parts = H.parts.slice().sort((p, q) => p.w * p.h - q.w * q.h); // largest last so the main ridge sits on top
+  if (H.trailer) { for (const q of parts) flatRoof(g, q, CS, TRAILER_COL[S.seed % TRAILER_COL.length], false); if (H.trailer === 'double') { const q = parts[parts.length - 1], mid = (q.y + q.h / 2) * CS; g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 2; g.beginPath(); g.moveTo(q.x * CS, mid); g.lineTo((q.x + q.w) * CS, mid); g.stroke(); } L.roof = c; return; }
   for (const q of parts) hipRoof(g, q, 0.6, cols, CS, r);
+  if (H.duplex) { const px = H.duplex.partyX * CS; g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 6; g.fillStyle = '#6e6a66'; g.fillRect(px - 4, (H.y0 - 0.5) * CS, 8, (H.y1 - H.y0 + 2) * CS); g.restore(); g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(px - 4, (H.y0 - 0.5) * CS, 2, (H.y1 - H.y0 + 2) * CS); }
   const m = parts[parts.length - 1], ch = { x: m.x + Math.floor(m.w * (r() < 0.5 ? 0.3 : 0.7)), y: m.y + 1 };
   g.save(); g.shadowColor = 'rgba(0,0,0,.7)'; g.shadowBlur = 10; g.shadowOffsetX = 6; g.shadowOffsetY = 8; g.fillStyle = '#5a3c34'; g.fillRect(ch.x * CS, ch.y * CS, CS * 1.2, CS * 0.9); g.restore();
   g.fillStyle = '#1a1a1a'; g.fillRect(ch.x * CS + 6, ch.y * CS + 6, CS * 1.2 - 12, CS * 0.9 - 12);
@@ -4056,7 +4377,7 @@ function buildComp() {
   L.comp = c; compKey = knowledgeKey();
 }
 function rebake() { bakeGround(); bakeInterior(); bakeBlueprint(); bakeRoof(); const MW = Core.MAP_W, MH = Core.MAP_H; L.fog = mk(MW, MH); L.tint = mk(MW, MH); L.gas = mk(MW, MH); L.expo = mk(MW, MH);
-  builtSeed = Core.state.seed; compKey = ''; dynVer = -1; planVer = -1; anims = []; seenFx = Core.state.fxSeq || 0; }
+  builtSeed = Core.state.seed; builtWV = (Core.state.duplex && Core.state.duplex.wallV) || 0; compKey = ''; dynVer = -1; planVer = -1; anims = []; seenFx = Core.state.fxSeq || 0; }
 let gasAny = false, peekAny = false;
 /** Line-of-sight reveal: indoor cells seen through open doors/doorways in rooms not yet explored. Lit while in view, dim once out of view. */
 function buildPeek() {
@@ -4143,7 +4464,7 @@ function drawStageTags(g) { const S = Core.state, X = S && S.ext; if (!X || !X.s
   g.restore(); }
 function frame(now) { if (cv) { const [w, h] = viewportSize(); if (w !== VW || h !== VH || cv.width !== Math.round(w * Math.min(2, window.devicePixelRatio || 1))) resize(); } // self-heal a missed or stale rotate event
   const S = Core.state; if (!S || !cv) return;
-  if (builtSeed !== S.seed) { rebake(); }
+  if (builtSeed !== S.seed || builtWV !== ((S.duplex && S.duplex.wallV) || 0)) { rebake(); }
   if (knowledgeKey() !== compKey) buildComp();
   if (dynVer !== S.version) updateDyn();
   syncFx();
@@ -4156,7 +4477,7 @@ function frame(now) { if (cv) { const [w, h] = viewportSize(); if (w !== VW || h
   const b = hbox(); g.drawImage(L.comp, b.x * CS, b.y * CS);
   if (peekAny && L.peek) g.drawImage(L.peek, b.x * CS, b.y * CS);
   g.save(); g.beginPath(); for (const rm of S.rooms) if (rm.explored) g.rect(rm.x * CS, rm.y * CS, rm.w * CS, rm.h * CS); g.clip(); g.imageSmoothingEnabled = false; g.drawImage(L.fog, 0, 0, Core.MAP_W * CS, Core.MAP_H * CS); g.restore();
-  drawDoors(g, now);
+  drawDoors(g, now); drawStruct(g, now);
   drawCruisers(g, now);
   drawCones(g, now);
   g.globalCompositeOperation = 'lighter'; g.imageSmoothingEnabled = false; g.drawImage(L.tint, 0, 0, Core.MAP_W * CS, Core.MAP_H * CS); g.imageSmoothingEnabled = true; g.globalCompositeOperation = 'source-over';
@@ -4271,6 +4592,24 @@ function doorVisible(d) { const S = Core.state; return d.exterior || d.rooms.som
 function safeRing(g, d, now, planned) { const [mx, my] = doorMidCell(d), R = (Core.CHARGE_SAFE + 0.5) * CS; g.save(); g.strokeStyle = planned ? 'rgba(255,176,32,.55)' : `rgba(255,90,60,${0.55 + 0.3 * Math.sin(now / 200)})`; g.lineWidth = 2 / cam.z; g.setLineDash([7 / cam.z, 5 / cam.z]);
   g.beginPath(); g.arc(mx * CS, my * CS, R, 0, 7); g.stroke(); g.setLineDash([]); g.fillStyle = planned ? 'rgba(255,176,32,.04)' : 'rgba(255,80,50,.06)'; g.fill();
   g.fillStyle = 'rgba(255,200,140,.85)'; g.font = `700 ${Math.max(9, 11 / cam.z)}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillText('SAFE STANDOFF ' + Core.CHARGE_SAFE + ' m', mx * CS, my * CS - R - 4 / cam.z); g.restore(); }
+/** v13 structure overlays: bars, cameras, duplex unit B tag and party-wall hole (world space). */
+function drawStruct(g, now) { const S = Core.state, H = S.house;
+  for (const w of S.windows) { if (!w.barred) continue; for (const [cx, cy, ox, oy] of w.edges) { const vert = cx !== ox, px = (Math.max(cx, ox) + (vert ? 0 : 0.5)) * CS, py = (Math.max(cy, oy) + (vert ? 0.5 : 0)) * CS, nx = (ox - cx) * 7, ny = (oy - cy) * 7;
+    g.strokeStyle = '#2b2f36'; g.lineWidth = 3; g.beginPath(); for (let k = -2; k <= 2; k++) { const t = k * CS * 0.18; const bx = px + (vert ? 0 : t), by = py + (vert ? t : 0); g.moveTo(bx, by); g.lineTo(bx + nx, by + ny); } g.stroke();
+    g.strokeStyle = '#8c939c'; g.lineWidth = 1.4; g.stroke(); } }
+  if (S.cams) { const dark = S.power && S.power.cut; for (const c of S.cams) { const x = (c.x + 0.5) * CS, y = (c.y + 0.5) * CS, a = Math.atan2(c.dy, c.dx);
+    if (!dark) { g.fillStyle = c.seen ? 'rgba(255,59,78,.13)' : 'rgba(255,59,78,.07)'; g.beginPath(); g.moveTo(x, y); g.arc(x, y, c.range * CS, a - c.fov / 2, a + c.fov / 2); g.closePath(); g.fill(); g.strokeStyle = 'rgba(255,59,78,.3)'; g.setLineDash([4, 6]); g.lineWidth = 1.2; g.stroke(); g.setLineDash([]); }
+    g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = '#1b1f26'; g.strokeStyle = dark ? '#6b7380' : '#ff3b4e'; g.lineWidth = 1.5; rr(g, -7, -5, 14, 10, 2); g.fill(); g.stroke(); g.fillStyle = dark ? '#3a3f47' : (Math.floor(now / 500) % 2 ? '#ff3b4e' : '#7a1520'); g.beginPath(); g.arc(4, 0, 2.5, 0, 7); g.fill(); g.restore(); } }
+  const D = S.duplex; if (H.duplex && D) { const B = S.rooms.filter(q => q.unitB); if (B.length) { const x0 = Math.min(...B.map(q => q.x)), x1 = Math.max(...B.map(q => q.x + q.w)), y0 = Math.min(...B.map(q => q.y));
+      const t = 'UNIT B · ' + (D.evac === 'empty' ? 'EMPTY' : D.evac === 'done' ? 'EVACUATED' : D.evac === 'moving' ? 'EVACUATING…' : D.residents + ' RESIDENT' + (D.residents > 1 ? 'S' : '') + ' HOME');
+      const cx = (x0 + x1) / 2 * CS, cy = (y0 + 1.3) * CS; g.font = `800 ${CS * 0.3}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; const tw = g.measureText(t).width + 14;
+      g.fillStyle = 'rgba(6,14,26,.82)'; rr(g, cx - tw / 2, cy - 11, tw, 22, 6); g.fill(); g.strokeStyle = D.evac === 'done' || D.evac === 'empty' ? '#3ddc84' : D.evac === 'moving' ? '#ffb020' : '#ff8a3d'; g.lineWidth = 1.5; g.stroke(); g.fillStyle = g.strokeStyle; g.fillText(t, cx, cy + 1); }
+    if (D.hole) { const hx = (D.hole.x + 1) * CS, ys = D.hole.ys, ya = Math.min(...ys) * CS, yb = (Math.max(...ys) + 1) * CS;
+      g.fillStyle = 'rgba(30,22,16,.9)'; g.fillRect(hx - 6, ya + 3, 12, yb - ya - 6); g.fillStyle = '#9a8f80'; for (let k = 0; k < 14; k++) { const a = k * 2.39, rd = 5 + (k * 5) % 15; g.fillRect(hx + Math.cos(a) * rd, (ya + yb) / 2 + Math.sin(a) * rd * 1.4, 3 + (k % 3), 2 + (k % 2)); }
+      g.strokeStyle = '#ffb020'; g.lineWidth = 2; g.setLineDash([4, 3]); g.strokeRect(hx - 7, ya + 2, 14, yb - ya - 4); g.setLineDash([]);
+      const t = 'PARTY WALL BREACHED'; g.font = `800 ${CS * 0.26}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; const tw = g.measureText(t).width + 12, ty = ya - CS * 0.45;
+      g.fillStyle = 'rgba(60,20,10,.88)'; rr(g, hx - tw / 2, ty - 10, tw, 20, 5); g.fill(); g.fillStyle = '#ffb020'; g.fillText(t, hx, ty + 1); } }
+}
 function drawDoors(g, now) {
   const S = Core.state;
   const cand = view.sel && (view.mode === 'breach' || view.mode === 'polecam' || view.mode === 'charge' || view.mode === 'detonate');
@@ -4280,7 +4619,7 @@ function drawDoors(g, now) {
     const L2 = G.len;
     if (d.kind === 'garage') { if (d.state === 'breached') { g.strokeStyle = '#ffb020'; g.setLineDash([6, 5]); g.lineWidth = 4; g.beginPath(); g.moveTo(0, 0); g.lineTo(L2, 0); g.stroke(); g.setLineDash([]); }
       else { g.fillStyle = '#8b939e'; g.fillRect(0, -5, L2, 10); g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1; for (let x = 8; x < L2; x += 10) { g.beginPath(); g.moveTo(x, -5); g.lineTo(x, 5); g.stroke(); } } }
-    else if (d.state === 'closed') { g.fillStyle = d.barricaded && d.known ? '#8a5a3a' : '#a37b55'; g.fillRect(1, -4, L2 - 2, 8); g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.5; g.strokeRect(1, -4, L2 - 2, 8);
+    else if (d.state === 'closed') { g.fillStyle = d.steel ? '#6f7882' : d.barricaded && d.known ? '#8a5a3a' : '#a37b55'; g.fillRect(1, -4, L2 - 2, 8); if (d.steel) { g.fillStyle = 'rgba(255,255,255,.25)'; for (let x = 5; x < L2 - 3; x += 7) g.fillRect(x, -3, 1.5, 1.5), g.fillRect(x, 1.5, 1.5, 1.5); } g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.5; g.strokeRect(1, -4, L2 - 2, 8);
       if (d.locked && d.known) { g.fillStyle = '#ffd36b'; g.beginPath(); g.arc(L2 - 7, 0, 2.5, 0, 7); g.fill(); }
       if (d.barricaded && d.known) { g.strokeStyle = '#5a3a22'; g.lineWidth = 3; g.beginPath(); g.moveTo(4, -oy * 8 - 3); g.lineTo(L2 - 4, -oy * 8 + 3); g.moveTo(4, -oy * 8 + 3); g.lineTo(L2 - 4, -oy * 8 - 3); g.stroke(); } }
     else if (d.state === 'open') { g.strokeStyle = 'rgba(190,160,120,.35)'; g.lineWidth = 1; g.setLineDash([3, 3]); g.beginPath(); g.arc(0, 0, L2 - 2, 0, Math.PI / 2); g.stroke(); g.setLineDash([]);
@@ -5017,7 +5356,7 @@ $('load-dlg').addEventListener('click', e => { const b = e.target.closest('butto
 const TALK_DESC = { call: 'Dial his cell or the throw-phone. He may not answer or may refuse', rapport: 'Calm, personal talk — steady progress, lowers agitation', listen: 'Let him vent — best when he is very agitated',
   concession: 'Offer something (food, a call to family) — big boost, limited uses', status: 'Check on him / anyone inside — small gain, refreshes the read', ultimatum: 'Demand he comes out now — works only with strong rapport, else escalates' };
 function renderIntel() { const S = Core.state; let h = '';
-  for (const k in Core.COMMANDS) { const c = Core.COMMANDS[k]; if (c.only && !(S.stype && S.stype.key === c.only)) continue; const a = c.avail(); h += `<button class="cmd ${S.cmd === k ? 'on' : ''}" data-cmd="${k}" ${a === true ? '' : 'disabled'}><b>${c.name}</b><span>${c.desc}</span>${a === true ? '' : `<br><em>${esc(a)}</em>`}</button>`; }
+  for (const k in Core.COMMANDS) { const c = Core.COMMANDS[k]; if (!Core.cmdShown(k)) continue; const a = c.avail(); h += `<button class="cmd ${S.cmd === k ? 'on' : ''}" data-cmd="${k}" ${a === true ? '' : 'disabled'}><b>${c.name}</b><span>${c.desc}</span>${a === true ? '' : `<br><em>${esc(a)}</em>`}</button>`; }
   const N = Core.negoSummary(); let t = '';
   for (const k of Core.TALK_KEYS) { const a = N.avail[k]; t += `<button class="cmd ${N.pick === k ? 'on' : ''}" data-talk="${k}" ${a === true ? '' : 'disabled'}><b>${esc(N.names[k])}</b><span>${TALK_DESC[k]}</span>${a === true ? '' : `<br><em>${esc(a)}</em>`}</button>`; }
   const P = N.preview, pr = P ? ['cover', 'shield', 'overwatch', 'commands'].map(k => `<span class="chip" style="color:${P[k] ? 'var(--green)' : 'var(--red)'}">${P[k] ? '✓' : '✗'} ${k}</span>`).join(' ') : '';
@@ -5071,7 +5410,7 @@ $('b-wd').addEventListener('click', () => { if (busy) return; openWithdraw(false
 let wdPrompted = -1;
 function checkStranded() { const S = Core.state; if (S.phase !== 'planning' || wdPrompted === S.seed) return; if (Core.forceLeft() === 0) { wdPrompted = S.seed; openWithdraw(true); } }
 $('end-dlg').addEventListener('click', e => { const S = Core.state; if (e.target.id === 'e-new') { closeModal('m-end'); newGame(); }
-  if (e.target.id === 'e-retry') { closeModal('m-end'); newGame(S.seed, false, S.opts && S.opts.career ? Career.levelOf(CAREER) : QLEVEL, S.opts && S.opts.stype); }
+  if (e.target.id === 'e-retry') { closeModal('m-end'); newGame(S.seed, false, S.opts && S.opts.career ? Career.levelOf(CAREER) : QLEVEL, S.opts && S.opts.stype, (S.opts && S.opts.struct) || ''); }
   if (e.target.id === 'e-cont') { closeModal('m-end'); openCareer(); } if (e.target.id === 'e-calls') { closeModal('m-end'); openCalls(); } if (e.target.id === 'e-main') { closeModal('m-end'); openMain(); } });
 const HB = (t, s) => `<p><b style="color:#fff">${t}:</b> ${s}</p>`;
 $('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><button class="ib" data-close="m-help">✕</button></div><div class="body" style="font-size:12.5px;color:#bcd0e6">
@@ -5082,6 +5421,8 @@ $('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><b
  ${HB('Mission brief & 911 call', 'every mission opens with a brief of what happened before SWAT was activated: the 911 call, what the first patrol units did, and anything known about the suspect. <b>Listen to the 911 call</b> (📋 button, or Intel → Review 911 Call) shows the transcript with times and can read it aloud (mute / skip). The caller ID or a family caller may give you his phone number. Reviewing is instant.')}
  ${HB('Perimeter on arrival', 'patrol cruisers start at the ends of the block or at the nearest intersection, keeping traffic out (striped <b>TRAFFIC BLOCKED</b> markers on the map and minimap) — moving one opens the street. Patrol officers may already be in good positions, or may have left a side of the house unwatched by accident, or bunched up at the front. Run Intel → <b>Status Check</b> (instant) for a roll call: it reveals which sides are watched and flags any gap. An unwatched side is how he slips out.')}
  ${HB('Officer down on arrival', `about ${Math.round(Core.SCENE_CFG.injury * 100)}% of calls a patrol officer was hit before SWAT arrived: injured and mobile, immobile and bleeding out with a critical countdown, or killed. A downed officer in the front yard is in the line of fire — plan the rescue (shield, cover, medic) before the timer runs out.`)}
+ ${HB('Patrol start positions', `patrol officers always start <b>off the suspect\'s lot</b>: on the street behind a car or cruiser, or behind hard cover beside or behind the house — at least ${Core.PATROL_CFG.minHouse} m from it, where he cannot see them from inside. That keeps them safe but means they often cannot see every window: check the gaps. Only a downed officer lies on the property — ${Math.round(Core.PATROL_CFG.downFront * 100)}% of the time in the front yard, otherwise beside or behind the house.`)}
+ ${HB('Vehicle cover', `a car, van, cruiser or BearCat body blocks sight and fire. Someone <b>right behind it (within ${Core.VEH_CFG.lean} m)</b> can lean out and fire over or past it; anyone farther back cannot see or shoot through any part of the vehicle — this applies to him as well, so he cannot hit officers tucked behind a car from a distance either.`)}
  ${HB('Cover', 'every spot is checked against real sight lines from <i>each</i> window and exterior door. <b>Hard cover</b> (cruisers, parked cars, tree trunks, sheds, neighbor houses, utility boxes) stops rounds — hits are rare. <b>Concealment</b> (hedges, fences, mailboxes) hides you so he fires less often, but rounds go straight through. You can <b>move anywhere</b> — nothing snaps. Before you EXECUTE, an order whose end spot is in his line of fire is flagged <b style="color:var(--red)">⚠ EXPOSED</b> on the order list and the preview, and a route that crosses open ground is flagged <b style="color:var(--amber)">route exposed</b>; the move is still allowed. Automatic moves (take cover, fall back) still prefer cover. Shield on the unit: <span style="color:var(--green)">green</span> = hard cover, <span style="color:var(--amber)">amber</span> = concealment, <span style="color:var(--red)">red</span> = exposed. Planned routes are tinted red/amber where they cross his lines of fire.')}
  ${HB('Containment', 'contain the house by watching every side (4 corners, front, rear) from real cover — there are no map markers; choose your own spots. Out front there is little to hide behind, so drive a cruiser into the street and stand behind it (a parked street car can serve too). Sides and rear use the yard (sheds, trees, hedges) or the corners of the neighbor houses. A solid green shield badge = <b>HARD COVER</b>, a leaf = <b>CONCEALMENT</b>; zoom in to see what shields it. Where a yard has nothing to hide behind, the scene adds some (hedge row, trees, utility box). Patrol officers start behind cover; posts count as held when an officer is within ~2 m or an occupied cruiser within 3 m.')}
  ${HB('Suspect fire', 'each chance he gets he fires about <b>40%</b> of the time at officers outside and about <b>80%</b> at a team inside the house; exposed officers are his first choice, then cruiser drivers, then officers in cover. A <b>flashbang</b> (dazed: fire chance ×0.45, accuracy ×0.55) and <b>CS gas</b> (up to −65% fire chance, −60% accuracy) cut both. He picks ONE <b>primary target</b> per turn — the nearest officer he can see — and keeps firing at that officer until the next turn (no retargeting). Other members of that team only take rounds after the primary is down (about 30% per round, at most 2 such rounds). A team stacked at a doorway can only be hit in the <b>doorway pair</b> (point + defense) when he fires through that door. Officers on <i>Return fire</i> shoot back automatically — the <b>nearest 3</b> with a clear line, a ready weapon in range and not holding fire (each team member counts separately; the log lists who fired), as a snap shot at the muzzle flash (×0.8, patrol ×0.55); exposed patrol officers fall back to cover. Use the stance button to switch Return fire / Fire at will / Hold fire.')}
@@ -5098,6 +5439,7 @@ $('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><b
  ${HB('Taser', `Taser order (team or patrol): an officer with a free(able) hand draws the taser one-handed — the suspect must be in view with a clear line within ~${Core.TASER_CFG.range} m. Odds are best up close (~${Math.round(Core.TASER_CFG.p * 100)}% at 1 m, lower with distance and against body armor) and it can fail. A hit incapacitates him for ~${Core.TASER_CFG.stunTurns} turns: move a team in to detain him.`)}
  ${HB('Less-lethal 40mm', `an LL-qualified officer with the launcher fires impact rounds: range ~${Core.LL_CFG.range} m, odds fall with range, about ${Math.round(Core.LL_CFG.noEffect * 100)}% of hits have no visible effect, a good hit stuns him ${Core.LL_CFG.stunTurns[0]}–${Core.LL_CFG.stunTurns[1]} turns. Each shot uses one round (shown in the loadout); out of rounds = order unavailable.`)}
  ${HB('Hand transitions', 'throwing a flashbang / CS needs <b>both hands</b>, the taser <b>one</b>, the 40mm launcher <b>both</b>. The officer automatically holsters or slings what he holds, uses the device, then re-draws his previous weapon — which is <b>not ready</b> until next turn (logged). A <b>ballistic shield cannot be slung or put down</b>: a shield holder keeps it and uses the taser in his free hand, but cannot fire the launcher (give the launcher to someone else in the loadout).')}
+ ${HB('Lots, corner houses and alleys', `the suspect house usually shares its block with the neighbour houses on both sides — <b>no road between them</b>. About ${Math.round(Core.GEO_CFG.corner * 100)}% of maps are a <b>corner lot</b> with a side street on one side, and about ${Math.round(Core.GEO_CFG.alley * 100)}% have an <b>alley</b> behind the back yards.`)}
  ${HB('The block behind the house', 'the map includes the <b>rear row</b>: the back neighbours\' houses, their yards and the rear street behind the suspect house (back fences have gates). Their house corners and sheds are hard cover for rear containment, a sniper can take a perch in a rear house (marked <i>rear row</i>), and cruisers can use the rear street to close the back of the block. Zoom out (⤢ / overview) to see it.')}
  ${HB('Sniper overwatch', 'a team with a Marksman can take Overwatch on a perch in a neighbor house (window or roof) or a yard vantage point; the cone shows his sight-lines. A spotter raises his hit chance — a qualified <b>◆ Sniper Spotter</b> most, any other officer moderately — and spots the suspect at windows sooner. Perched snipers are very hard to hit.')}
  ${HB('CS gas', 'gas spreads room to room through open doors and broken windows and vents outdoors as a plume; you only see it where you have vision or intel. Deploying gas calls “Gas! Masks on” — donning takes a tick. Unmasked officers in gas are heavily impaired; masks cost a little vision and aim. Patrol have no masks: they cough, may fall back or panic — pull them out. The suspect may flee or give up… unless he has a gas mask (you only learn that when you see him).')}
@@ -5111,7 +5453,8 @@ $('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><b
  ${HB('Work Corner (slice the pie)', 'at a hallway corner, door frame or house corner, <b>◩ Work Corner</b> (<kbd>N</kbd>) edges the unit out in <b>45° cuts</b> — one cut every two ticks, each revealing more of the hidden area through the fog. It <b>stops the moment it sees the suspect</b> (THREAT in the log) or reports “corner clear”. While slicing only a sliver of the unit is exposed, so the suspect is less likely to fire at it and less likely to hit. Queue it like any order (it chains after a Move) and press EXECUTE; moving off the spot ends the slice. Patrol officers can work outside house corners but never step inside.')}
  ${HB('Main menu', 'the game opens on the main menu. <b>Quick Mission</b> plays one scenario with the <b>team level</b> you pick on the slider or number box (1–100, default 100): level 1 is a small basic team (4 officers, shields, ram, Halligan, medkit, bullhorn); every level adds people and gear up to level 100 — 30 personnel and every item in large counts. Quick Missions are never saved to the career. <b>New seed</b> picks a different scenario; <b>Career / Roster</b> and <b>How to play</b> open those screens.')}
  ${HB('Career Mode', 'starts at <b>team level 1</b>. Team XP is earned per action — breaching, clearing rooms, working corners, finding the suspect, closing the perimeter, contact and dialogue, first aid, rescue and evacuation, overwatch, flashbangs, taking custody — plus the mission result; enough XP raises the team level (personnel, gear and team size grow with it). Between missions the <b>dispatch screen</b> offers random calls with an estimated risk. In a career mission the ☰ menu has <b>☎ Call State SWAT Team</b>: hand the scene over, keep only the per-action XP (shown in the debrief), no mission-completion XP and a score deduction. Results save automatically in this browser; team level and XP are stored separately from the roster, so a damaged roster is regenerated without losing them. Officers still gain XP and rank, injured officers sit out missions, officers killed go to the memorial. <b>Export</b> a code (it starts with your level and XP, e.g. <kbd>SWATC3.L12-X3400-…</kbd>) or a file to move the career; older SWATC1/SWATC2 codes and saves import and upgrade automatically.')}
- ${HB('Call types', `each seed picks a call type (Quick Mission: choose one under <b>Call type</b>, or Random). The type is shown at the top of the brief, on the 911 record and on career dispatch cards. <b>Barricaded subject</b> — the standard call. <b>Mental health crisis</b> — low aggression, open to talking; the legal factor (discharge, warrant or interview-only) is in the brief. Bonus for resolving without force (+${Core.SCEN_TYPES.mental.bonus.noForce}) and for arranging an <b>EMS Evaluation</b> (Intel, +${Core.SCEN_TYPES.mental.bonus.ems}); the debrief notes a neutral risk flag. <b>Domestic</b> (firearm or violent variant) — his partner is at the perimeter: the <b>Partner Interview</b> gives the full layout, weapons, history and usually his number. <b>Fleeing suspect — vacant house</b> — nobody else inside, no family, little interest in talking; he escapes through any side nobody watches, fast — run a Status Check and close gaps early. <b>Neighbor dispute</b> — known armed; most hostile toward the neighbor's side of the house (keep officers off that side); the neighbor can be interviewed. <b>Parole absconder</b> (about ${Math.round(Core.SCEN_TYPES.parole.xw * 100)}% of calls) — patrol came to pick him up on a parole-violation warrant; the brief says how they know he is inside (seen going in, seen at a window, or a caller). One suspect, armed or not (he may have no firearm at all). He often hides in an <b>attic</b> or <b>basement</b>: he cannot be seen there until an officer, the robot or K9 is right next to the hatch, so clear every room. <b>Eviction / civil papers standoff</b> (about ${Math.round(Core.SCEN_TYPES.sovcit.xw * 100)}%) — he rejects the court's authority and argues every point (his own negotiation lines; call-outs work poorly). Long guns, body armor, gas masks and braced/reinforced doors are each +${Math.round(Core.SOVCIT_CFG.boost * 100)} points more likely (capped at ${Math.round(Core.SOVCIT_CFG.cap * 100)}%).`)}
+ ${HB('Call types', `each seed picks a call type (Quick Mission: choose one under <b>Call type</b>, or Random). The type is shown at the top of the brief, on the 911 record and on career dispatch cards. <b>Barricaded subject</b> — the standard call. <b>Mental health crisis</b> — low aggression, open to talking; the legal factor (discharge, warrant or interview-only) is in the brief. Bonus for resolving without force (+${Core.SCEN_TYPES.mental.bonus.noForce}) and for arranging an <b>EMS Evaluation</b> (Intel, +${Core.SCEN_TYPES.mental.bonus.ems}); the debrief notes a neutral risk flag. <b>Domestic</b> (firearm or violent variant) — his partner is at the perimeter: the <b>Partner Interview</b> gives the full layout, weapons, history and usually his number. <b>Fleeing suspect — vacant house</b> — nobody else inside, no family, little interest in talking; he escapes through any side nobody watches, fast — run a Status Check and close gaps early. <b>Neighbor dispute</b> — known armed; most hostile toward the neighbor's side of the house (keep officers off that side); the neighbor can be interviewed. <b>Parole absconder</b> (about ${Math.round(Core.SCEN_TYPES.parole.xw * 100)}% of calls) — patrol came to pick him up on a parole-violation warrant; the brief says how they know he is inside (seen going in, seen at a window, or a caller). One suspect, armed or not (he may have no firearm at all). He often hides in an <b>attic</b> or <b>basement</b>: he cannot be seen there until an officer, the robot or K9 is right next to the hatch, so clear every room. <b>Eviction / civil papers standoff</b> (about ${Math.round(Core.SCEN_TYPES.sovcit.xw * 100)}%) — he rejects the court's authority and argues every point (his own negotiation lines; call-outs work poorly). Long guns, body armor, gas masks and braced/reinforced doors are each +${Math.round(Core.SOVCIT_CFG.boost * 100)} points more likely (capped at ${Math.round(Core.SOVCIT_CFG.cap * 100)}%). <b>Fortified drug house</b> (about ${Math.round(Core.SCEN_TYPES.drughouse.xw * 100)}%, hard) — a narcotics warrant or a controlled buy gone wrong; no 911 call, the narcotics unit briefs you by radio. ${Core.MULTI_TYPES.drughouse.countW.findIndex(w => w > 0) + 1}–${Core.MULTI_TYPES.drughouse.countW.length} suspects with long guns, body armor possible (${Math.round(Core.MULTI_TYPES.drughouse.armor * 100)}% each). Exterior doors are <b>steel-reinforced and braced</b>: ram ×${Core.DOOR_MUL.steel.ram}, pry ×${Core.DOOR_MUL.steel.pry}, kick ×${Core.DOOR_MUL.steel.kick} — use an <b>explosive charge</b> or the <b>Draco arm</b>. About ${Math.round(Core.DRUG_CFG.barred * 100)}% of windows have <b>bars</b> (nobody climbs through; the Draco arm tears them out). ${Core.DRUG_CFG.cams[0]}–${Core.DRUG_CFG.cams[1]} <b>security cameras</b> (red cones) watch the approaches: an officer in a cone raises their agitation every turn — Intel → <b>Cut Power</b> turns them off (they notice). <b>Escaped inmates</b> (about ${Math.round(Core.SCEN_TYPES.inmates.xw * 1000) / 10}%) — one or two escapees forced their way into an occupied house; the family fled and called 911. Nobody else inside. They try to slip out early through any unwatched side — contain fast. Intel → <b>Family Interview (homeowner)</b> gives the full layout, the guns in the house and the exact count.`)}
+ ${HB('Structures', `about ${Math.round(Core.STRUCT_CFG.duplex * 100)}% of calls are a <b>duplex</b> and ${Math.round(Core.STRUCT_CFG.trailer * 100)}% a <b>mobile home</b> (Quick Mission: choose under <b>Structure</b>). <b>Duplex</b> — two homes side by side sharing a <b>party wall</b> (thick line on the roof). He is on his side; the other unit (<b>Unit B</b>, tag on the roof) is a separate home whose residents may be in: Intel → <b>Evacuate Unit B</b> (about ${Core.DUPLEX_CFG.evacTurns} turns). In a long standoff (from turn ${Core.DUPLEX_CFG.breakFrom}) the chance grows every turn (${Math.round(Core.DUPLEX_CFG.base * 100)}% + ${Core.DUPLEX_CFG.per * 100}%/turn, max ${Math.round(Core.DUPLEX_CFG.cap * 100)}%, halved while a negotiator is on the phone) that he <b>breaks through the party wall</b> into Unit B. If residents are still inside it is a risk flag (${Core.DUPLEX_CFG.riskPen} score); evacuating them first earns +${Core.DUPLEX_CFG.evacBonus}. <b>Mobile home</b> (single- or double-wide, sometimes in a trailer park) — compact layout, flat metal roof, skirting and wooden steps at each door. <b>Thin walls</b>: hollow doors breach easily (kick ×${Core.DOOR_MUL.thin.kick}), officers outside next to his room can be heard and may be <b>shot at through the wall</b> (${Math.round(Core.TRAILER_CFG.wallShot * 100)}% a turn when he is agitated) — stay off the walls and use cover.`)}
  ${HB('Scenarios', 'every scenario is generated from a seed: house layout, neighborhood, cruiser and suspect gear, patrol positions and the 911 call. The team level changes only your unit, never the map. <b>New Scenario</b> picks a new seed; add <kbd>#seed=12345</kbd> to the URL to jump straight into one as a Quick Mission at your last chosen level. Quick Missions and seed replays are <i>not</i> counted in your career.')}
  <div class="grid2"><div><b style="color:var(--cyan2)">Desktop</b><br>Click a unit / card or <kbd>1</kbd>–<kbd>9</kbd> to select · click map to order<br><kbd>M</kbd> move <kbd>N</kbd> work corner <kbd>B</kbd> breach <kbd>X</kbd> detonate <kbd>F</kbd> flash <kbd>G</kbd> gas <kbd>K</kbd> mask <kbd>C</kbd> clear <kbd>T</kbd> fire <kbd>U</kbd> suppress <kbd>O</kbd> overwatch <kbd>E</kbd> get in / exit <kbd>S</kbd> stance <kbd>H</kbd> hold <kbd>P</kbd> pole cam <kbd>I</kbd> intel<br><kbd>Backspace</kbd> undo · <kbd>Enter</kbd> execute · <kbd>Esc</kbd> deselect<br>Drag to pan · wheel to zoom · <kbd>0</kbd> fit · click the overview map to jump</div>
  <div><b style="color:var(--cyan2)">Touch</b><br>Tap a unit or chip to select · tap again for details<br>Tap the map to place orders (Fire: tap once to preview the hit chance, again to confirm)<br>One-finger drag to pan · pinch to zoom · ＋/－/⤢/▦ buttons<br>TEAMS / INTEL tabs open the panels; ▦ shows the overview map</div></div>
@@ -5395,6 +5738,7 @@ $('b-state').onclick = () => openStateCall();
 $('b-main').onclick = () => { const S = Core.state; if (S.opts && S.opts.career && !careerAllowed()) return toast('A career mission is under way — finish it, withdraw or call the State SWAT team first.'); closeModal('m-menu'); openMain(); };
 
 /* ---------------- main menu, quick mission level, career calls ---------------- */
+let QSTRUCT = ''; try { const t = localStorage.getItem('swat.qstruct') || ''; if (!t || Core.STRUCT_KEYS.includes(t)) QSTRUCT = t; } catch (e) { }
 let QTYPE = ''; try { const t = localStorage.getItem('swat.qtype') || ''; if (!t || Core.SCEN_TYPES[t]) QTYPE = t; } catch (e) { }
 let QLEVEL = 100; try { const v = +localStorage.getItem('swat.qlevel'); if (v >= 1 && v <= 100) QLEVEL = Math.round(v); } catch (e) { }
 const rndSeed = () => Math.floor(Math.random() * 999999) + 1; let menuSeed = rndSeed();
@@ -5406,6 +5750,7 @@ function renderMain() { const LI = Career.levelInfo(CAREER), started = CAREER.st
     <div class="lvrow"><label for="mm-lv">Team level</label><input type="range" id="mm-lv" min="1" max="100" step="1" value="${QLEVEL}"><input type="number" id="mm-lvn" min="1" max="100" value="${QLEVEL}" inputmode="numeric"></div>
     <div id="mm-team" class="mmt">${teamLine(QLEVEL)}</div>
     <div class="lvrow"><label for="mm-type">Call type</label><select id="mm-type" class="mmtype"><option value="">Random (from seed)</option>${Core.SCEN_KEYS.map(k => `<option value="${k}" ${QTYPE === k ? 'selected' : ''}>${esc(Core.SCEN_TYPES[k].name)}</option>`).join('')}</select></div>
+    <div class="lvrow"><label for="mm-struct">Structure</label><select id="mm-struct" class="mmtype"><option value="">Random (from seed)</option>${[['house', 'House'], ['duplex', 'Duplex (side-by-side)'], ['trailer', 'Mobile home']].map(([k, n]) => `<option value="${k}" ${QSTRUCT === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="lvrow"><label>Seed</label><b id="mm-seed" style="color:#fff;flex:1">${menuSeed}</b><button id="mm-newseed">⟳ New seed</button></div></div>
    <div class="grid2 mmg"><button id="mm-career" class="mmb"><b>🎖 Career Mode</b><span>${started ? `Continue · team level ${LI.level} · ${LI.xp} XP` : 'Start at team level 1 and earn XP'}</span></button>
     <button id="mm-roster" class="mmb"><b>☰ Career / Roster</b><span>Level, roster, record, save codes</span></button>
@@ -5415,7 +5760,7 @@ let mainResumable = false, hasGame = false; // v8: no scenario exists until the 
 function openMain() { document.querySelectorAll('.modal.show').forEach(m => closeModal(m.id)); renderMain(); $('m-main').classList.add('show'); }
 function setQLevel(v) { v = Math.max(1, Math.min(100, Math.round(+v || 1))); QLEVEL = v; try { localStorage.setItem('swat.qlevel', String(v)); } catch (e) { } if (!$('mm-lv')) return; $('mm-lv').value = v; if (+$('mm-lvn').value !== v) $('mm-lvn').value = v; $('mm-team').innerHTML = teamLine(v); }
 $('main-dlg').addEventListener('input', e => { if (e.target.id === 'mm-lv') setQLevel(e.target.value); if (e.target.id === 'mm-lvn' && e.target.value !== '') { const v = +e.target.value; if (v >= 1 && v <= 100) setQLevel(v); } });
-$('main-dlg').addEventListener('change', e => { if (e.target.id === 'mm-type') { QTYPE = Core.SCEN_TYPES[e.target.value] ? e.target.value : ''; try { localStorage.setItem('swat.qtype', QTYPE); } catch (er) { } } if (e.target.id === 'mm-lvn') setQLevel(e.target.value); });
+$('main-dlg').addEventListener('change', e => { if (e.target.id === 'mm-type') { QTYPE = Core.SCEN_TYPES[e.target.value] ? e.target.value : ''; try { localStorage.setItem('swat.qtype', QTYPE); } catch (er) { } } if (e.target.id === 'mm-struct') { QSTRUCT = Core.STRUCT_KEYS.includes(e.target.value) ? e.target.value : ''; try { localStorage.setItem('swat.qstruct', QSTRUCT); } catch (er) { } } if (e.target.id === 'mm-lvn') setQLevel(e.target.value); });
 $('main-dlg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; SFX.click();
   if (b.id === 'mm-quick') { closeModal('m-main'); newGame(menuSeed, false, QLEVEL, QTYPE); menuSeed = rndSeed(); }
   if (b.id === 'mm-newseed') { menuSeed = rndSeed(); $('mm-seed').textContent = menuSeed; }
@@ -5439,7 +5784,7 @@ $('calls-dlg').addEventListener('click', e => { const b = e.target.closest('butt
   if (b.id === 'cl-roster') { closeModal('m-calls'); openCareer(); } if (b.id === 'cl-main') { closeModal('m-calls'); openMain(); } });
 
 /* ---------------- game lifecycle ---------------- */
-function newGame(seed, career, level, stype) { if (busy) return; hasGame = true; document.body.classList.remove('nogame'); seed = seed || (Math.floor(Math.random() * 999999) + 1); Core.newGame(seed, career ? Career.missionOpts(CAREER) : Object.assign(Career.quickOpts(level || QLEVEL), stype && Core.SCEN_TYPES[stype] ? { stype } : {})); mainResumable = true; V.sel = null; V.mode = 'move'; V.hint = null; V.aim = null; pendingAim = null; hidePop(); $('aimbox').className = ''; logLen = -1; lastFxSound = 0; Core.state.events.length = 0;
+function newGame(seed, career, level, stype, struct) { if (busy) return; hasGame = true; document.body.classList.remove('nogame'); seed = seed || (Math.floor(Math.random() * 999999) + 1); Core.newGame(seed, career ? Career.missionOpts(CAREER) : Object.assign(Career.quickOpts(level || QLEVEL), stype && Core.SCEN_TYPES[stype] ? { stype } : {}, (struct === undefined ? QSTRUCT : struct) ? { struct: struct === undefined ? QSTRUCT : struct } : {})); mainResumable = true; V.sel = null; V.mode = 'move'; V.hint = null; V.aim = null; pendingAim = null; hidePop(); $('aimbox').className = ''; logLen = -1; lastFxSound = 0; Core.state.events.length = 0;
   try { history.replaceState(null, '', '#seed=' + seed); } catch (e) { }
   if (Render.invalidate) Render.invalidate();
   document.querySelectorAll('.modal.show').forEach(m => closeModal(m.id)); onResize(); Render.fit('house'); refresh(true); openBrief(); }

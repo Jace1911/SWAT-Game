@@ -18,6 +18,14 @@ const MULTI_CFG = {
   hideFire: 0.6, fightFire: 1.15, fleeSlip: 1.6, surrTalk: 40, injImpair: 0.25,
   report: { exact: 0.45, under: 0.35, atleast: 0.20 } // what the patrol tells dispatch about the number of subjects
 };
+/* v13: per-call-type multi-suspect profiles (fields missing here fall back to MULTI_CFG) */
+const MULTI_TYPES = {
+  flee: {},
+  drughouse: { countW: [0, 0.5, 0.35, 0.15], dispW: { fighting: 0.3, hiding: 0.4, fleeing: 0.1, surrendering: 0.15, injured: 0.05 }, weapons: ['rifle', 'shotgun', 'handgun', 'rifle', 'shotgun'], armor: 0.2, leadDisp: 'fighting', mask: 0.1 },
+  inmates: { countW: [0.45, 0.55], dispW: { fleeing: 0.5, hiding: 0.3, fighting: 0.15, surrendering: 0.05 }, weapons: ['handgun', 'shotgun', 'none', 'handgun'], leadDisp: 'fleeing', mask: 0 }
+};
+function multiType(k) { k = k || (S.stype && S.stype.key); return !!(k && MULTI_TYPES[k]); }
+function mcfg(f, k) { k = k || (S.stype && S.stype.key); const T = MULTI_TYPES[k] || {}; return T[f] !== undefined ? T[f] : MULTI_CFG[f]; }
 const SUS_LETTERS = 'ABCD';
 let SP_DEPTH = 0;
 function suspList() { return S.suspects && S.suspects.length ? S.suspects : (S.suspect ? [S.suspect] : []); }
@@ -46,19 +54,19 @@ function devTarget(sx, sy) { const L = suspList().filter(spActive); if (L.length
 function suspectAtCell(x, y) { return suspList().find(s => spActive(s) && s.x === x && s.y === y) || null; }
 function spInRoom(rm, pred = spActive) { return suspList().some(s => pred(s) && s.room === rm); }
 /** Seeded count draw: separate stream so the map / scenario are unchanged by the count. */
-function fleeCount(seed, opts) { if (opts && opts.suspects) return clamp(Math.round(opts.suspects), 1, 4);
-  const r = makeRng(seed * 6101 + 29), W = MULTI_CFG.countW, tot = W.reduce((a, b) => a + b, 0); let p = r() * tot;
+function fleeCount(seed, opts, key) { if (opts && opts.suspects) return clamp(Math.round(opts.suspects), 1, 4);
+  const r = makeRng(seed * 6101 + 29), W = mcfg('countW', key || 'flee'), tot = W.reduce((a, b) => a + b, 0); let p = r() * tot;
   for (let i = 0; i < W.length; i++) { p -= W[i]; if (p <= 0) return i + 1; } return 1; }
 function wpick(r, W) { const ks = Object.keys(W); let p = r() * ks.reduce((a, k) => a + W[k], 0); for (const k of ks) { p -= W[k]; if (p <= 0) return k; } return ks[0]; }
 /** Tag the classic suspect, then (flee calls only) add the extra suspects, each with its own spot, weapon, armor, mask and starting state. */
 function setupSuspects() {
   const lead = S.suspect; lead.sid = 0; lead.key = 'S'; lead.label = 'A'; lead.disp = lead.disp || null; S.suspects = [lead];
-  const n = S.stype && S.stype.key === 'flee' ? fleeCount(S.seed, S.opts) : 1;
+  const n = multiType() ? fleeCount(S.seed, S.opts, S.stype.key) : 1;
   S.intel.suspSeen = 0; S.intel.suspConfirmed = null;
   if (n < 2) { setupSuspectArmor(); S.susCount = 1; return; }
   const r = makeRng(S.seed * 4421 + 71), used = [[lead.x, lead.y]];
-  lead.disp = 'fleeing';
-  const rooms = S.rooms.map((q, i) => i).filter(i => i !== lead.room && S.rooms[i].type !== 'hall');
+  lead.disp = mcfg('leadDisp') || 'fleeing';
+  const rooms = S.rooms.map((q, i) => i).filter(i => i !== lead.room && S.rooms[i].type !== 'hall' && !S.rooms[i].unitB);
   for (let k = 1; k < n; k++) {
     let best = null, bs = -1e9;
     for (let t = 0; t < 60; t++) { const ri = rooms.length && r.chance(0.85) ? r.pick(rooms) : lead.room; const q = S.rooms[ri];
@@ -67,10 +75,10 @@ function setupSuspects() {
       const sameRoom = S.suspects.some(s => s.room === ri); const s = near * 0.3 - (sameRoom ? 3 : 0) + r();
       if (s > bs) { bs = s; best = [x, y, ri]; } }
     if (!best) break; used.push([best[0], best[1]]);
-    const disp = wpick(r, MULTI_CFG.dispW);
+    const disp = wpick(r, mcfg('dispW'));
     const sp = { x: best[0], y: best[1], home: { x: best[0], y: best[1] }, room: best[2], mode: disp === 'fighting' ? 'alert' : 'barricaded', stun: 0, agit: lead.agit, cd: 0, ambush: false,
-      hasMask: r.chance(MULTI_CFG.mask), maskOn: false, maskSeen: false, maskDon: 0, impair: 0, phone: false, talk: 0, seen: false, lastKnown: null, heat: null, unseenTurns: 0, path: null, dir: r() * 6.28,
-      weapon: r.pick(MULTI_CFG.weapons), atWindow: false, suppressed: 0, duck: 0, sid: k, key: 'S' + (k + 1), label: SUS_LETTERS[k], disp };
+      hasMask: r.chance(mcfg('mask')), maskOn: false, maskSeen: false, maskDon: 0, impair: 0, phone: false, talk: 0, seen: false, lastKnown: null, heat: null, unseenTurns: 0, path: null, dir: r() * 6.28,
+      weapon: r.pick(mcfg('weapons')), atWindow: false, suppressed: 0, duck: 0, sid: k, key: 'S' + (k + 1), label: SUS_LETTERS[k], disp };
     if (disp === 'fighting') sp.agit = clamp(sp.agit + 15, 0, 100);
     if (disp === 'surrendering') { sp.talk = MULTI_CFG.surrTalk; sp.agit = clamp(sp.agit - 20, 0, 100); }
     if (disp === 'injured') { sp.injured = true; sp.hurt = MULTI_CFG.injImpair; sp.impair = MULTI_CFG.injImpair; }
@@ -79,22 +87,22 @@ function setupSuspects() {
   S.susCount = S.suspects.length; S.suspects.forEach(s => { s.label = null; s.labelled = false; }); // letters are given in the order they are first seen
   // armor per suspect: the lead keeps the classic stream, extras get their own
   setupSuspectArmor();
-  const p = S.opts && S.opts.suspectArmor !== undefined ? S.opts.suspectArmor : ARMOR_CFG.suspect;
-  S.suspects.slice(1).forEach(sp => { const ra = makeRng(S.seed * 977 + 13 + sp.sid * 131); sp.armor = ra.chance(p) ? (ra.chance(ARMOR_CFG.suspectPlate) ? 'plate' : 'soft') : 'none'; sp.armorKnown = false; });
+  const p = S.opts && S.opts.suspectArmor !== undefined ? S.opts.suspectArmor : (mcfg('armor') != null ? mcfg('armor') : ARMOR_CFG.suspect);
+  S.suspects.slice(mcfg('armor') != null && !(S.opts && S.opts.suspectArmor !== undefined) ? 0 : 1).forEach(sp => { const ra = makeRng(S.seed * 977 + 13 + sp.sid * 131); sp.armor = ra.chance(p) ? (ra.chance(ARMOR_CFG.suspectPlate) ? 'plate' : 'soft') : 'none'; sp.armorKnown = false; });
 }
 /** What the patrol reported: { n, kind: 'exact'|'under'|'atleast', text }. Seeded, separate stream. */
-function patrolReport() { const n = S.susCount || 1; if (!(S.stype && S.stype.key === 'flee')) return { n: 1, kind: 'exact', text: 'one subject' };
+function patrolReport() { const n = S.susCount || 1; if (!multiType()) return { n: 1, kind: 'exact', text: 'one subject' };
   const r = makeRng(S.seed * 3331 + 5); let kind = wpick(r, MULTI_CFG.report); if (kind === 'under' && n === 1) kind = 'exact';
   const said = kind === 'exact' ? n : kind === 'under' ? r.int(1, n - 1) : 1; const words = ['', 'one', 'two', 'three', 'four'];
   const text = kind === 'atleast' ? 'at least one subject — possibly more' : said === 1 ? 'one subject' : words[said] + ' subjects';
   return { n: said, kind, text }; }
 /** Status-panel view of the suspect count: unknown until every suspect has been seen. */
-function suspectCountInfo() { const L = suspList(), seen = L.filter(s => s.seen).length; const flee = S.stype && S.stype.key === 'flee'; const conf = !flee || !!S.intel.suspConfirmed || S.phase === 'over';
+function suspectCountInfo() { const L = suspList(), seen = L.filter(s => s.seen).length; const flee = multiType(); const conf = !flee || !!S.intel.suspConfirmed || S.phase === 'over';
   const R = S.brief && S.brief.report; return { seen, total: conf ? L.length : null, confirmed: !!conf, belief: R ? R.text : 'one subject',
     custody: L.filter(s => s.mode === 'detained').length, down: L.filter(s => s.mode === 'incapacitated').length, active: L.filter(spHostile).length }; }
 /** Reveal bookkeeping after a vision pass: when every suspect has been seen, the count is confirmed. */
-function countObserve() { const L = suspList(); if (!(S.stype && S.stype.key === 'flee') || S.intel.suspConfirmed) return; const seen = L.filter(s => s.seen).length;
-  const all = seen === L.length && S.rooms.every(q => q.explored || q.type === 'hall');
+function countObserve() { const L = suspList(); if (!multiType() || S.intel.suspConfirmed) return; const seen = L.filter(s => s.seen).length;
+  const all = seen === L.length && S.rooms.every(q => q.explored || q.type === 'hall' || q.unitB);
   if (seen > (S.intel.suspSeen || 0)) { S.intel.suspSeen = seen; if (!all) log(`${seen} suspect${seen > 1 ? 's' : ''} seen so far — the house is not cleared, there may be more.`, 'intel'); }
   // confirmation: all have been seen, and every room has been explored or the count is fully in view
   if (all) { S.intel.suspConfirmed = S.turn + 1; log(`Suspect count confirmed: ${L.length}.`, 'intel'); } }

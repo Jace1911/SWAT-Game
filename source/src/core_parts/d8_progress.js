@@ -37,9 +37,10 @@ function callState() { if (S.phase === 'over') return { ok: false, reason: 'Miss
 /** Scenario facts for the call-in screen, without disturbing the current game. diff: 1 (routine) … 3 (high risk). */
 function preview(seed, opts) { const keep = S; let out;
   try { newGame(seed, opts || {}); const B = S.brief, sp = S.suspect;
-    let diff = 1 + (B.shots ? 0.5 : 0) + (B.officerDown ? 0.8 : 0) + (sp.weapon !== 'handgun' ? 0.4 : 0) + (S.rooms.length >= 9 ? 0.3 : 0) + (S.scene && S.scene.variant === 'gap' ? 0.2 : 0);
+    let diff = 1 + (B.shots ? 0.5 : 0) + (B.officerDown ? 0.8 : 0) + (sp.weapon !== 'handgun' ? 0.4 : 0) + (ownRooms().length >= 9 ? 0.3 : 0) + (S.scene && S.scene.variant === 'gap' ? 0.2 : 0)
+      + 0.3 * (suspList().length - 1) + (S.stype.key === 'drughouse' ? 0.5 : 0) + (suspList().some(q => q.armor && q.armor !== 'none') ? 0.2 : 0) + (S.duplex && S.duplex.residents ? 0.1 : 0);
     diff = +clamp(diff, 1, 3).toFixed(1);
-    out = { seed: S.seed, op: S.opName, type: B.type, stype: S.stype.key, stypeName: S.stype.name, addr: B.addr, time: B.time, shots: !!B.shots, officerDown: !!B.officerDown, sawGun: !!B.sawGun, area: S.geo.name, arch: S.house.archName, diff,
+    out = { seed: S.seed, op: S.opName, type: B.type, stype: S.stype.key, stypeName: S.stype.name, addr: B.addr, time: B.time, shots: !!B.shots, officerDown: !!B.officerDown, sawGun: !!B.sawGun, area: S.geo.name, arch: S.house.archName, struct: S.house.struct || 'house', diff,
       label: diff >= 2.3 ? 'HIGH RISK' : diff >= 1.6 ? 'ELEVATED' : 'ROUTINE' }; }
   finally { S = keep; }
   return out; }

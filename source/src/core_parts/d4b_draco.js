@@ -45,14 +45,14 @@ function dracoTick(c, o) {
     syncCar(c); if (!(c.x === o.x && c.y === o.y)) return; }
   c.dracoAim = Math.atan2(my - c.y, mx - c.x); c.dracoOut = S.turn;
   if ((o.prog = (o.prog || 0) + 1) <= DRACO_CFG.deployTicks) { log(`${c.name}: Draco arm deploying toward the ${o.door != null ? S.doors[o.door].name : S.rooms[S.windows[o.win].room].name + ' window'}…`, 'radio'); noise(mx, my, 6, 'engine'); return; }
-  if (o.win !== undefined && o.win !== null) { const w = S.windows[o.win]; w.broken = true; w.cleared = true; S.stats.breaches++;
+  if (o.win !== undefined && o.win !== null) { const w = S.windows[o.win], wasBarred = !!w.barred; w.broken = true; w.cleared = true; w.barred = false; if (S.duplex) S.duplex.wallV++; S.stats.breaches++;
     fx('breach', mx, my, { how: 'draco' }); fx('text', mx, my, { text: 'WINDOW OUT', color: '#ffb020' }); noise(mx, my, DRACO_CFG.noise, 'breach'); aggressive(15);
-    log(`${c.name}: Draco arm tore out the ${S.rooms[w.room].name} window and frame — the opening is clear.`, 'radio'); popOrder(c); return; }
+    log(`${c.name}: Draco arm tore out the ${S.rooms[w.room].name} window${wasBarred ? ', bars' : ''} and frame — the opening is clear.`, 'radio'); popOrder(c); return; }
   const d = S.doors[o.door], C = DRACO_CFG.door;
   if (d.storm && d.stormState === 'closed') { d.stormKnown = true; if (S.rng.chance(C.storm)) { d.stormState = 'breached'; log(`${c.name}: storm door on ${d.name} ripped off by the Draco arm.`, 'radio'); fx('thud', mx, my); noise(mx, my, DRACO_CFG.noise - 4, 'door'); }
     else { log(`${c.name}: Draco arm on the storm door — re-gripping.`); noise(mx, my, 10, 'ram'); } return; }
   if (d.state !== 'closed') { popOrder(c); return; }
-  const p = C.p * (d.barricaded ? C.barr : 1) * (d.kind === 'garage' ? C.garage : 1);
+  const p = Math.min(0.97, C.p * (d.barricaded ? C.barr : 1) * (d.kind === 'garage' ? C.garage : 1) * doorMul(d, 'draco'));
   if (S.rng.chance(p)) { doBreach(c, d, 'draco'); d.frame = 'down'; noise(mx, my, DRACO_CFG.noise, 'breach'); log(`${c.name}: ${d.name} and frame pulled down — breach point open.`, 'radio'); popOrder(c); }
   else { if (d.barricaded) d.barrKnown = true; log(`${c.name}: Draco arm pulling on ${d.name} — still holding${d.barricaded ? ' (barricaded)' : ''}.`); noise(mx, my, 12, 'ram'); fx('thud', mx, my); }
 }

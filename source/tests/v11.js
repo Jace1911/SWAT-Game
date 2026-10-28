@@ -8,7 +8,7 @@ for (let k = 1; k <= 4; k++) ok(Math.abs(cnt[k] / N - W[k - 1]) < 0.03, `count $
 ok(cnt[1] > cnt[2] && cnt[2] > cnt[3] && cnt[3] > cnt[4], 'lower counts more common'); console.log('  count mix', JSON.stringify(cnt.slice(1)));
 let det = true; for (let i = 1; i < 50; i++) if (Core.fleeCount(i) !== Core.fleeCount(i)) det = false; ok(det, 'count deterministic per seed');
 // 2) other types keep one suspect; flee games use the drawn count
-for (const k of Core.SCEN_KEYS.filter(k => k !== 'flee')) for (const seed of [11, 202, 3033]) { const S = Core.newGame(seed, { stype: k }); ok(S.suspects.length === 1 && S.suspect === S.suspects[0], `${k} seed ${seed}: one suspect`); ok(Core.intelInfo().count.confirmed, `${k}: count is not a mystery`); }
+for (const k of Core.SCEN_KEYS.filter(k => !Core.MULTI_TYPES[k])) for (const seed of [11, 202, 3033]) { const S = Core.newGame(seed, { stype: k }); ok(S.suspects.length === 1 && S.suspect === S.suspects[0], `${k} seed ${seed}: one suspect`); ok(Core.intelInfo().count.confirmed, `${k}: count is not a mystery`); }
 let seenMulti = 0; for (let i = 1; i <= 40; i++) { const seed = i * 131; const S = Core.newGame(seed, { stype: 'flee' }); ok(S.suspects.length === Core.fleeCount(seed), 'flee uses drawn count ' + seed); if (S.suspects.length > 1) seenMulti++; }
 ok(seenMulti >= 10, 'multi-suspect flee calls occur (' + seenMulti + '/40)');
 // 3) per-suspect independent state

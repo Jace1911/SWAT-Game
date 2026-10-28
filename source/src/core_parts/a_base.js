@@ -172,7 +172,7 @@ function reach(sx, sy, o, maxCost) {
    an officer crouched behind a car/tree/fence close to him. */
 function losEx(ax, ay, bx, by, wantCov) {
   const dx = bx - ax, dy = by - ay, steps = Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * 3);
-  let cx = ax, cy = ay, glass = false, cov = 0;
+  let cx = ax, cy = ay, glass = false, cov = 0, leanOk = 0, tv = -1;
   const near = (x, y) => wantCov && (x - bx) * (x - bx) + (y - by) * (y - by) <= 6.8;
   for (let i = 1; i <= steps; i++) {
     const t = i / steps, nx = Math.round(ax + dx * t), ny = Math.round(ay + dy * t);
@@ -189,9 +189,20 @@ function losEx(ax, ay, bx, by, wantCov) {
     } else { if (!seeE(cx, cy, nx, ny)) return { v: 0, cov }; const e = edge(cx, cy, nx, ny); if (e.t === 'W') glass = true; if (e.t === 'F' && near(nx, ny)) cov = Math.max(cov, 1); }
     const c = idx(nx, ny);
     if (!fin) { if (S.opaque[c]) return { v: 0, cov };
+      // v14 vehicle rule: a car / van / cruiser body blocks sight and fire unless the shooter/viewer (a) is right behind it (≤2 m, leaning out)
+      const vid = vehId(c); if (vid && vid !== leanOk) { if (tv < 0) tv = vehId(idx(bx, by)); if (vid === tv) { leanOk = vid; } else if (vehNear(ax, ay, vid)) leanOk = vid; else return { v: 0, cov: 2, veh: true }; }
       if (wantCov && near(nx, ny)) { const k = S.dyn[c] && !COV_STATIC ? 2 : S.cov[c]; if (k > cov) cov = k; } }
     cx = nx; cy = ny;
   }
   return { v: glass ? 2 : 1, cov };
 }
+/* v14 vehicles: static cars + the SWAT van get ids 1..n (S.veh grid, rebuilt lazily); cruisers / the armored truck use 1000+number (S.dyn). */
+const VEH_CFG = { lean: 2 };
+function vehGrid() { if (S.veh && S.veh.length === MAP_W * MAP_H) return S.veh; const g = S.veh = new Uint16Array(MAP_W * MAP_H), W = S.world || {};
+  const list = (W.cars || []).concat(W.van ? [W.van] : []); list.forEach((q, i) => { for (let y = q.y; y < q.y + q.h; y++) for (let x = q.x; x < q.x + q.w; x++) if (inb(x, y)) g[idx(x, y)] = i + 1; }); return g; }
+function vehId(c) { const d = S.dyn && S.dyn[c]; if (d && !COV_STATIC) return 1000 + d; return S.world ? vehGrid()[c] : 0; }
+/** Is (x,y) within VEH_CFG.lean metres of any cell of vehicle vid? */
+function vehNear(x, y, vid) { const R = VEH_CFG.lean; for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) { if (dx * dx + dy * dy > R * R + 0.01 || !inb(x + dx, y + dy)) continue; if (vehId(idx(x + dx, y + dy)) === vid) return true; } return false; }
+/** Distance (m) from (x,y) to the nearest vehicle cell (static or cruiser), capped at 9. */
+function vehDist(x, y) { let b = 9; for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { if (!inb(x + dx, y + dy) || (!dx && !dy)) continue; if (vehId(idx(x + dx, y + dy))) b = Math.min(b, Math.hypot(dx, dy)); } return b; }
 function los(ax, ay, bx, by) { return losEx(ax, ay, bx, by, false).v; }

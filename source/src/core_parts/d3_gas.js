@@ -83,7 +83,7 @@ function suspectGasTurn() { // per turn: may relocate to clean air, run, or give
   const pMove = clamp(0.2 + 0.7 * g, 0, 0.9); if (!S.rng.chance(pMove)) return;
   // gas-free room vs exit
   if (S.rng.chance(0.35 + 0.3 * g)) { startFlee(); if (sp.mode === 'fleeing') return; }
-  let best = null, bs = 1e9; for (const q of S.rooms) { if (q.id === sp.room || q.type === 'hall' && S.rng.chance(0.5)) continue; const c = [q.x + (q.w >> 1), q.y + (q.h >> 1)]; if (S.room[idx(c[0], c[1])] !== q.id) continue;
+  let best = null, bs = 1e9; for (const q of S.rooms) { if (q.id === sp.room || (q.unitB && !(S.duplex && S.duplex.hole)) || q.type === 'hall' && S.rng.chance(0.5)) continue; const c = [q.x + (q.w >> 1), q.y + (q.h >> 1)]; if (S.room[idx(c[0], c[1])] !== q.id) continue;
     const s = q.gas * 10 + dist(sp.x, sp.y, c[0], c[1]) * 0.05; if (s < bs) { bs = s; best = c; } }
   if (best && gasAt(best[0], best[1]) < g * 0.6) { sp.home = { x: best[0], y: best[1] }; sp.mode = sp.mode === 'barricaded' ? 'alert' : sp.mode; log('Movement inside — someone is relocating away from the gas.', 'alert'); }
 }

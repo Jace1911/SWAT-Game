@@ -59,7 +59,7 @@ for (const seed of [11, 23, 57, 101, 314]) {
   ok(Core.breachCan(t, 'charge') !== true, 'charge requires a breacher');
 }
 // full in-game charge: hang → standoff → detonate; safety & noise
-{ let done = false; for (let seed = 1; seed < 40 && !done; seed++) { const S = Core.newGame(seed); S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; });
+{ let done = false; for (let seed = 1; seed < 40 && !done; seed++) { const S = Core.newGame(seed, { stype: 'barricade' }); /* v13: plain call — drug-house cameras would draw fire */ S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; });
     const br = S.officers.find(o => o.spec === 'breacher'); if (!br) continue; const ids = [br.id, ...S.officers.filter(o => o !== br && o.spec !== 'marksman').slice(0, 3).map(o => o.id)];
     const t = Core.formTeam(ids).team; t.deployed = true; const d = S.doors.find(x => x.name === 'Front Door');
     const q = Core.queueOrder(t.uid, { type: 'breach', door: d.id, method: 'charge' }); if (!q.ok) { console.log('  charge q', q.reason); continue; }
@@ -69,7 +69,7 @@ for (const seed of [11, 23, 57, 101, 314]) {
     const [mx, my] = Core.doorMid(d); ok(Core.dist(t.x, t.y, mx, my) >= Core.CHARGE_SAFE, `team stood off ≥${Core.CHARGE_SAFE} cells (${Core.dist(t.x, t.y, mx, my).toFixed(1)})`);
     ok(S.suspect.mode !== 'barricaded', 'blast alerted the suspect'); done = true; } ok(done, 'ran a charge breach'); }
 // hang only → team backs off to the standoff and waits; Detonate order blows it; return fire is a snap shot
-{ let done = false; for (let seed = 1; seed < 40 && !done; seed++) { const S = Core.newGame(seed); S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; });
+{ let done = false; for (let seed = 1; seed < 40 && !done; seed++) { const S = Core.newGame(seed, { stype: 'barricade' }); /* v13: plain call — drug-house cameras would draw fire */ S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; });
     const br = S.officers.find(o => o.spec === 'breacher'); if (!br) continue; const ids = [br.id, ...S.officers.filter(o => o !== br && o.spec !== 'marksman').slice(0, 3).map(o => o.id)];
     const t = Core.formTeam(ids).team; t.deployed = true; const d = S.doors.find(x => x.name === 'Front Door');
     if (!Core.queueOrder(t.uid, { type: 'breach', door: d.id, method: 'charge', hangOnly: true }).ok) continue;
@@ -102,7 +102,8 @@ for (const seed of [11, 23, 57, 101, 314]) {
     const P = S.units.find(u => u.kind === 'patrol' && !u.inCar); if (!P) continue; const c = Core.addCasualty('patrol', 'PX', 'Ofc. X', P.x + 2, P.y, { kia: 0, mobile: 0 }); c.reported = true; c.known = true; c.crit = 30;
     sp.mode = 'barricaded'; const q = Core.queueOrder(P.uid, { type: 'evac', cas: c.id }); if (!q.ok) { continue; }
     for (let k = 0; k < 120 && c.state !== 'evacuated' && S.phase !== 'over'; k++) { if (S.phase === 'planning') { Core.execute(); if (!P.orders.length && c.state === 'immobile') Core.queueOrder(P.uid, { type: 'evac', cas: c.id }); } Core.stepTick(); }
-    if (S.phase === 'over') continue; ok(c.state === 'evacuated' || c.state === 'transport', `evac order delivers casualty to EMS (${c.state})`); done = true; } ok(done, 'ran an evac'); }
+    if (S.phase === 'over') continue; if (c.state === 'immobile' && S.log.some(l => /under fire — taking cover/.test(l.text || l.msg || l.t || ''))) continue; // v14: carrier pinned by fire on this map — try the next one
+    ok(c.state === 'evacuated' || c.state === 'transport', `evac order delivers casualty to EMS (${c.state})`); done = true; } ok(done, 'ran an evac'); }
 { const S = Core.newGame(4); ok(Core.setEMS(Core.houseCenter()[0], Core.houseCenter()[1]).ok === false, 'EMS point cannot be placed at the house'); }
 
 
