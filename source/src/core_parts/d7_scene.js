@@ -141,7 +141,19 @@ function makeBrief() {
     occupants: ST === 'flee' ? 'Vacant house — no residents. He is alone.' : ST === 'domestic' ? 'Partner is out and at the perimeter; she says nobody else is inside. Not confirmed.' : self ? 'Caller says he is alone. Not confirmed.' : 'Caller does not know whether anyone else is inside. Not confirmed.',
     stype: ST, stypeName: stv.name || 'Barricaded subject', typeDesc: SCEN_TYPES[ST].desc, legal: stv.legal || null, variant: stv.variant || null, side: stv.side || null,
     patrol, known, officerDown: !!sc.injury, transcript: L, background: bg.sort(), phone: self || giveNum ? phone : null, giveNum, reviewed: false };
+  if (ST === 'flee') fleeBrief(S.brief);
+  typeBrief(S.brief);
 }
+/** Flee calls: what the patrol and the caller believe about the number of subjects (seeded, may under-report). */
+function fleeBrief(B) { const R = patrolReport(); B.report = R; const many = R.n > 1, words = ['', 'one', 'two', 'three', 'four'];
+  B.belief = R.kind === 'atleast' ? 'Officer belief: at least one suspect — possibly more than one.' : many ? `Officer belief: ${words[R.n]} suspects seen going in — there could be more. Not confirmed.` : 'Officer belief: one suspect, probably alone. Not confirmed.';
+  B.occupants = 'Vacant house — no residents. ' + (R.kind === 'atleast' ? 'Patrol saw at least one subject run in, possibly more than one. Count unknown.' : many ? `Patrol saw ${words[R.n]} subjects run in. Count not confirmed.` : 'Patrol saw one subject run in. Count not confirmed.');
+  const lead = R.kind === 'atleast' ? 'At least one guy — maybe more, it was hard to see — that the police were chasing' : many ? `${words[R.n][0].toUpperCase() + words[R.n].slice(1)} guys the police were chasing` : 'A guy the police were chasing';
+  B.transcript.forEach(e => { if (e.who === 'Caller' && e.text.startsWith('A guy the police were chasing')) e.text = e.text.replace('A guy the police were chasing just kicked', lead + (many || R.kind === 'atleast' ? ' just kicked' : ' just kicked')); });
+  if (many) B.typeDesc = 'Several suspects ran from patrol into an empty house. Nobody else inside, little interest in talking — and they will leave through any side nobody watches. The head count is not confirmed.';
+  else if (R.kind === 'atleast') B.typeDesc = 'At least one suspect — possibly more — ran from patrol into an empty house. Nobody else inside, little interest in talking — and anyone in there will leave through any side nobody watches.';
+  B.known = B.known.map(k => k.startsWith('Ran on foot from a traffic stop') ? (many ? 'They ran on foot from a traffic stop; patrol lost sight of them at the back of this house.' : k) : k);
+  B.patrol.splice(B.patrol.length - 1, 0, `Patrol: ${R.kind === 'atleast' ? 'at least one subject went in — possibly more than one' : many ? words[R.n] + ' subjects went in the back' : 'one subject went in the back'}.`); }
 /** Listening to the 911 recording (from the brief or the intel menu): same transcript, same intel, applied once. */
 function review911() {
   const B = S.brief; if (!B) return { ok: false }; const first = !S.intel.call911; S.intel.call911 = true; B.reviewed = true;
@@ -163,15 +175,16 @@ function statusCheck() {
 }
 /** End of turn: a side nobody watches gives him a way out. */
 function sceneTurn() {
-  const sc = S.scene, sp = S.suspect; if (!sc) return;
+  const sc = S.scene, sp = S.suspect; if (!sc) return; const G = multiSp() ? sp : sc; // gap clock: per suspect when there are several
   const sw = sideWatch(); if (sc.gap0.length && sc.gapClosed == null && !sw.gaps.some(g => sc.gap0.includes(g))) { sc.gapClosed = S.turn; xpAct('contain', null); }
-  const TT = stypeCfg(); if (!hostile() || sp.mode !== 'barricaded' || sp.walk || (S.nego && S.nego.contact && !TT.vacant) || S.turn < Math.min(2, TT.slipAfter)) { sc.gapTurns = 0; return; }
+  const TT = stypeCfg(); if (!hostile() || sp.mode !== 'barricaded' || sp.walk || (S.nego && S.nego.contact && !TT.vacant) || S.turn < Math.min(2, TT.slipAfter)) { G.gapTurns = 0; return; }
   const wins = S.windows.filter(w => w.room !== sp.room && !w.broken && sw.gaps.includes(watchPts().find(p => p.win === w.id).side));
-  if (!wins.length) { sc.gapTurns = 0; return; }
-  sc.gapTurns++; if (sc.gapTurns < (TT.slipAfter || SCENE_CFG.slipAfter) || !S.rng.chance(Math.min(0.6, SCENE_CFG.slip * (TT.slipMul || 1)))) return;
+  if (!wins.length) { G.gapTurns = 0; return; }
+  G.gapTurns = (G.gapTurns || 0) + 1; const dm = sp.disp === 'fleeing' && multiSp() ? MULTI_CFG.fleeSlip : sp.disp === 'surrendering' ? 0.5 : 1;
+  if (G.gapTurns < (TT.slipAfter || SCENE_CFG.slipAfter) || !S.rng.chance(Math.min(0.6, SCENE_CFG.slip * (TT.slipMul || 1) * dm))) return;
   let best = null, bp = null; for (const w of wins) { const [cx, cy] = w.edges[0]; const p = findPath(sp.x, sp.y, (x, y) => x === cx && y === cy, { suspect: true, canOpen: true }); if (p && (!bp || p.length < bp.length)) { bp = p; best = w; } }
   if (!best) return; sp.mode = 'fleeing'; sp.flee = best.id; sc.slipTried = true; const side = watchPts().find(p => p.win === best.id).side;
-  log(`Movement inside — sounds like he is heading for the ${side} side of the house!`, 'alert');
+  log(`Movement inside — sounds like ${multiSp() ? 'someone' : 'he'} is heading for the ${side} side of the house!`, 'alert');
 }
 /** Debrief lines about the starting situation and how it was handled. */
 function sceneDebrief() {

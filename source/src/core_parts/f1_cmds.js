@@ -25,7 +25,9 @@ function runCommand(key) {
       if (r.chance(NEGO_CFG.number.interview)) learnNumber('neighbor'); break; }
     case 'blueprint': S.intel.blueprint = S.turn + 2; log('Records desk: blueprints requested, ETA 1 min.', 'intel'); break;
     case 'flyby': { S.intel.flybyReady = S.turn + 3; S.rooms.forEach(q => { if (S.windows.some(w => w.room === q.id)) q.known = true; });
-      sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.threat = Math.max(S.intel.threat, 1); S.intel.located = true;
+      const hs = multiSp() ? suspList().filter(spActive) : [sp]; hs.forEach(s => { s.heat = { room: s.room, x: s.x, y: s.y, turn: S.turn }; }); S.intel.threat = Math.max(S.intel.threat, 1); S.intel.located = true;
+      const hr = [...new Set(hs.map(s => S.rooms[s.room] ? 'the ' + S.rooms[s.room].name : 'near the house'))];
+      if (hs.length > 1) log(`Drone flyby: heat signatures — ${hr.join(', ')}. Thermal cannot give a reliable head count. Window rooms mapped.`, 'intel'); else
       log(`Drone flyby: thermal signature ${S.rooms[sp.room] ? 'in the ' + S.rooms[sp.room].name : 'near the house'}. Window rooms mapped.`, 'intel'); fx('flyby', S.house.x0, S.house.y0); break; }
     case 'partner': { S.intel.partner = true; S.intel.floors = true; S.intel.threat = Math.max(S.intel.threat, 1); S.rooms.forEach(q => q.known = true); const T = NEGO_CFG.temper[S.nego.temper]; S.nego.read = T.hint;
       const srm = S.rooms[sp.room], v = S.stype && S.stype.variant; if (v === 'firearm') S.intel.weapon = true;
@@ -40,6 +42,6 @@ function runCommand(key) {
   }
 }
 function surrender(msg) { const sp = S.suspect; sp.mode = 'surrendered'; sp.stun = 0; log(msg, 'good');
-  S.doors.forEach(d => { if (d.rooms.includes(sp.room)) { d.barricaded = false; d.locked = false; } if (d.name === 'Front Door') d.locked = false; }); log('He has pulled the barricade. Doors unlocked — move in and secure him.', 'good'); }
+  S.doors.forEach(d => { if (d.rooms.includes(sp.room)) { d.barricaded = false; d.locked = false; } if (d.name === 'Front Door') d.locked = false; }); log(multiSp() ? `${spName()} is giving up. Doors unlocked — move in and secure ${spName()}.` : 'He has pulled the barricade. Doors unlocked — move in and secure him.', 'good'); }
 function aggressive(n) { const sp = S.suspect; sp.agit = clamp(sp.agit + n, 0, 100); if (sp.talk > 0) sp.talk = Math.max(0, sp.talk - 25);
   if (S.nego && S.nego.contact && n >= 10 && S.rng.chance(0.5)) { S.nego.contact = null; S.nego.quiet = 1; negHist('Tactical action — he has cut off contact with the negotiator.', 'alert'); } }

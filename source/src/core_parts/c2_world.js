@@ -8,11 +8,11 @@
    sight and fire, so officers can run behind them for cover.
    ===================================================================== */
 function genGeo(r) {
-  const SW = r.int(36, 38), sw = r.int(6, 7), ST = SW + 2, SB = ST + sw - 1, SS = SB + 1;
+  const O = REAR_OFF - 1, SW = O + r.int(36, 38), sw = r.int(6, 7), ST = SW + 2, SB = ST + sw - 1, SS = SB + 1;
   const alley = r.chance(0.55);
   let cross = null;
   if (r.chance(0.55)) { const left = r.chance(0.5), x0 = left ? r.int(12, 22) : r.int(MAP_W - 28, MAP_W - 18); cross = { x0, x1: x0 + 5 }; }
-  const ny0 = alley ? 4 : 1;
+  const ny0 = O + (alley ? 4 : 1), RW = 1 + REAR_CFG.road, ry0 = RW + REAR_CFG.walk, ry1 = REAR_OFF - 1;
   const tw = r.int(36, 42), tx0 = Math.round(MAP_W / 2 - tw / 2) + r.int(-6, 6);
   const lots = [];
   const split = (a, b, side, y0, y1) => { let x = a; while (b - x + 1 >= 20) { let w = r.int(22, 32); if (b - (x + w) + 1 < 18) w = b - x + 1; lots.push({ x0: x, x1: x + w - 1, y0, y1, side }); x += w; }
@@ -22,8 +22,9 @@ function genGeo(r) {
   split(tx0 + tw, MAP_W - 2, 'n', ny0, SW - 1);
   if (cross) { split(1, cross.x0 - 1, 's', SS + 2, MAP_H - 2); split(cross.x1 + 1, MAP_W - 2, 's', SS + 2, MAP_H - 2); }
   else split(1, MAP_W - 2, 's', SS + 2, MAP_H - 2);
+  const nFront = lots.length; split(1, MAP_W - 2, 's', ry0, ry1); for (let i = nFront; i < lots.length; i++) lots[i].rear = true;
   lots.forEach((l, i) => { l.id = i; l.lawn = r(); });
-  S.geo = { SW, ST, SB, SS, streetW: sw, alley, cross, lots, target, name: r.pick(STREETS) + (r.chance(0.5) ? ' Street' : ' Drive') };
+  S.geo = { rear: { road0: 1, road1: REAR_CFG.road, walk0: RW, walk1: ry0 - 1, y0: ry0, y1: ry1 }, SW, ST, SB, SS, streetW: sw, alley, cross, lots, target, name: r.pick(STREETS) + (r.chance(0.5) ? ' Street' : ' Drive') };
   return target;
 }
 function markRect(q, f) { for (let y = q.y; y < q.y + q.h; y++) for (let x = q.x; x < q.x + q.w; x++) if (inb(x, y)) f(idx(x, y), x, y); }
@@ -40,7 +41,8 @@ function genNeighborhood(r) {
   const pave = (q, k) => markRect(q, c => { if (S.room[c] < 0) S.paved[c] = k; });
   pave({ x: 1, y: G.SW, w: MAP_W - 2, h: 2 }, 2); pave({ x: 1, y: G.ST, w: MAP_W - 2, h: G.streetW }, 1); pave({ x: 1, y: G.SS, w: MAP_W - 2, h: 2 }, 2);
   if (G.cross) { pave({ x: G.cross.x0 - 1, y: G.SS, w: 1, h: MAP_H - G.SS - 1 }, 2); pave({ x: G.cross.x0, y: G.SS, w: 6, h: MAP_H - G.SS - 1 }, 1); pave({ x: G.cross.x1 + 1, y: G.SS, w: 1, h: MAP_H - G.SS - 1 }, 2); }
-  if (G.alley) pave({ x: 1, y: 1, w: MAP_W - 2, h: 3 }, 3);
+  if (G.alley) pave({ x: 1, y: REAR_OFF, w: MAP_W - 2, h: 3 }, 3);
+  pave({ x: 1, y: G.rear.road0, w: MAP_W - 2, h: REAR_CFG.road }, 1); pave({ x: 1, y: G.rear.walk0, w: MAP_W - 2, h: REAR_CFG.walk }, 2);
   // ---- target lot: driveway, walk, patio, detached garage ----
   const T = G.target, fd = S.doors.find(d => d.name === 'Front Door'), fdo = fd.cells[0].find(c => roomAt(c[0], c[1]) < 0) || fd.cells[0][1];
   const gside = H.side === 'L' ? -1 : 1;
@@ -59,7 +61,7 @@ function genNeighborhood(r) {
     if (L.target || L.x1 - L.x0 < 17) continue;
     const north = L.side === 'n', lw = L.x1 - L.x0 + 1;
     const w = r.int(10, Math.min(18, lw - 10)), h = r.int(8, north ? 12 : 10);
-    const setback = north ? r.int(6, 10) : r.int(4, 7);
+    let setback = north ? r.int(6, 10) : r.int(4, 7); if (L.rear) setback = Math.min(setback, 5);
     const y = north ? L.y1 - setback - h + 1 : L.y0 + setback;
     const hasG = r.chance(0.5) && lw - w >= 17, gl = r.chance(0.5);
     const x = clamp(L.x0 + Math.floor((lw - w - (hasG ? 6 : 0)) / 2) + r.int(-2, 2) + (hasG && gl ? 6 : 0), L.x0 + 3 + (hasG && gl ? 6 : 0), L.x1 - w - 3 - (hasG && !gl ? 6 : 0));
@@ -67,16 +69,16 @@ function genNeighborhood(r) {
     if (r.chance(0.45)) { const ww = r.int(4, Math.max(4, Math.floor(w / 2))), wh = r.int(3, 4), wx = r.chance(0.5) ? x : x + w - ww; parts.push({ x: wx, y: north ? y - wh : y + h, w: ww, h: wh }); }
     let garage = null; if (hasG) { const gh = Math.min(h, r.int(6, 7)); garage = { x: gl ? x - 6 : x + w, y: north ? y + h - gh : y, w: 6, h: gh }; parts.push(garage); }
     if (!parts.every(q => q.y >= L.y0 + 1 && q.y + q.h <= L.y1 && q.x >= L.x0 + 2 && q.x + q.w <= L.x1 - 1 && rectFree(q, 1))) continue;
-    const nb = { lot: L.id, parts, garage, north, roof: r.int(0, 5), body: r.int(0, 4), storeys: r.chance(0.5) ? 2 : 1 };
+    const nb = { lot: L.id, parts, garage, north, rear: !!L.rear, roof: r.int(0, 5), body: r.int(0, 4), storeys: r.chance(0.5) ? 2 : 1 };
     parts.forEach(q => solid(q, 5, true));
     // driveway
     const dq = garage ? { x: garage.x, w: 6 } : { x: r.chance(0.5) ? Math.max(L.x0 + 1, x - 4) : Math.min(L.x1 - 3, x + w + 1), w: 3 };
-    const drive = north ? { x: dq.x, y: garage ? garage.y + garage.h : y + h - 4, w: dq.w, h: 0 } : { x: dq.x, y: G.SS + 2, w: dq.w, h: 0 };
+    const drive = north ? { x: dq.x, y: garage ? garage.y + garage.h : y + h - 4, w: dq.w, h: 0 } : { x: dq.x, y: L.y0, w: dq.w, h: 0 };
     drive.h = north ? G.SW - drive.y : (garage ? garage.y : y + 4) - drive.y;
     if (drive.h > 0 && drive.x >= L.x0 && drive.x + drive.w <= L.x1 + 1) { pave(drive, 4); W.drives.push(drive); nb.drive = drive;
-      if (r.chance(0.6)) { const cq = { x: drive.x + Math.floor((drive.w - 2) / 2), y: north ? G.SW - 5 : G.SS + 3, w: 2, h: 4 }; if (rectFree(cq) || true) { W.cars.push({ x: cq.x, y: cq.y, w: 2, h: 4, vert: true, color: r.int(0, 5) }); } } }
+      if (r.chance(0.6)) { const cq = { x: drive.x + Math.floor((drive.w - 2) / 2), y: north ? G.SW - 5 : L.y0 + 1, w: 2, h: 4 }; if (rectFree(cq) || true) { W.cars.push({ x: cq.x, y: cq.y, w: 2, h: 4, vert: true, color: r.int(0, 5) }); } } }
     const door = { x: x + r.int(2, w - 3), y: north ? y + h : y - 1 };
-    const walk = north ? { x: door.x, y: door.y, w: 1, h: G.SW - door.y } : { x: door.x, y: G.SS + 2, w: 1, h: door.y - G.SS - 1 };
+    const walk = north ? { x: door.x, y: door.y, w: 1, h: G.SW - door.y } : { x: door.x, y: L.y0, w: 1, h: door.y - L.y0 + 1 };
     pave(walk, 5); W.walks.push(walk);
     W.nb.push(nb);
   }
@@ -91,6 +93,8 @@ function genNeighborhood(r) {
   for (let i = 1; i < lotsS.length; i++) { const L = lotsS[i], P = lotsS[i - 1]; if (P.x1 + 1 !== L.x0) continue; const a = backOf(L), b = backOf(P); const yS = Math.max(a ? a.y0 + 2 : L.y0 + 8, b ? b.y0 + 2 : L.y0 + 8);
     if (r.chance(0.8)) fenceV(L.x0, yS, L.y1, [r.int(yS + 1, Math.max(yS + 1, L.y1 - 3))]); }
   if (G.alley) for (const L of lotsN) if (r.chance(0.8)) fenceH(L.x0, L.x1, L.y0, [r.int(L.x0 + 2, L.x1 - 4)]);
+  // rear row: back fence between the back neighbours' yards and the target block (or the alley), with a gate per lot
+  for (const L of lotsS.filter(l => l.rear)) if (r.chance(0.85)) fenceH(L.x0, L.x1, G.alley ? L.y1 : L.y1 + 1, [r.int(L.x0 + 2, L.x1 - 4)]);
   W.yf = {};
   for (const L of G.lots) { const b = backOf(L); if (!b || (!L.target && r.chance(0.35))) continue;
     const yf = L.side === 'n' ? b.y0 + Math.min(3, Math.max(1, b.y1 - b.y0 - 6)) : b.y1 - 2;
@@ -115,10 +119,10 @@ function genNeighborhood(r) {
       if (!rectFree(q, 2) || W.trees.some(o => dist(o.x, o.y, x, y) < 5)) continue; if (L.target && x >= H.x0 - 3 && x <= H.x1 + 3 && y >= H.y0 - 3 && y <= H.y1 + 3) continue;
       solid(q, 1, false); W.trees.push({ x, y, r: 1.5 + r() * 1.3, hue: r() }); k++; } }
   // ---- mailboxes ----
-  for (const L of G.lots) { const d = W.drives.find(q => q.x >= L.x0 && q.x <= L.x1) ; const x = d ? (d.x + d.w < L.x1 ? d.x + d.w : d.x - 1) : L.x0 + 3; const y = L.side === 'n' ? G.SW - 1 : G.SS + 2;
+  for (const L of G.lots) { const d = W.drives.find(q => q.x >= L.x0 && q.x <= L.x1) ; const x = d ? (d.x + d.w < L.x1 ? d.x + d.w : d.x - 1) : L.x0 + 3; const y = L.side === 'n' ? G.SW - 1 : L.y0;
     const q = { x, y, w: 1, h: 1 }; if (rectFree(q)) { solid(q, 6, false); W.mail.push({ x, y }); } }
   // ---- street lamps ----
-  for (let x = 6; x < MAP_W - 4; x += r.int(20, 26)) { for (const y of [G.SW, G.SS + 1]) { if (!S.block[idx(x, y)]) { S.block[idx(x, y)] = 1; W.lamps.push({ x, y }); } } }
+  for (let x = 6; x < MAP_W - 4; x += r.int(20, 26)) { for (const y of [G.SW, G.SS + 1, G.rear.walk0]) { if (!S.block[idx(x, y)]) { S.block[idx(x, y)] = 1; W.lamps.push({ x, y }); } } }
   // ---- SWAT truck + staging (out of the suspect's likely range) ----
   const hcx = (H.x0 + H.x1) / 2, far = r.chance(0.5) ? -1 : 1;
   let vx = Math.round(hcx + far * r.int(32, 38)); if (vx < 3 || vx > MAP_W - 10) vx = Math.round(hcx - far * r.int(32, 38));
@@ -138,6 +142,11 @@ function genNeighborhood(r) {
     const x = near > 0 ? Math.round(hcx + r.int(-14, 12)) : r.int(3, MAP_W - 8); if (!curbOk(x, y, L)) continue;
     if (near <= 0 && Math.abs(x + L / 2 - hcx) < 6) continue;
     const q = { x, y, w: L, h: 2 }; solid(q, 3, false); W.cars.push({ x, y, w: L, h: 2, vert: false, color: r.int(0, 7), type, street: true, flip: r.chance(0.5) }); nc--; if (Math.abs(x + L / 2 - hcx) < 16) near--; }
+  // parked cars on the rear street (north curb), never in front of a rear driveway
+  for (let n = r.int(2, 4), g = 0; n > 0 && g++ < 80;) { const [type, L] = r.pick(TYPES), x = r.int(4, MAP_W - 10), y = G.rear.road0;
+    if (W.drives.some(d => d.y === G.rear.y0 && x + L > d.x - 1 && x < d.x + d.w + 1) || W.cars.some(c => c.street && c.y === y && x + L + 2 > c.x && x < c.x + c.w + 2)) continue;
+    let ok = true; markRect({ x: x - 1, y, w: L + 2, h: 2 }, c => { if (S.block[c]) ok = false; }); if (!ok) continue;
+    solid({ x, y, w: L, h: 2 }, 3, false); W.cars.push({ x, y, w: L, h: 2, vert: false, color: r.int(0, 7), type, street: true, rear: true, flip: r.chance(0.5) }); n--; }
   S.ext = W;
 }
 /* cells a 3×1 cruiser can be centred on: outdoors, clear of solids and fences in a 3×3 box */
@@ -154,13 +163,14 @@ function buildDriveMask() {
 /** World validation for the harness: neighbor buildings never overlap the house, rooms, streets; key outdoor points connected. */
 function validateWorld() {
   const errs = [], W = S.world, G = S.geo, H = S.house;
-  for (const nb of W.nb) for (const q of nb.parts) markRect(q, (c, x, y) => { if (S.room[c] >= 0) errs.push('neighbor overlaps target house'); if (y >= G.SW && y < G.SS + 2) errs.push('neighbor on street'); });
+  for (const nb of W.nb) for (const q of nb.parts) markRect(q, (c, x, y) => { if (S.room[c] >= 0) errs.push('neighbor overlaps target house'); if (y >= G.SW && y < G.SS + 2) errs.push('neighbor on street'); if (y <= G.rear.walk1) errs.push('neighbor on rear street'); });
   for (const s of W.sheds) markRect(s, c => { if (S.room[c] >= 0) errs.push('shed overlaps house'); });
   const D = reach(W.staging.x, W.staging.y, { outdoor: true }, 1e6);
   const need = [[H.x0 - 2, H.y0 - 2, 'rear-left'], [H.x1 + 2, H.y0 - 2, 'rear-right'], [H.x0 - 2, H.y1 + 2, 'front-left'], [H.x1 + 2, H.y1 + 2, 'front-right']];
   for (const [x, y, n] of need) { let ok = false; for (let dy = -2; dy <= 2 && !ok; dy++) for (let dx = -2; dx <= 2; dx++) if (inb(x + dx, y + dy) && D[idx(x + dx, y + dy)] < 1e9) { ok = true; break; } if (!ok) errs.push('cannot reach ' + n + ' of house'); }
   for (const d of S.doors.filter(q => q.exterior)) { const o = d.cells[0].find(c => roomAt(c[0], c[1]) < 0); if (o && D[idx(o[0], o[1])] >= 1e9) errs.push('exterior door unreachable: ' + d.name); }
   for (const nb of W.nb) { const q = nb.parts[0]; let ok = false; for (let x = q.x - 2; x <= q.x + q.w + 1 && !ok; x++) for (const y of [q.y - 2, q.y - 1]) if (inb(x, y) && D[idx(x, y)] < 1e9) { ok = true; break; } if (!ok && nb.north) errs.push('no route behind a neighbor house'); }
+  if (!W.nb.some(n => n.rear)) errs.push('no rear-row neighbour house');
   let dr = 0; for (let c = 0; c < S.drive.length; c++) dr += S.drive[c]; if (dr < 600) errs.push('drive area too small');
   if (!S.drive[idx(Math.round((H.x0 + H.x1) / 2), G.ST + 3)]) errs.push('street in front not drivable');
   return errs;

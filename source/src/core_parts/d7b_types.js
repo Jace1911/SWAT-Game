@@ -22,19 +22,31 @@ const SCEN_TYPES = {
   neighbor: { name: 'Neighbor dispute — firearm displayed', short: 'Neighbor dispute', w: 0.15, agit: 55, fireMul: 1, sideMul: 1.35, offSideMul: 0.85, negoMul: 0.9, calloutMul: 1, slipMul: 1, slipAfter: 2,
     temperW: { talker: 0.3, withdrawn: 0.25, volatile: 0.45 }, knownArmed: true,
     desc: 'He pointed a gun at the neighbor. Known armed; most hostile toward the neighbor\u2019s side of the house. The neighbor can be interviewed.' },
+  // v12 types — 'xw' is the share of ALL calls (tunable); picked first on a separate seed stream so the five base types keep their seeds.
+  parole: { name: 'Parole absconder — warrant', short: 'Parole absconder', xw: 0.06, agit: 35, fireMul: 0.7, negoMul: 0.9, calloutMul: 1.1, slipMul: 1.2, slipAfter: 2,
+    temperW: { talker: 0.3, withdrawn: 0.6, volatile: 0.1 }, variants: { seen: 0.4, window: 0.3, caller: 0.3 }, legal: { parole: 1 },
+    desc: 'Patrol went to pick up a parole absconder on a violation warrant. He will not come out — he hides and waits, often in an attic or basement. Armed is possible, not certain.' },
+  sovcit: { name: 'Eviction standoff — sovereign citizen', short: 'Eviction standoff', xw: 0.05, agit: 50, fireMul: 1.05, negoMul: 0.8, calloutMul: 0.6, slipMul: 0.6, slipAfter: 3,
+    temperW: { talker: 0.5, withdrawn: 0.25, volatile: 0.25 }, variants: { eviction: 0.6, papers: 0.4 }, legal: { eviction: 1 }, fortified: true,
+    desc: 'He refused to leave when patrol came to enforce an eviction or serve civil papers. He rejects the court\u2019s authority and argues every point. Long guns, armor, gas masks and reinforced doors are more likely.' },
 };
 const SCEN_KEYS = Object.keys(SCEN_TYPES);
-const LEGAL_TXT = { discharge: 'He fired a round inside the house — reckless discharge charge.', warrant: 'Active warrant (failure to appear) on file.', interview: 'No crime reported — emergency mental-health evaluation (transport hold) only.' };
+const BASE_KEYS = SCEN_KEYS.filter(k => !SCEN_TYPES[k].xw);
+const LEGAL_TXT = { parole: 'Parole-violation warrant on file (absconded from supervision).', eviction: 'Court order on file (writ of possession / civil process).', discharge: 'He fired a round inside the house — reckless discharge charge.', warrant: 'Active warrant (failure to appear) on file.', interview: 'No crime reported — emergency mental-health evaluation (transport hold) only.' };
 /* ============================================================ */
 function wpick(r, W) { let p = r() * Object.values(W).reduce((a, b) => a + b, 0); for (const k in W) { p -= W[k]; if (p <= 0) return k; } return Object.keys(W)[0]; }
 /** Scenario type for a seed (deterministic; independent of the map generator's random stream). */
 function typeForSeed(seed, force) {
-  const r = makeRng(((seed >>> 0) % 1000000 || 1) * 7393 + 11), key = SCEN_TYPES[force] ? force : wpick(r, Object.fromEntries(SCEN_KEYS.map(k => [k, SCEN_TYPES[k].w]))), T = SCEN_TYPES[key];
+  const r = makeRng(((seed >>> 0) % 1000000 || 1) * 7393 + 11), base = SCEN_TYPES[force] ? null : wpick(r, Object.fromEntries(BASE_KEYS.map(k => [k, SCEN_TYPES[k].w])));
+  let xk = null; { const rx = makeRng(((seed >>> 0) % 1000000 || 1) * 8803 + 5); let p = rx(); for (const k of SCEN_KEYS) if (SCEN_TYPES[k].xw) { p -= SCEN_TYPES[k].xw; if (p < 0) { xk = k; break; } } }
+  const key = SCEN_TYPES[force] ? force : xk || base, T = SCEN_TYPES[key];
   const st = { key, name: T.name, short: T.short, variant: null, legal: null, risk: false, side: null };
   if (T.variants) st.variant = wpick(r, T.variants);
   if (T.legal) st.legal = wpick(r, T.legal);
   if (key === 'mental') st.risk = true;            // neutral debrief flag only
   if (key === 'neighbor') st.side = r.chance(0.5) ? 'left' : 'right';
+  if (key === 'parole') st.name = T.name + { seen: ' (seen going in)', window: ' (seen at a window)', caller: ' (caller says he is inside)' }[st.variant];
+  if (key === 'sovcit') st.name = st.variant === 'papers' ? 'Civil papers standoff — sovereign citizen' : T.name;
   if (st.variant === 'violent') st.name = T.name + ' (violent)'; else if (st.variant === 'firearm') st.name = T.name + ' (firearm)';
   return st;
 }
@@ -61,6 +73,7 @@ function typeDebrief() {
     out.push({ k: '  Risk flag', v: 'Risk to himself reported at the call. ' + (S.intel.emsEval ? 'Referred for EMS evaluation.' : 'No EMS evaluation arranged.') }); }
   if (st.key === 'domestic') out.push({ k: '  Partner interview', v: S.intel.partner ? 'Done — layout, weapons and history obtained.' : 'Not done.' });
   if (st.key === 'neighbor') out.push({ k: '  Neighbor side', v: `Most hostile toward the ${st.side} side (neighbor's house).` });
+  typeExtraDebrief(out);
   if (st.key === 'flee') out.push({ k: '  Vacant house', v: S.stats.escaped ? 'He got out through an unwatched side.' : 'Contained.' });
   return out;
 }

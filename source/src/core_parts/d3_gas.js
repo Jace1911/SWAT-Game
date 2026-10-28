@@ -74,12 +74,12 @@ function impairVis(u) { return (1 - 0.4 * (u.impair || 0)) * (masked(u) ? MASK.v
 function suspectGas() { // per tick
   const sp = S.suspect; const g = gasAt(sp.x, sp.y);
   if (sp.hasMask && !sp.maskOn && g > 0.08 && hostile()) { if (!sp.maskDon) { sp.maskDon = 2; } else if (--sp.maskDon <= 0) sp.maskOn = true; }
-  const t = sp.maskOn ? g * 0.05 : clamp(g * 1.3, 0, 1); sp.impair = Math.max(t, (sp.impair || 0) * 0.6); if (sp.impair < 0.03) sp.impair = 0;
-  if (sp.maskOn && sp.visible && !sp.maskSeen) { sp.maskSeen = true; log('Suspect is wearing a gas mask!', 'alert'); fx('text', sp.x, sp.y, { text: 'GAS MASK', color: '#ffb020' }); }
+  const t = sp.maskOn ? g * 0.05 : clamp(g * 1.3, 0, 1); sp.impair = Math.max(t, (sp.impair || 0) * 0.6); if (sp.impair < 0.03) sp.impair = 0; if (sp.hurt) sp.impair = Math.max(sp.impair, sp.hurt);
+  if (sp.maskOn && sp.visible && !sp.maskSeen) { sp.maskSeen = true; log(`${spName()} is wearing a gas mask!`, 'alert'); fx('text', sp.x, sp.y, { text: 'GAS MASK', color: '#ffb020' }); }
 }
 function suspectGasTurn() { // per turn: may relocate to clean air, run, or give up
   const sp = S.suspect; if (!hostile() || sp.maskOn || sp.mode === 'fleeing') return; const g = gasAt(sp.x, sp.y); if (g < 0.08) return;
-  if (S.rng.chance(clamp(0.05 + 0.25 * g, 0, 0.4))) { surrender('Suspect is coughing and shouting that he gives up!'); return; }
+  if (S.rng.chance(clamp(0.05 + 0.25 * g, 0, 0.4))) { surrender(`${spName()} is coughing and shouting ${multiSp() ? 'to give up' : 'that he gives up'}!`); return; }
   const pMove = clamp(0.2 + 0.7 * g, 0, 0.9); if (!S.rng.chance(pMove)) return;
   // gas-free room vs exit
   if (S.rng.chance(0.35 + 0.3 * g)) { startFlee(); if (sp.mode === 'fleeing') return; }

@@ -119,10 +119,10 @@ function threatPoints() {
   const wgt = rm => kr < 0 ? 1 : rm === kr ? 1 : 0.4;
   for (const w of S.windows) { const e = w.edges[Math.floor(w.edges.length / 2)]; out.push({ x: e[0], y: e[1], w: wgt(w.room), kind: 'window', id: w.id }); }
   for (const d of S.doors) if (d.exterior && d.state !== 'closed') { const c = d.cells[Math.floor(d.cells.length / 2)]; const a = roomAt(c[0][0], c[0][1]) >= 0 ? c[0] : c[1]; out.push({ x: a[0], y: a[1], w: wgt(roomAt(a[0], a[1])), kind: 'door', id: d.id }); }
-  const sp = S.suspect; if (suspectActive() && sp.room < 0) out.push({ x: sp.x, y: sp.y, w: 1.5, kind: 'suspect' });
+  for (const sp of suspList()) if (spActive(sp) && sp.room < 0) out.push({ x: sp.x, y: sp.y, w: 1.5, kind: 'suspect' });
   return out;
 }
-function expoKey() { return S.doors.map(d => d.exterior ? d.state[0] : '').join('') + '|' + S.units.filter(u => u.kind === 'cruiser').map(c => c.x + ',' + c.y + carAxis(c)).join(';') + '|' + knownRoom() + '|' + (S.suspect && S.suspect.room < 0 ? S.suspect.x + ',' + S.suspect.y : ''); }
+function expoKey() { return S.doors.map(d => d.exterior ? d.state[0] : '').join('') + '|' + S.units.filter(u => u.kind === 'cruiser').map(c => c.x + ',' + c.y + carAxis(c)).join(';') + '|' + knownRoom() + '|' + suspList().filter(sp => sp.room < 0).map(sp => sp.x + ',' + sp.y).join(';'); }
 function computeExpo(force) {
   const key = expoKey(); if (!force && S.expoKey === key && S.expo) return; S.expoKey = key;
   if (!S.expo) S.expo = new Float32Array(MAP_W * MAP_H); S.expo.fill(0);
@@ -222,8 +222,7 @@ function updateVision() {
   for (const c of S.peek) S.vis[c] = 1;
   for (const u of W) if (u.slice && u.slice.ox === u.x && u.slice.oy === u.y && u.slice.cells.length) { for (const c of u.slice.cells) S.vis[c] = 1; u.vis = u.vis.concat(u.slice.cells); } // pie-slice reveal
   // mutual sight: if the suspect has a clear line to one of our units inside sight range, that unit sees him too (no facing needed)
-  const sp0 = S.suspect;
-  if (sp0 && suspectActive()) { const sc = idx(sp0.x, sp0.y); for (const u of W) { if (u.kind === 'cruiser' || !u.vis || u.vis.includes(sc)) continue; const p = visParamsG(u);
+  for (const sp0 of suspList()) if (spActive(sp0)) { const sc = idx(sp0.x, sp0.y); for (const u of W) { if (u.kind === 'cruiser' || !u.vis || u.vis.includes(sc)) continue; const p = visParamsG(u);
     if (dist(u.x, u.y, sp0.x, sp0.y) <= p.range && los(sp0.x, sp0.y, u.x, u.y) === 1 && los(u.x, u.y, sp0.x, sp0.y) === 1) { u.vis.push(sc); S.vis[sc] = 1; } } }
   // per-cell memory: indoor cells we have actually had eyes on (through open doors/doorways), drawn even while the room is not yet "explored"
   if (!S.seenCell || S.seenCell.length !== S.vis.length) S.seenCell = new Uint8Array(S.vis.length);
@@ -234,12 +233,13 @@ function updateVision() {
     if (!rm.explored && (occupied || counts[i] >= rm.w * rm.h * 0.3)) { rm.explored = true; if (!rm.known) rm.known = true; log(`${rm.name} now in view.`, 'intel'); } });
   S.doors.forEach(d => { if (d.exterior || d.rooms.some(q => q >= 0 && S.rooms[q].explored)) d.known = true; });
   S.doors.forEach(d => { if (d.storm && !d.stormKnown && d.cells.some(([a, b]) => (roomAt(a[0], a[1]) < 0 && S.vis[idx(a[0], a[1])]) || (roomAt(b[0], b[1]) < 0 && S.vis[idx(b[0], b[1])]))) { d.stormKnown = true; log(`${d.name}: outer storm door spotted — pry will take longer.`, 'intel'); } });
-  const sp = S.suspect;
-  if (sp && suspectActive() && (S.vis[idx(sp.x, sp.y)] || (sp.walk && sp.room < 0))) { // a walk-out in the yard is watched by everyone
-    if (!sp.seen) { log(`CONTACT — suspect visual in ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'yard'}!`, 'alert'); const sc = idx(sp.x, sp.y), who = [];
+  eachSp(sp => {
+  if (sp && suspectActive() && ((S.vis[idx(sp.x, sp.y)] && !hiddenNow(sp)) || (sp.walk && sp.room < 0))) { // a walk-out in the yard is watched by everyone
+    if (!sp.seen) { if (multiSp() && !sp.labelled) { sp.labelled = true; sp.label = SUS_LETTERS[suspList().filter(s => s.labelled).length - 1]; }
+      log(`CONTACT — ${multiSp() ? spName().toLowerCase() : 'suspect'} visual in ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'yard'}!`, 'alert'); const sc = idx(sp.x, sp.y), who = [];
       for (const u of W) if (u.kind === 'team' && u.vis.includes(sc)) who.push(...teamOk(u).map(o => o.id)); xpAct('locate', who.length ? who : null); }
     if (sp.armor && sp.armor !== 'none' && !sp.armorKnown) revealSuspectArmor('seen');
     sp.seen = true; sp.visible = true; sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn }; sp.heat = null;
-  } else if (sp) sp.visible = false;
-  containStatus();
+  } else if (sp) sp.visible = false; });
+  countObserve(); containStatus();
 }

@@ -48,7 +48,8 @@ function deviceTransition(t, o, k, hands, fn) {
   if (!had) { stowOne(o, k); autoRedraw(o, st); }
   syncEquip(t); return { o, r, stowed: st, drew: !had }; }
 /** Runs during the turn: waits (holding) until the suspect is in view and in range; order clears at end of turn otherwise. */
-function deviceTick(u, o) { const sp = S.suspect;
+function deviceTick(u, o) { const t = o.tgt && suspById(o.tgt); return withSp(t && spActive(t) && t.visible ? t : devTarget(u.x, u.y), () => deviceTick1(u, o)); }
+function deviceTick1(u, o) { const sp = S.suspect;
   if (!hostile() || !suspectActive()) { popOrder(u); return; }
   const why = deviceShotReq(u, o.type, u.x, u.y); u.holding = true;
   if (why) { if (!o.waitLog) { o.waitLog = 1; log(`${u.name}: ${o.type === 'taser' ? 'taser' : 'less-lethal'} ready — waiting for a clear line (${why.toLowerCase()}).`, 'radio'); } return; }

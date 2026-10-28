@@ -46,7 +46,7 @@ function suspectTick() {
   if (sp.duck > 0) { sp.duck--; backHome(); return; }
   if (roomAt(sp.home.x, sp.home.y) !== sp.room && sp.room >= 0) { backHome(); sp.room = roomAt(sp.x, sp.y); return; } // relocating (e.g. away from gas)
   // best (position, target) pair: his current cell or a window of his room
-  const spots = [[sp.x, sp.y]].concat(sp.room >= 0 ? suspectWindowCells() : []);
+  const spots = [[sp.x, sp.y]].concat(sp.room >= 0 && !(sp.disp === 'hiding' && sp.agit < 75 && !sp.atWindow) ? suspectWindowCells().filter(([x, y]) => !suspList().some(o => o !== sp && spActive(o) && o.x === x && o.y === y)) : []);
   let best = null;
   const tg = primaryOf(); let pool = shooters();
   if (tg) { const T = unit(tg.uid); const up = primaryUp(tg); pool = pool.filter(u => u.uid === tg.uid && (up || (u.kind === 'team' && (tg.spill || 0) < SHOOT_CFG.spillMax))); } // no retarget until next turn
@@ -61,7 +61,7 @@ function suspectTick() {
   const indoor = (best.u.kind === 'team' || best.u.kind === 'robot') && roomAt(best.u.x, best.u.y) >= 0;
   let tryP = indoor ? (sp.ambush ? FIRE_CFG.indoorAmbush : FIRE_CFG.indoor)
     : FIRE_CFG.outside * (T_TRY[best.cls] / T_TRY.open) * (0.75 + sp.agit / 200) * (sp.ambush ? 1.3 : 1) * (contactLive() && !sp.ambush ? NEGO_CFG.talkingFire : 1);
-  tryP *= fireImpair() * typeFireMul(best.u); best.indoor = indoor;
+  tryP *= fireImpair() * typeFireMul(best.u) * (sp.disp === 'hiding' ? MULTI_CFG.hideFire : sp.disp === 'fighting' ? MULTI_CFG.fightFire : 1); best.indoor = indoor;
   if (!S.rng.chance(clamp(tryP, 0, 0.95))) return;
   suspectFire(best);
 }
@@ -114,12 +114,13 @@ function returnFirers() { const sp = S.suspect, c = [];
 /** The nearest officers with a sight line shoot back at the muzzle flash (max 3); the log lists who fired and the result. */
 function returnFire() {
   const sp = S.suspect; if (!hostile()) return; const who = returnFirers(); if (!who.length) return; let res = 'no hits';
-  for (const f of who) { if (!hostile()) break; const r = fireAt(f.u, sp.x, sp.y, 'fire', true); if (r === 'hit') { res = `${f.name} hit the suspect`; break; } if (r === 'stopped') res = `${f.name}'s round was stopped by body armor`; }
+  for (const f of who) { if (!hostile()) break; const r = fireAt(f.u, sp.x, sp.y, 'fire', true); if (r === 'hit') { res = `${f.name} hit ${multiSp() ? spName().toLowerCase() : 'the suspect'}`; break; } if (r === 'stopped') res = `${f.name}'s round was stopped by body armor`; }
   S.stats.returnVolleys = (S.stats.returnVolleys || 0) + 1; S.lastReturn = who.map(f => f.o.id || f.u.uid);
   log(`Return fire: ${who.map(f => f.name).join(', ')} — ${res}.`, 'radio'); if (who.length >= 2 && hostile()) sp.suppressed = Math.max(sp.suppressed, 1);
 }
 /** One officer volley at a cell. Returns 'hit' | 'miss' | 'empty'. */
-function fireAt(u, tx, ty, mode, isReturn) {
+function fireAt(u, tx, ty, mode, isReturn) { return withSp(suspectFor(tx, ty, u.x, u.y), () => fireAt1(u, tx, ty, mode, isReturn)); }
+function fireAt1(u, tx, ty, mode, isReturn) {
   const sp = S.suspect; fx('muzzle', u.x, u.y, { friendly: true }); fx('shot', u.x, u.y, { tx, ty, friendly: true }); S.stats.ofShots = (S.stats.ofShots || 0) + 1;
   faceTo(u, tx, ty); if (!isReturn) aggressive(mode === 'suppress' ? 3 : 5); noise(tx, ty, 8, 'shot');
   if (!hostile()) return 'empty';
@@ -134,19 +135,19 @@ function suspectHit(u) { const sp = S.suspect;
   if (suspectArmorStops(weaponOf(u) || 'pistol')) { fx('text', sp.x, sp.y, { text: 'ARMOR', color: '#ffd080' }); S.stats.susArmorStops = (S.stats.susArmorStops || 0) + 1;
     log(`${u.name}: hit on the suspect's torso.`, 'radio'); revealSuspectArmor('stop'); sp.duck = Math.max(sp.duck || 0, 1); aggressive(3); return false; }
   sp.stun = 0; sp.downBy = 'fire'; fx('hitflash', sp.x, sp.y);
-  const prev = S.cas.find(c => c.who === 'suspect' && casActive(c));
-  const c = prev ? (prev.state = 'immobile', prev.crit = Math.min(prev.crit, S.rng.int(2, 4)), prev) : addCasualty('suspect', 'S', 'Suspect', sp.x, sp.y, { kia: CAS_CFG.suspectKia, mobile: CAS_CFG.suspectMobile, by: u.uid });
+  const key = sp.key || 'S', prev = S.cas.find(c => c.who === 'suspect' && casActive(c) && (c.ref || 'S') === key);
+  const c = prev ? (prev.state = 'immobile', prev.crit = Math.min(prev.crit, S.rng.int(2, 4)), prev) : addCasualty('suspect', key, spName(), sp.x, sp.y, { kia: CAS_CFG.suspectKia, mobile: CAS_CFG.suspectMobile, by: u.uid });
   c.x = sp.x; c.y = sp.y; c.seen = true; c.known = true;
   if (c.state === 'mobile') { sp.impair = Math.max(sp.impair || 0, 0.45); sp.duck = 2; sp.injured = true; aggressive(6);
-    fx('text', sp.x, sp.y, { text: 'SUSPECT HIT', color: '#ffb020' }); log(`${u.name}: suspect HIT — he is still moving and still armed. Injured.`, 'alert'); return; }
-  sp.mode = 'incapacitated'; sp.walk = null; S.stats.method = 'Officer fire'; sp.injured = true;
-  if (c.state === 'kia') { sp.deceased = true; fx('text', sp.x, sp.y, { text: 'SUSPECT DOWN', color: '#c9ced6' }); log(`${u.name}: suspect hit — he is not moving. Move in and secure the scene.`, 'good'); return; }
-  fx('text', sp.x, sp.y, { text: 'SUSPECT DOWN', color: '#ffb020' }); log(`${u.name}: suspect HIT — immobile, weapon out of reach. Move in, secure him, get EMS.`, 'good'); }
+    fx('text', sp.x, sp.y, { text: 'SUSPECT HIT', color: '#ffb020' }); log(`${u.name}: ${multiSp() ? spName().toLowerCase() : 'suspect'} HIT — still moving and still armed. Injured.`, 'alert'); return; }
+  sp.mode = 'incapacitated'; sp.walk = null; S.stats.method = 'Officer fire'; sp.method = sp.method || 'Officer fire'; sp.injured = true;
+  if (c.state === 'kia') { sp.deceased = true; fx('text', sp.x, sp.y, { text: 'SUSPECT DOWN', color: '#c9ced6' }); log(`${u.name}: ${multiSp() ? spName().toLowerCase() : 'suspect'} hit — not moving. Move in and secure the scene.`, 'good'); return; }
+  fx('text', sp.x, sp.y, { text: 'SUSPECT DOWN', color: '#ffb020' }); log(`${u.name}: ${multiSp() ? spName().toLowerCase() : 'suspect'} HIT — immobile, weapon out of reach. Move in, secure ${multiSp() ? 'the suspect' : 'him'}, get EMS.`, 'good'); }
 /** Stance 'free': fire at a visible suspect every 3rd tick. */
-function officersFire() {
-  const sp = S.suspect; if (!hostile() || !sp.visible || S.tick % 3 !== 0) return;
+function officersFire() { if (S.tick % 3 !== 0) return; const done = new Set(); // each officer engages the nearest visible hostile suspect; a suspect hit this tick is not engaged again
   for (const u of S.units) { if (!onFoot(u) || u.stance !== 'free' || u.installing || (u.orders[0] && u.orders[0].type === 'shoot')) continue; const wk = weaponOf(u); if (!wk) continue;
-    if (dist(u.x, u.y, sp.x, sp.y) > WEAPONS[wk].range || !los(u.x, u.y, sp.x, sp.y)) continue; if (fireAt(u, sp.x, sp.y, 'fire') === 'hit') return; }
+    const c = suspList().filter(sp => !done.has(sp) && spHostile(sp) && sp.visible && dist(u.x, u.y, sp.x, sp.y) <= WEAPONS[wk].range && los(u.x, u.y, sp.x, sp.y)).sort((a, b) => dist(u.x, u.y, a.x, a.y) - dist(u.x, u.y, b.x, b.y));
+    if (!c.length) continue; const sp = c[0]; if (fireAt(u, sp.x, sp.y, 'fire') === 'hit') { done.add(sp); if (!suspList().some(s => !done.has(s) && spHostile(s))) return; } }
 }
 /** An officer is hit: becomes a casualty (KIA / injured-mobile / immobile). stats.down counts officers out of the fight unless a medic stabilised them on the spot. */
 function bluntMsg(nm, ctx, c, cal) { return `${nm} (${ctx}) hit in the vest at close range — the armor stopped the ${cal === 'shotgun' ? 'shotgun load' : 'round'}, but the impact causes a minor blunt-trauma injury. Mobile, leaving the line for EMS.`; }

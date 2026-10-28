@@ -28,7 +28,7 @@ for (let seed = 1; seed <= NG; seed++) {
   if (S.roadblocks.length !== 2 || !S.roadblocks.every(b => Core.roadblockHeld(b))) errs.push('roadblocks not set');
   for (const u of S.units) if (u.kind === 'cruiser' && Math.abs(u.x - (S.house.x0 + S.house.x1) / 2) < 18) errs.push(u.name + ' starts at the house');
   if (!S.brief || !S.brief.transcript.length) errs.push('no brief');
-  const sp = S.suspect; if (!S.doors.some(d => d.barricaded)) errs.push('no barricade');
+  const sp = S.suspect; if (!S.doors.some(d => d.barricaded) && !S.hide) errs.push('no barricade'); // a hiding parole absconder does not barricade
   if (errs.length) { fail++; bad.push([seed, errs.slice(0, 4)]); }
   arch[S.house.archName] = (arch[S.house.archName] || 0) + 1; const rn = S.rooms[sp.room].type; rooms[rn] = (rooms[rn] || 0) + 1; weap[sp.weapon] = (weap[sp.weapon] || 0) + 1;
   sigs.add(S.house.arch + S.rooms.map(q => q.x + ',' + q.y + q.w + q.h).join('') + S.ext.nb.map(n => n.parts[0].x + ',' + n.parts[0].y).join(''));
@@ -96,7 +96,7 @@ function policy(kind) {
 }
 const MAXT = +process.env.MAXT || 50, GOOD = 350; // Satisfactory or better
 function play(seed, kind, stype) {
-  stype = stype || process.env.STYPE; const S = Core.newGame(seed, stype ? { stype } : undefined); const step = policy(kind); let guard = 0;
+  stype = stype || process.env.STYPE; const S = Core.newGame(seed, stype || process.env.SUSP ? Object.assign(stype ? { stype } : {}, process.env.SUSP ? { suspects: +process.env.SUSP } : {}) : undefined); const step = policy(kind); let guard = 0;
   // v7: no mission timer and no auto-fail — the harness caps the turns itself, then the "player" withdraws.
   while (S.phase !== 'over' && guard++ < MAXT) { step(); runTurn(); }
   const capped = S.phase !== 'over'; if (capped) Core.withdraw();

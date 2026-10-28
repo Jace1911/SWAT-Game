@@ -28,7 +28,7 @@ function genPerches() {
       const s = expoAt(x, y) * 4 + dist(x, y, best[0], best[1]) * 0.15; if (s < es) { es = s; entry = [x, y]; } }
     if (!entry) return;
     const cx = body[0].x + body[0].w / 2, cy = body[0].y + body[0].h / 2;
-    const where = (nb.north === (hy < S.geo.ST)) ? '' : ' across the street';
+    const where = nb.rear ? ' (rear row, behind the house)' : (nb.north === (hy < S.geo.ST)) ? '' : ' across the street';
     S.perches.push({ id: S.perches.length, nb: i, x: best[0], y: best[1], entry, kind: nb.storeys === 2 ? 'upper-floor window' : 'rooftop', sightLines: Math.round(bs * 10) / 10,
       name: `Neighbor house ${compass(cx - hx, cy - hy)}${where}` });
   });

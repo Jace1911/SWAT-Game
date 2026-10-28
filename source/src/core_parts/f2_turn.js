@@ -11,7 +11,7 @@ function execute() {
   if (S.units.some(u => u.kind === 'team' && unitAlive(u) && u.orders.some(o => o.type === 'gas'))) donMasks('CS gas going in');
   computeExpo();
   // officers left standing in a line of fire with nothing to do get behind something
-  if (hostile()) for (const u of S.units) if (onFoot(u) && !u.orders.length && !u.stayPut && roomAt(u.x, u.y) < 0 && expoAt(u.x, u.y) >= 0.6) seekCover(u, 'exposed to the house windows');
+  if (suspList().some(spHostile)) for (const u of S.units) if (onFoot(u) && !u.orders.length && !u.stayPut && roomAt(u.x, u.y) < 0 && expoAt(u.x, u.y) >= 0.6) seekCover(u, 'exposed to the house windows');
   updateVision(); return true;
 }
 function stepTick() {
@@ -23,9 +23,9 @@ function stepTick() {
     if (u.kind === 'team' && u.mask === 'donning') { u.mask = 'on'; log(`${u.name}: masks on.`, 'radio'); continue; }
     unitAct(u); }
   casualtyTick();
-  if (S.gasEver) suspectGas();
+  if (S.gasEver) eachSp(suspectGas);
   rebuildDyn(); computeExpo();
-  updateVision(); suspectTick(); officersFire(); teamResponses(); updateVision(); checkEnd();
+  updateVision(); eachSp(suspectTick); officersFire(); teamResponses(); updateVision(); checkEnd();
   if (S.phase === 'over') return true;
   if (S.tick >= TICKS) { endTurn(); return true; }
   S.version++; return false;
@@ -82,8 +82,8 @@ function unitAct(u) {
   if (u.inCar && u.orders[0] && u.orders[0].type === 'exit') { const o = u.orders[0], c = unit(u.inCar); if (c && o.side === 'safe' && houseSideOf(c) === 'driver' && c.occ[0] === u.uid && !o.slid) { o.slid = true; log(`${u.name}: sliding across to the far-side door…`); return; } exitCar(u, o.side || 'safe'); popOrder(u); return; }
   if (u.kind === 'team' && u.inCar) { const o = u.orders[0]; if (o && o.type === 'move') exitCar(u, 'safe'); else return; }
   if (u.kind === 'patrol' && u.inCar) { const o = u.orders[0]; if (o && o.type === 'move') { const c = unit(u.inCar); if (c && houseSideOf(c) === 'driver' && c.occ[0] === u.uid && !o.slid) { o.slid = true; log(`${u.name}: sliding across to the far-side door…`); return; } exitCar(u, 'safe'); } return; }
-  if ((u.kind === 'team' || u.kind === 'patrol' && !u.inCar) && u.detain && suspectActive()) { const sp = S.suspect;
-    stepAlong(u, null, (x, y) => cheb(x, y, sp.x, sp.y) <= 1 && !(x === sp.x && y === sp.y)); return; }
+  if ((u.kind === 'team' || u.kind === 'patrol' && !u.inCar) && u.detain) { const sp = u.detain === true ? S.suspect : suspById(u.detain);
+    if (sp && spActive(sp)) { stepAlong(u, null, (x, y) => cheb(x, y, sp.x, sp.y) <= 1 && !(x === sp.x && y === sp.y)); return; } u.detain = false; }
   if (u.kind === 'team') dracoInterrupt(u);
   const o = u.orders[0]; if (!o) return;
   if (u.kind === 'cruiser') {
@@ -113,7 +113,7 @@ function unitAct(u) {
   if (o.type === 'move' || o.type === 'clear') {
     const r = stepAlong(u, o, (x, y) => x === o.x && y === o.y, speed);
     if (r === null) failOrders(u, 'route blocked'); else if (r) { popOrder(u); if (o.type === 'move') u.stayPut = !!o.exposed; if (o.type === 'clear') { const rm = S.rooms[o.room];
-      if (!(S.suspect.room === o.room && suspectActive())) { log(`${u.name}: ${rm.name} CLEAR.`, 'good'); xpAct('clear', u, rm.name); fx('text', u.x, u.y, { text: 'CLEAR', color: '#3ef0a0' }); } } }
+      if (!spInRoom(o.room)) { log(`${u.name}: ${rm.name} CLEAR.`, 'good'); xpAct('clear', u, rm.name); fx('text', u.x, u.y, { text: 'CLEAR', color: '#3ef0a0' }); } } }
     return;
   }
   if (o.type === 'board') { const c = unit(o.car); if (!c || seatsUsed(c) + seatsNeeded(u) > carSeats(c)) { failOrders(u, 'vehicle full'); return; }
@@ -142,7 +142,7 @@ function unitAct(u) {
     const other = (() => { for (const [a, b] of d.cells) { if (a[0] === u.x && a[1] === u.y) return b; if (b[0] === u.x && b[1] === u.y) return a; } return d.cells[0][1]; })();
     faceTo(u, other[0], other[1]);
     if (o.type === 'polecam') { const rr = roomAt(other[0], other[1]); if (rr >= 0) { const rm = S.rooms[rr]; for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) S.peek.push(idx(x, y)); }
-      log(`${u.name}: pole cam under the door — ${rr >= 0 ? S.rooms[rr].name : 'outside'} ${S.suspect.room === rr && suspectActive() ? 'has the SUSPECT' : 'looks empty'}.`, S.suspect.room === rr ? 'alert' : 'intel'); popOrder(u); return; }
+      log(`${u.name}: pole cam under the door — ${rr >= 0 ? S.rooms[rr].name : 'outside'} ${spInRoom(rr) ? (suspList().filter(s => spActive(s) && s.room === rr).length > 1 ? `has ${suspList().filter(s => spActive(s) && s.room === rr).length} SUSPECTS` : 'has the SUSPECT') : 'looks empty'}.`, spInRoom(rr) ? 'alert' : 'intel'); popOrder(u); return; }
     if (o.type === 'detonate') { if (!d.charge) { popOrder(u); return; } detonateCharge(u, d); popOrder(u); return; }
     if (d.state !== 'closed') { if (d.charge) d.charge = null; popOrder(u); return; }
     breachTick(u, o, d, other); return;
@@ -157,7 +157,8 @@ function unitAct(u) {
     if (!th) { failOrders(u, 'nobody can free both hands to throw (shield / ram)'); return; }
     if (th.stowed.length) log(`${th.o.name}: ${th.stowed.map(k => WEAPONS[k] ? WEAPONS[k].short.toLowerCase() : k).join(' + ')} put away for the two-handed throw — back in hand, not ready until next turn.`); popOrder(u);
     if (o.type === 'bang') { fx('flash', tc[0], tc[1], { fromX: u.x, fromY: u.y }); log(`${u.name}: BANG OUT — flashbang into ${rm.known ? rm.name : 'room'}.`, 'radio'); noise(tc[0], tc[1], 10, 'bang');
-      if (S.suspect.room === o.room && hostile()) { S.suspect.stun = 5; S.suspect.stunBy = null; S.suspect.daze = FIRE_CFG.bangDaze; S.suspect.ambush = false; xpAct('bang', u); log('Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
+      let nb = 0; eachSp(sp => { if (sp.room === o.room && hostile()) { sp.stun = 5; sp.stunBy = null; sp.daze = FIRE_CFG.bangDaze; sp.ambush = false; nb++; } });
+      if (nb) { xpAct('bang', u); log(nb > 1 ? `${nb} suspects disoriented by flashbang.` : 'Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
     else { gasDeploy(o.room); fx('gas', tc[0], tc[1], { room: o.room, fromX: u.x, fromY: u.y }); log(`${u.name}: CS gas deployed into ${rm.known ? rm.name : 'room'}.`, 'radio'); aggressive(15); }
     return;
   }
@@ -171,10 +172,11 @@ function doBreach(u, d, how) {
   noise(mx, my, how === 'charge' ? 18 : 14, 'breach'); aggressive(how === 'charge' ? 25 : 20);
   const sp = S.suspect; if (false) { sp.stun = Math.max(sp.stun, 2); log('Suspect stunned by the blast.', 'good'); }
 }
-function noise(x, y, loud, kind) {
+function noise(x, y, loud, kind) { eachSp(() => noise1(x, y, loud, kind)); }
+function noise1(x, y, loud, kind) {
   const sp = S.suspect; if (!hostile()) return; const d = dist(sp.x, sp.y, x, y);
   if (d > loud) return;
-  if (sp.mode === 'barricaded') { sp.mode = 'alert'; log('Suspect is alerted — movement heard inside.', 'alert'); }
+  if (sp.mode === 'barricaded') { sp.mode = 'alert'; const k = S.turn + ':' + S.tick; if (S.alertLogAt !== k) { S.alertLogAt = k; log('Suspect is alerted — movement heard inside.', 'alert'); } }
   sp.agit = clamp(sp.agit + (kind === 'breach' ? 12 : 4), 0, 100);
   const ownDoor = S.doors.some(dd => dd.rooms.includes(sp.room) && dd.cells.some(([a, b]) => dist(a[0], a[1], x, y) < 1.6 || dist(b[0], b[1], x, y) < 1.6));
   if ((kind === 'breach' || kind === 'ram' || kind === 'door') && ownDoor && sp.stun === 0) { sp.ambush = true; sp.dir = Math.atan2(y - sp.y, x - sp.x); }

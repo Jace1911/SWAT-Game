@@ -84,22 +84,22 @@ function runTalk() {
   if (k === 'call') { N.attempts; if (!N.line && r.chance(T.noAnswer)) { N.attempts++; N.refusals++; negHist('Negotiator: the phone rings out — no answer.', 'radio'); return; }
     contactTry(N.line ? 'line' : 'phone'); return; }
   const C = NEGO_CFG.talk, m = talkMult(N.contact) * (stypeCfg().negoMul || 1); N.rounds++; xpAct('dialogue', negOnScene().map(o => o.id)); let gain = 0, msg = '';
-  if (k === 'rapport') { gain = r.int(C.rapport.gain[0], C.rapport.gain[1]) * m - sp.agit * NEGO_CFG.agitDrag; sp.agit += C.rapport.agit; msg = 'building rapport — talking about his family, what he needs.'; }
-  if (k === 'listen') { gain = r.int(C.listen.gain[0], C.listen.gain[1]) * m; sp.agit += C.listen.agit; msg = 'letting him vent. He is calming down.';
+  if (k === 'rapport') { gain = r.int(C.rapport.gain[0], C.rapport.gain[1]) * m - sp.agit * NEGO_CFG.agitDrag; sp.agit += C.rapport.agit; msg = flavor('rapport', 'building rapport — talking about his family, what he needs.'); }
+  if (k === 'listen') { gain = r.int(C.listen.gain[0], C.listen.gain[1]) * m; sp.agit += C.listen.agit; msg = flavor('listen', 'letting him vent. He is calming down.');
     if (r.chance(C.listen.intel)) { sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.located = true; msg += ` He mentions he is in the ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'house'}.`; } }
   if (k === 'concession') { gain = r.int(C.concession.gain[0], C.concession.gain[1]) * m - sp.agit * NEGO_CFG.agitDrag; sp.agit += C.concession.agit; N.concessions++;
-    msg = ['offered to pull the cruisers back a little.', 'got him cigarettes and water sent in on the robot line.', 'let him speak to his sister on the line.'][N.concessions - 1] || 'offered a concession.'; }
+    msg = flavor('concession', ['offered to pull the cruisers back a little.', 'got him cigarettes and water sent in on the robot line.', 'let him speak to his sister on the line.'][N.concessions - 1] || 'offered a concession.', N.concessions - 1); }
   if (k === 'status') { gain = r.int(C.status.gain[0], C.status.gain[1]) * m; S.intel.weapon = true; S.intel.threat = Math.max(S.intel.threat, 1);
-    msg = `status check — he says he is alone with a ${SUSPECT_WEAPONS[sp.weapon].name.toLowerCase()}${sp.injured ? ', and he is hurt' : ''}${S.gasActive && S.gas[idx(sp.x, sp.y)] > 0.2 ? ', coughing from the gas' : ''}.`;
+    msg = `${flavor('status', `status check — he says he is alone with a ${SUSPECT_WEAPONS[sp.weapon].name.toLowerCase()}`, SUSPECT_WEAPONS[sp.weapon].name.toLowerCase())}${sp.injured ? ', and he is hurt' : ''}${S.gasActive && S.gas[idx(sp.x, sp.y)] > 0.2 ? ', coughing from the gas' : ''}.`;
     if (N.hidden && !N.warn && r.chance(0.35 + negotiatorSkill() * 0.3)) { N.warn = true; msg += ' Something he said suggests he may be hiding a second weapon — run a full walk-out protocol.'; } }
   if (k === 'ultimatum') { if (sp.talk >= C.ultimatum.need && r.chance(C.ultimatum.surrender + (sp.talk - C.ultimatum.need) / 100)) { negHist('Negotiator: ultimatum — he agrees to come out.', 'good'); walkout('talk'); return; }
-    sp.agit += C.ultimatum.agit; sp.talk = clamp(sp.talk + C.ultimatum.talk, 0, 100); negHist('Negotiator: ultimatum rejected — he is furious.', 'alert');
+    sp.agit += C.ultimatum.agit; sp.talk = clamp(sp.talk + C.ultimatum.talk, 0, 100); negHist(flavor('ultimatum', 'Negotiator: ultimatum rejected — he is furious.'), 'alert');
     if (r.chance(C.ultimatum.hang)) { N.contact = null; N.quiet = 1; negHist('He has cut contact.', 'alert'); } sp.agit = clamp(sp.agit, 0, 100); return; }
   sp.agit = clamp(sp.agit, 0, 100); sp.talk = clamp(sp.talk + gain, 0, 100);
   negHist(`Negotiator: ${msg}`, 'radio');
   if (N.contact === 'pa' && r.chance(NEGO_CFG.pa.yell * 0.5)) shoutReveal(paUnits()[0], false);
   const SU = NEGO_CFG.surrender;
-  if (sp.talk >= SU.sure || sp.talk >= SU.from && r.chance((sp.talk - SU.from) / SU.div)) { negHist('Negotiator: he says he is ready to come out.', 'good'); walkout('talk'); return; }
+  if (sp.talk >= SU.sure || sp.talk >= SU.from && r.chance((sp.talk - SU.from) / SU.div)) { negHist(flavor('ready', 'Negotiator: he says he is ready to come out.'), 'good'); walkout('talk'); return; }
   if (r.chance(T.hang * sp.agit / 50)) { N.contact = null; N.quiet = r.int(0, 1); negHist('He hangs up / stops answering mid-conversation.', 'alert'); }
 }
 /** He shouts back: steps to a window (briefly visible) or shouts through a door (location revealed). Optionally fires at the PA unit. */
@@ -187,10 +187,13 @@ function setSurrenderSpot(x, y) { if (S.phase !== 'planning') return { ok: false
   const p = findPath(S.suspect.x, S.suspect.y, (xx, yy) => xx === x && yy === y, { suspect: true, canOpen: true, allDoors: true }); if (!p) return { ok: false, reason: 'He cannot walk there from the house' };
   const [hx, hy] = houseCenter(); if (dist(x, y, hx, hy) > 24) return { ok: false, reason: 'Too far from the house — keep it within view' };
   S.surrSpot = { x, y }; log('Walk-out point set. When he comes out he will be told to stop and kneel there.', 'system'); S.version++; return { ok: true }; }
-function walkout(how) { const sp = S.suspect, N = S.nego; if (!hostile()) return false; sp.mode = 'surrendered'; sp.stun = 0; N.how = how; N.outcome = how === 'callout' ? 'Call-out surrender' : 'Negotiated surrender';
-  sp.walk = { stage: 'wait', turn: S.turn, spot: surrSpot(), amb: false, rolled: false };
+function walkout(how) { const r = walkout1(how, 0); if (r !== false) groupWalkout(how); return r; }
+/** One suspect agrees to walk out. k > 0: a group member following the lead (comes out k turns later, kneels beside the walk-out point). */
+function walkout1(how, k) { const sp = S.suspect, N = S.nego; if (!hostile()) return false; sp.mode = 'surrendered'; sp.stun = 0; if (!k) { N.how = how; N.outcome = how === 'callout' ? 'Call-out surrender' : 'Negotiated surrender'; }
+  let spot = surrSpot(); if (k) { for (const [dx, dy] of [[2 * k, 0], [-2 * k, 0], [0, 2 * k], [k, k], [-k, k]]) if (cellOk(spot[0] + dx, spot[1] + dy, { outdoor: true })) { spot = [spot[0] + dx, spot[1] + dy]; break; } }
+  sp.walk = { stage: 'wait', turn: S.turn + (k || 0), spot, amb: false, rolled: false, how };
   S.doors.forEach(d => { if (d.rooms.includes(sp.room)) { d.barricaded = false; d.locked = false; } if (d.exterior) { d.locked = false; d.barricaded = false; } });
-  log('He will come out through the front door in the next 30 seconds. Set up the protocol: cover team (shield), overwatch, PA commands. Then cuff him at the walk-out point.', 'good'); S.version++; }
+  if (!k) log(multiSp() ? `${spName()} will come out through the front door in the next 30 seconds. Set up the protocol: cover team (shield), overwatch, PA commands. Then take each one into custody at the walk-out point.` : 'He will come out through the front door in the next 30 seconds. Set up the protocol: cover team (shield), overwatch, PA commands. Then cuff him at the walk-out point.', 'good'); S.version++; }
 /** Score the surrender protocol at the moment he steps outside. */
 function protocolNow(spot) {
   const [x, y] = spot, P = { cover: false, shield: false, overwatch: false, commands: false, who: [] };
@@ -210,10 +213,10 @@ function ambushChance(P) { const C = NEGO_CFG; let p = S.nego.hidden ? C.ambushH
 /** One tick of the walk-out (suspectTick while surrendered). */
 function walkoutTick() {
   const sp = S.suspect, w = sp.walk, N = S.nego; if (!w) return;
-  if (w.stage === 'wait') { if (S.turn <= w.turn) return; w.stage = 'out'; log('Suspect is coming out — hands up.', 'alert'); }
+  if (w.stage === 'wait') { if (S.turn <= w.turn) return; w.stage = 'out'; log(`${spName()} is coming out — hands up.`, 'alert'); }
   if (w.stage === 'out') {
     if (sp.x === w.spot[0] && sp.y === w.spot[1]) { w.stage = 'kneel'; const cmd = N.protocol && N.protocol.commands;
-      log(cmd ? 'PA: "STOP. KNEEL. HANDS ON YOUR HEAD." — he kneels at the walk-out point.' : 'He stops at the walk-out point, standing, hands raised. (No PA commands.)', 'radio'); return; }
+      log(cmd ? `PA: "STOP. KNEEL. HANDS ON YOUR HEAD." — ${multiSp() ? spName() + ' kneels' : 'he kneels'} at the walk-out point.` : `${multiSp() ? spName() : 'He'} stops at the walk-out point, standing, hands raised. (No PA commands.)`, 'radio'); return; }
     const p = findPath(sp.x, sp.y, (x, y) => x === w.spot[0] && y === w.spot[1], { suspect: true, canOpen: true, allDoors: true });
     if (!p || !p.length) { w.spot = [sp.x, sp.y]; return; } const [nx, ny] = p[0]; const e = edge(sp.x, sp.y, nx, ny); if (e.t === 'D') { e.d.state = 'open'; e.d.barricaded = false; e.d.locked = false; }
     sp.x = nx; sp.y = ny; sp.room = roomAt(nx, ny); sp.atWindow = false; sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn };
@@ -222,16 +225,16 @@ function walkoutTick() {
     return; }
   if (w.stage === 'kneel') {
     const near = S.units.filter(u => onFoot(u) && !u.perch && cheb(u.x, u.y, sp.x, sp.y) <= 2).sort((a, b) => dist(a.x, a.y, sp.x, sp.y) - dist(b.x, b.y, sp.x, sp.y));
-    if (!S.units.some(u => u.detain)) { const c = S.units.filter(u => onFoot(u) && !u.perch && roomAt(u.x, u.y) < 0 && !(u.orders[0] && u.orders[0].cas)).sort((a, b) => (b.kind === 'team') - (a.kind === 'team') || dist(a.x, a.y, sp.x, sp.y) - dist(b.x, b.y, sp.x, sp.y))[0];
-      if (c) { c.detain = true; c.orders = []; log(`${c.name}: moving up to take him into custody.`, 'radio'); } }
+    const myKey = sp.key || true; if (!S.units.some(u => u.detain === myKey)) { const c = S.units.filter(u => onFoot(u) && !u.perch && roomAt(u.x, u.y) < 0 && !(u.orders[0] && u.orders[0].cas)).sort((a, b) => (b.kind === 'team') - (a.kind === 'team') || dist(a.x, a.y, sp.x, sp.y) - dist(b.x, b.y, sp.x, sp.y))[0];
+      if (c) { c.detain = myKey; c.orders = []; log(`${c.name}: moving up to take ${multiSp() ? spName() : 'him'} into custody.`, 'radio'); } }
     if (near.length && w.amb) { ambushNow(near[0]); return; }
-    const adj = near.find(u => cheb(u.x, u.y, sp.x, sp.y) <= 1); if (adj) { sp.walk = null; S.units.forEach(u => u.detain = false); detained(adj, N.outcome || 'Surrendered'); } }
+    const adj = near.find(u => cheb(u.x, u.y, sp.x, sp.y) <= 1); if (adj) { const how = w.how === 'callout' ? 'Call-out surrender' : w.how ? 'Negotiated surrender' : N.outcome || 'Surrendered'; sp.walk = null; S.units.forEach(u => { if (u.detain === myKey) u.detain = false; }); detained(adj, how); } }
 }
 function ambushNow(T) {
   const sp = S.suspect, N = S.nego, P = N.protocol || {}, r = S.rng; sp.walk = null; sp.mode = 'alert'; sp.weapon = 'handgun'; sp.ambush = true; sp.retreat = true; N.contact = null; N.quiet = 3; sp.talk = 0; sp.agit = 90;
-  S.units.forEach(u => u.detain = false); S.stats.shots++; N.ambush = { turn: S.turn + 1, score: P.score || 0, hit: false };
+  S.units.forEach(u => { if (u.detain === (sp.key || true)) u.detain = false; }); S.stats.shots++; N.ambush = { turn: S.turn + 1, score: P.score || 0, hit: false };
   fx('muzzle', sp.x, sp.y, { suspect: true }); fx('shot', sp.x, sp.y, { tx: T.x, ty: T.y }); sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn };
-  log('AMBUSH — he pulls a hidden handgun on the arrest team!', 'bad'); N.outcome = 'Walk-out ambush';
+  log(`AMBUSH — ${multiSp() ? spName() + ' pulls' : 'he pulls'} a hidden handgun on the arrest team!`, 'bad'); N.outcome = 'Walk-out ambush';
   let p = NEGO_CFG.ambushHit * (P.commands ? 0.5 : 1) * (T_HIT[targetClass(T, sp.x, sp.y)] || 1);
   if (r.chance(p)) { N.ambush.hit = true; shotOfficer(T, 'pistol', dist(T.x, T.y, sp.x, sp.y), sp.x, sp.y, 'walk-out spot'); } else log(`Rounds miss ${T.name}.`, 'alert');
   const resp = S.units.filter(u => unitAlive(u) && (onFoot(u) || u.perch) && weaponOf(u) && los(u.x, u.y, sp.x, sp.y) && dist(u.x, u.y, sp.x, sp.y) <= WEAPONS[weaponOf(u)].range)
@@ -247,5 +250,5 @@ function retreatStep() { const sp = S.suspect; const p = findPath(sp.x, sp.y, (x
 function negoTurn() { const N = S.nego; if (N.quiet > 0) N.quiet--; if (N.contact === 'pa' && !paUnits().length) { N.contact = null; negHist('PA contact lost — no loudspeaker in range.', 'radio'); } }
 function negoSummary() { const N = S.nego, sp = S.suspect;
   return { onScene: negOnScene().length, contact: contactLive() ? N.contact : null, numberKnown: N.numberKnown, numberSrc: N.numberSrc, line: N.line, quiet: N.quiet, attempts: N.attempts, refusals: N.refusals, rounds: N.rounds,
-    concessions: N.concessions, mood: moodWord(), rapport: rapportWord(), read: N.read, warn: N.warn, pick: N.pick, hist: N.hist.slice(-6), outcome: N.outcome, walk: sp.walk ? sp.walk.stage : null,
+    concessions: N.concessions, mood: moodWord(), rapport: rapportWord(), read: N.read, warn: N.warn, pick: N.pick, hist: N.hist.slice(-6), outcome: N.outcome, walk: (suspList().find(s => s.walk) || {}).walk ? suspList().find(s => s.walk).walk.stage : null,
     protocol: N.protocol, preview: sp.walk || hostile() ? protocolNow(surrSpot()) : null, spot: surrSpot(), avail: Object.fromEntries(TALK_KEYS.map(k => [k, talkAvail(k)])), names: TALK_NAMES }; }

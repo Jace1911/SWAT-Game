@@ -10,7 +10,9 @@
    ===================================================================== */
 const Core = (function () {
 'use strict';
-const MAP_W = 112, MAP_H = 72, TICKS = 8, LOSE_DOWN = 3; // LOSE_DOWN: kept only as the 'heavy losses' warning threshold — the mission never auto-ends on losses or time
+/** Rear row behind the suspect house: rear street (road + sidewalk) and a row of back-neighbour lots whose yards meet the target's back yard. */
+const REAR_CFG = { road: 4, walk: 2, depth: 18 }, REAR_OFF = 1 + REAR_CFG.road + REAR_CFG.walk + REAR_CFG.depth;
+const MAP_W = 112, MAP_H = 71 + REAR_OFF, TICKS = 8, LOSE_DOWN = 3; // LOSE_DOWN: kept only as the 'heavy losses' warning threshold — the mission never auto-ends on losses or time
 /* ---------- time display: logic stays turn-based; each executed turn = 30 s of scene time ---------- */
 const TURN_SEC = 30;
 function mmss(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
@@ -79,6 +81,7 @@ const SUSPECT_WEAPONS = {
   handgun: { name: 'handgun', range: 24, base: 0.34 },
   rifle:   { name: 'hunting rifle', range: 36, base: 0.30 },
   shotgun: { name: 'shotgun', range: 16, base: 0.42 },
+  none:    { name: 'no firearm', range: 0, base: 0 },   // v12: parole absconder may be unarmed
 };
 const STANCES = { return: 'Return fire', free: 'Fire at will', hold: 'Hold fire' };
 const TEAM_NAMES = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot'];
@@ -114,7 +117,7 @@ function cellOk(x, y, o) {
   if (!o.fly && (S.block[c] || S.dyn[c])) return false;
   if (o.fly && S.opaque[c]) return false;
   if (o.outdoor && S.room[c] >= 0) return false;
-  if (o.avoidSuspect && suspectActive() && S.suspect.x === x && S.suspect.y === y) return false;
+  if (o.avoidSuspect && (S.suspects && S.suspects.length > 1 ? S.suspects.some(s => s.x === x && s.y === y && !['detained', 'escaped'].includes(s.mode)) : suspectActive() && S.suspect.x === x && S.suspect.y === y)) return false;
   return true;
 }
 const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);

@@ -77,6 +77,8 @@ function bakeGround() {
   // street markings and curbs
   const my = (G.ST + G.streetW / 2) * k; g.strokeStyle = 'rgba(214,170,60,.5)'; g.lineWidth = 2; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(k, my); g.lineTo((MW - 1) * k, my); g.stroke(); g.setLineDash([]);
   g.fillStyle = '#4a505a'; g.fillRect(k, G.ST * k - 2, (MW - 2) * k, 3); g.fillRect(k, (G.ST + G.streetW) * k - 1, (MW - 2) * k, 3);
+  if (G.rear) { const ry = (G.rear.road0 + (G.rear.road1 - G.rear.road0 + 1) / 2) * k; g.strokeStyle = 'rgba(214,170,60,.4)'; g.lineWidth = 2; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(k, ry); g.lineTo((MW - 1) * k, ry); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#4a505a'; g.fillRect(k, G.rear.walk0 * k - 1, (MW - 2) * k, 3); }
   if (G.cross) { const cx = (G.cross.x0 + 3) * k; g.strokeStyle = 'rgba(214,170,60,.5)'; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(cx, (G.SS + 2) * k); g.lineTo(cx, (MH - 1) * k); g.stroke(); g.setLineDash([]); }
   // driveway oil stains
   for (const d of X.drives) for (let i = 0; i < 3; i++) { const px = (d.x + 0.5 + r() * (d.w - 1)) * k, py = (d.y + 0.5 + r() * (d.h - 1)) * k, rad = k * (0.6 + r() * 0.6); const rg = g.createRadialGradient(px, py, 0, px, py, rad); rg.addColorStop(0, 'rgba(0,0,0,.25)'); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(px - rad, py - rad, rad * 2, rad * 2); }
@@ -284,12 +286,28 @@ function updateDyn() {
 /* =====================================================================
    CAMERA  (cam.x/y in world px at CS scale; z = screen px per world px)
    ===================================================================== */
-function resize() { if (!cv) return; dpr = Math.min(2, window.devicePixelRatio || 1); const r = cv.getBoundingClientRect(); VW = r.width; VH = r.height; cv.width = Math.round(VW * dpr); cv.height = Math.round(VH * dpr); clampCam(); }
+/** v11: viewport size from the layout viewport (iOS can report stale sizes right after a rotate; callers re-measure later too).
+ *  The canvas CSS box is set explicitly in px and the backing store is exactly CSS × dpr, so x and y always share ONE scale. */
+function viewportSize() { const vv = window.visualViewport, iw = window.innerWidth || 0, ih = window.innerHeight || 0, de = document.documentElement;
+  let w = iw || (de && de.clientWidth) || 1, h = ih || (de && de.clientHeight) || 1;
+  if (vv && vv.width > 0 && vv.height > 0 && (vv.scale || 1) <= 1.01) { w = Math.min(w, Math.round(vv.width)) || w; h = Math.min(h, Math.round(vv.height)) || h; }
+  return [Math.max(1, Math.round(w)), Math.max(1, Math.round(h))]; }
+let userCam = false, lastSize = '';
+function resize(force) { if (!cv) return; const odpr = dpr, [w, h] = viewportSize(); dpr = Math.min(2, window.devicePixelRatio || 1);
+  const key = w + 'x' + h + '@' + dpr; if (!force && key === lastSize && cv.width === Math.round(w * dpr) && cv.height === Math.round(h * dpr)) return false;
+  const had = VW > 0 && VH > 0 && lastSize !== ''; let wc = null; if (had) { const [vx, vy] = viewCenter(); wc = toCell(vx, vy); }
+  VW = w; VH = h; cv.style.width = w + 'px'; cv.style.height = h + 'px'; cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); lastSize = key;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); compKey = ''; // cached layers are world-space; force a recompose / redraw anyway
+  if (had && wc && userCam) centerOn(wc[0], wc[1]); else if (had && Core.state) fit('house'); else clampCam();
+  window.__debugScale = debugScale(); return true; }
+/** Test hook: CSS px per backing px on each axis (must be equal), and the world→screen scale (one value). */
+function debugScale() { if (!cv) return null; const r = cv.getBoundingClientRect(); return { x: r.width / cv.width * dpr, y: r.height / cv.height * dpr, zx: cam.z, zy: cam.z, dpr, css: [r.width, r.height], backing: [cv.width, cv.height], VW, VH }; }
 function setSafe(s) { safe = Object.assign({ l: 0, t: 0, r: 0, b: 0 }, s); }
 function viewCenter() { return [safe.l + (VW - safe.l - safe.r) / 2, safe.t + (VH - safe.t - safe.b) / 2]; }
 /** fit(): 'house' (default) frames the target house plus the street in front; 'all' frames the whole neighborhood. */
-function fit(what) { if (!Core.state) return; const S = Core.state, H = S.house, G = S.geo; let box;
+function fit(what) { if (!Core.state) return; userCam = false; const S = Core.state, H = S.house, G = S.geo; let box;
   if (what === 'all') box = { x: 0, y: 0, w: Core.MAP_W, h: Core.MAP_H };
+  else if (what === 'rear' && G.rear) box = { x: H.x0 - 24, y: G.rear.road0 - 1, w: H.x1 - H.x0 + 49, h: H.y1 + 3 - G.rear.road0 };
   else { const north = H.side !== 's' && H.y1 < G.ST; const y0 = north ? H.y0 - 3 : G.ST - 1, y1 = north ? G.SB + 2 : H.y1 + 3; box = { x: H.x0 - 5, y: y0, w: H.x1 - H.x0 + 11, h: y1 - y0 }; }
   const aw = Math.max(120, VW - safe.l - safe.r), ah = Math.max(120, VH - safe.t - safe.b);
   cam.z = Math.min(aw / (box.w * CS), ah / (box.h * CS)); const [vx, vy] = viewCenter(); cam.x = (box.x + box.w / 2) * CS - (vx - VW / 2) / cam.z; cam.y = (box.y + box.h / 2) * CS - (vy - VH / 2) / cam.z; clampCam(); }
@@ -297,15 +315,15 @@ function clampCam() { cam.z = Math.max(0.08, Math.min(3, cam.z)); const W = Core
 function centerOn(cx, cy) { const [vx, vy] = viewCenter(); cam.x = cx * CS - (vx - VW / 2) / cam.z; cam.y = cy * CS - (vy - VH / 2) / cam.z; clampCam(); }
 function toScreen(cx, cy) { return [(cx * CS - cam.x) * cam.z + VW / 2, (cy * CS - cam.y) * cam.z + VH / 2]; }
 function toCell(sx, sy) { return [((sx - VW / 2) / cam.z + cam.x) / CS, ((sy - VH / 2) / cam.z + cam.y) / CS]; }
-function pan(dx, dy) { cam.x -= dx / cam.z; cam.y -= dy / cam.z; clampCam(); }
-function zoomAt(sx, sy, f) { const [a, b] = toCell(sx, sy); cam.z *= f; clampCam(); const [c, d] = toCell(sx, sy); cam.x += (a - c) * CS; cam.y += (b - d) * CS; clampCam(); }
+function pan(dx, dy) { userCam = true; cam.x -= dx / cam.z; cam.y -= dy / cam.z; clampCam(); }
+function zoomAt(sx, sy, f) { userCam = true; const [a, b] = toCell(sx, sy); cam.z *= f; clampCam(); const [c, d] = toCell(sx, sy); cam.x += (a - c) * CS; cam.y += (b - d) * CS; clampCam(); }
 const sz = () => Math.max(0.7, Math.min(1.25, 0.6 + cam.z * 0.6));
 function viewRect() { const [a, b] = toCell(0, 0), [c, d] = toCell(VW, VH); return { x: a, y: b, w: c - a, h: d - b }; }
 
 /* =====================================================================
    ANIMATION BRIDGE — UI calls snapshot() before each Core.stepTick()
    ===================================================================== */
-function snapshot(dur) { const S = Core.state; prev.clear(); for (const u of S.units) prev.set(u.uid, [u.x, u.y, u.dir]); prev.set('S', [S.suspect.x, S.suspect.y, S.suspect.dir]); tickT0 = performance.now(); tickDur = dur || 280; animating = true; }
+function snapshot(dur) { const S = Core.state; prev.clear(); for (const u of S.units) prev.set(u.uid, [u.x, u.y, u.dir]); for (const sp of (Core.suspList ? Core.suspList() : [S.suspect])) prev.set('S' + (sp.key || 'S'), [sp.x, sp.y, sp.dir]); tickT0 = performance.now(); tickDur = dur || 280; animating = true; }
 function endAnim() { animating = false; prev.clear(); }
 function posOf(id, x, y) { const p = prev.get(id); if (!p || !animating) return [x, y]; const t = ease(Math.min(1, (performance.now() - tickT0) / tickDur)); return [lerp(p[0], x, t), lerp(p[1], y, t)]; }
 function dirOf(id, d) { const p = prev.get(id); if (!p || !animating || p[2] == null) return d; const t = ease(Math.min(1, (performance.now() - tickT0) / tickDur)); let a = p[2], dd = d - a; while (dd > Math.PI) dd -= 2 * Math.PI; while (dd < -Math.PI) dd += 2 * Math.PI; return a + dd * t; }
@@ -323,7 +341,7 @@ function drawStageTags(g) { const S = Core.state, X = S && S.ext; if (!X || !X.s
   for (const [p, txt, col] of tags) { if (!p) continue; const [sx, sy] = toScreen(p.x + 0.5, p.y + 2); const w = g.measureText(txt).width + 8; const cx = Math.max(w / 2 + (VW > 600 ? 78 : 6), Math.min(VW - w / 2 - 4, sx));
     g.fillStyle = 'rgba(5,10,18,.75)'; g.fillRect(cx - w / 2, sy, w, 13); g.fillStyle = col; g.fillText(txt, cx, sy + 2); }
   g.restore(); }
-function frame(now) {
+function frame(now) { if (cv) { const [w, h] = viewportSize(); if (w !== VW || h !== VH || cv.width !== Math.round(w * Math.min(2, window.devicePixelRatio || 1))) resize(); } // self-heal a missed or stale rotate event
   const S = Core.state; if (!S || !cv) return;
   if (builtSeed !== S.seed) { rebake(); }
   if (knowledgeKey() !== compKey) buildComp();
@@ -361,8 +379,8 @@ function drawExpo(g) { const S = Core.state; if (!S.expo) return; const MW = Cor
 function drawGas(g, now) { const W = Core.MAP_W * CS, H = Core.MAP_H * CS, t = now / 1000;
   g.save(); g.imageSmoothingEnabled = true;
   g.globalAlpha = 0.55; g.drawImage(L.gas, Math.sin(t * 0.5) * CS * 0.25, Math.cos(t * 0.4) * CS * 0.2, W, H);
-  g.globalAlpha = 0.4; g.drawImage(L.gas, -CS * 0.6 + Math.cos(t * 0.3) * CS * 0.3, -CS * 0.6 + Math.sin(t * 0.35) * CS * 0.3, W + CS * 1.2, H + CS * 1.2);
-  g.globalAlpha = 0.25 + 0.08 * Math.sin(t * 1.3); g.drawImage(L.gas, CS * 0.4, CS * 0.3, W - CS * 0.8, H - CS * 0.6);
+  g.globalAlpha = 0.4; g.drawImage(L.gas, -W * 0.02 + Math.cos(t * 0.3) * CS * 0.3, -H * 0.02 + Math.sin(t * 0.35) * CS * 0.3, W * 1.04, H * 1.04);
+  g.globalAlpha = 0.25 + 0.08 * Math.sin(t * 1.3); g.drawImage(L.gas, W * 0.0125, H * 0.0125, W * 0.975, H * 0.975); // uniform inset keeps the aspect
   g.restore(); }
 function lights(g, now, layer) {
   const S = Core.state, X = S.ext;
@@ -555,20 +573,33 @@ function drawAim(g, now) { const a = view.aim; if (!a || !view.sel) return; cons
   g.beginPath(); g.arc(x1, y1, 12 * s, 0, 7); g.moveTo(x1 - 17 * s, y1); g.lineTo(x1 + 17 * s, y1); g.moveTo(x1, y1 - 17 * s); g.lineTo(x1, y1 + 17 * s); g.stroke();
   const t = a.p > 0 ? `HIT ${Math.round(a.p * 100)}%` : (a.why || 'no shot').toUpperCase(); g.font = `800 ${12 * s}px system-ui,sans-serif`; const tw = g.measureText(t).width + 12; g.fillStyle = 'rgba(30,4,8,.9)'; rr(g, x1 + 16 * s, y1 - 24 * s, tw, 18 * s, 4); g.fill(); g.fillStyle = '#ffd0d5'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(t, x1 + 22 * s, y1 - 15 * s); g.restore(); }
 function drawMarkers(g, now) {
-  const S = Core.state, sp = S.suspect, s = sz();
+  const S = Core.state, s = sz();
   drawCasualties(g, now, s);
+  const L_ = Core.suspList ? Core.suspList() : [S.suspect], multi = L_.length > 1;
+  for (const sp of L_) drawSuspectMark(g, now, s, S, sp, multi);
+  drawHide(g, s, S);
+}
+/** Parole hide (attic hatch / basement door): shown once its room has been seen or the hide was found. */
+function drawHide(g, s, S) { const H = S.hide; if (!H || !(H.found || (S.rooms[H.room] && S.rooms[H.room].explored) || S.phase === 'over')) return;
+  const [x, y] = toScreen(H.x + 0.5, H.y + 0.5), w = 14 * s; g.save(); g.strokeStyle = '#d8b46a'; g.lineWidth = 2; g.fillStyle = 'rgba(40,30,10,.75)'; g.fillRect(x - w / 2, y - w / 2, w, w); g.strokeRect(x - w / 2, y - w / 2, w, w);
+  g.beginPath(); if (H.kind === 'attic') { g.moveTo(x - w / 2, y - w / 2); g.lineTo(x + w / 2, y + w / 2); g.moveTo(x + w / 2, y - w / 2); g.lineTo(x - w / 2, y + w / 2); } else { for (let i = 1; i < 4; i++) { g.moveTo(x - w / 2, y - w / 2 + i * w / 4); g.lineTo(x + w / 2, y - w / 2 + i * w / 4); } } g.stroke();
+  g.fillStyle = '#e8cf95'; g.font = `700 ${9 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(H.kind === 'attic' ? 'ATTIC HATCH' : 'BASEMENT', x, y - w / 2 - 7 * s); g.restore(); }
+/** One suspect marker (v11: drawn for every suspect; letters in multi-suspect calls). */
+function drawSuspectMark(g, now, s, S, sp, multi) {
+  if (sp.mode === 'escaped' && !sp.visible) return;
   if (sp.heat && !sp.visible) { const [x, y] = toScreen(sp.heat.x + 0.5, sp.heat.y + 0.5); const p = 0.5 + 0.5 * Math.sin(now / 300); const R = Math.min(60, 26 * s * cam.z + 10); const rg = g.createRadialGradient(x, y, 0, x, y, R);
     rg.addColorStop(0, `rgba(255,120,40,${0.55 + 0.2 * p})`); rg.addColorStop(0.5, 'rgba(255,60,30,.25)'); rg.addColorStop(1, 'rgba(255,60,30,0)'); g.fillStyle = rg; g.beginPath(); g.arc(x, y, R, 0, 7); g.fill();
     g.fillStyle = '#ffb38a'; g.font = `700 ${10 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillText('HEAT', x, y - 18 * s); }
   if (sp.lastKnown && !sp.visible) { const [x, y] = toScreen(sp.lastKnown.x + 0.5, sp.lastKnown.y + 0.5); g.strokeStyle = 'rgba(255,59,78,.6)'; g.setLineDash([4, 4]); g.lineWidth = 2; g.beginPath(); g.arc(x, y, 12 * s, 0, 7); g.stroke(); g.setLineDash([]);
     g.fillStyle = 'rgba(255,120,130,.8)'; g.font = `600 ${9 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillText('LAST SEEN', x, y + 22 * s); }
-  if (sp.visible || S.phase === 'over' && sp.mode !== 'escaped') { const [px, py] = posOf('S', sp.x, sp.y); const [x, y] = toScreen(px + 0.5, py + 0.5); const hostile = ['barricaded', 'alert', 'fleeing'].includes(sp.mode);
+  if (sp.visible || S.phase === 'over' && sp.mode !== 'escaped') { const [px, py] = posOf('S' + (sp.key || 'S'), sp.x, sp.y); const [x, y] = toScreen(px + 0.5, py + 0.5); const hostile = ['barricaded', 'alert', 'fleeing'].includes(sp.mode);
     const col = hostile ? '#ff3b4e' : sp.mode === 'detained' ? '#3ef0a0' : '#ffb020'; const r = 11 * s;
     g.save(); g.shadowColor = col; g.shadowBlur = 16; g.fillStyle = 'rgba(30,4,8,.9)'; g.translate(x, y); g.rotate(Math.PI / 4); g.fillRect(-r * 0.75, -r * 0.75, r * 1.5, r * 1.5); g.strokeStyle = col; g.lineWidth = 2.5; g.strokeRect(-r * 0.75, -r * 0.75, r * 1.5, r * 1.5); g.restore();
     g.fillStyle = col; g.font = `800 ${11 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('!', x, y + 0.5);
     if (sp.maskSeen) badge(g, x - r - 2, y - r - 2, 'M', '#ffb020', '#2a1a04', s);
     if ((sp.impair || 0) > 0.2 && !(sp.maskOn)) badge(g, x + r + 2, y - r - 2, '☁', '#cfe8b0', '#1a2a10', s);
-    const tag = sp.injured && ['barricaded', 'alert'].includes(sp.mode) ? 'SUSPECT · INJURED' : sp.walk && sp.mode === 'surrendered' ? (sp.walk.stage === 'kneel' ? 'KNEELING · HANDS UP' : 'WALKING OUT') : sp.deceased ? 'DECEASED' : { barricaded: 'SUSPECT · ARMED', alert: 'SUSPECT · ALERT', fleeing: 'SUSPECT · FLEEING', surrendered: 'SURRENDERED', incapacitated: 'INCAPACITATED', detained: 'IN CUSTODY' }[sp.mode] || 'SUSPECT';
+    const nm = multi && sp.label ? 'SUSPECT ' + sp.label : 'SUSPECT', tag0 = sp.injured && ['barricaded', 'alert'].includes(sp.mode) ? nm + ' · INJURED' : sp.walk && sp.mode === 'surrendered' ? (sp.walk.stage === 'kneel' ? 'KNEELING · HANDS UP' : 'WALKING OUT') : sp.deceased ? 'DECEASED' : { barricaded: nm + (sp.weapon === 'none' ? '' : ' · ARMED'), alert: nm + ' · ALERT', fleeing: nm + ' · FLEEING', surrendered: 'SURRENDERED', incapacitated: 'INCAPACITATED', detained: 'IN CUSTODY' }[sp.mode] || nm;
+    const tag = multi && sp.label && !tag0.startsWith('SUSPECT') ? sp.label + ' · ' + tag0 : tag0;
     g.font = `700 ${10 * s}px system-ui,sans-serif`; const tw = g.measureText(tag).width + 10; g.fillStyle = 'rgba(20,4,8,.85)'; rr(g, x - tw / 2, y + r + 4, tw, 16 * s, 4); g.fill(); g.fillStyle = col; g.fillText(tag, x, y + r + 4 + 8 * s); }
 }
 /** Casualties (✚ + critical countdown, '?' when status unknown), memorial plaques, EMS point, walk-out spot. No gore: neutral symbols only. */
@@ -688,17 +719,17 @@ function pickWindow(cx, cy) { const S = Core.state; let best = null, bd = 1.4;
 function pickRoom(cx, cy) { const r = Core.roomAt(Math.floor(cx), Math.floor(cy)); if (r < 0) return null; return Core.state.rooms[r].known ? r : null; }
 function pickPerch(cx, cy) { const S = Core.state; let best = null, bd = 2.2; for (const p of S.perches) { const d = Math.hypot(cx - p.x - 0.5, cy - p.y - 0.5); if (d < bd) { bd = d; best = p.id; } } if (best == null) { const p = Core.perchAt(Math.floor(cx), Math.floor(cy)); if (p) best = p.id; } return best; }
 /** Overview map (#ovw): the whole neighborhood, the target house, units and the current viewport rectangle. */
-function ovwGeom(c) { const W = c.width, Hh = c.height, k = Math.min(W / Core.MAP_W, Hh / Core.MAP_H); return { k, ox: (W - Core.MAP_W * k) / 2, oy: (Hh - Core.MAP_H * k) / 2 }; }
+function ovwGeom(c) { const W = c._lw || c.width, Hh = c._lh || c.height, k = Math.min(W / Core.MAP_W, Hh / Core.MAP_H); return { k, ox: (W - Core.MAP_W * k) / 2, oy: (Hh - Core.MAP_H * k) / 2 }; }
 /* MINIMAP / overview thumbnail (#ovw in the side panel, #ovw2 in the phone ▦ panel): whole neighborhood + viewport rectangle; tap/drag jumps the camera (see ovwJump). */
 function drawMini(c) {
-  const S = Core.state; if (!S || !c || !L.ground) return; const g = c.getContext('2d'); const W = c.width, Hh = c.height; const { k, ox, oy } = ovwGeom(c);
-  g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#05080d'; g.fillRect(0, 0, W, Hh);
+  const S = Core.state; if (!S || !c || !L.ground) return; const g = c.getContext('2d'); miniSize(c); const W = c._lw, Hh = c._lh; const { k, ox, oy } = ovwGeom(c);
+  g.setTransform(c._md, 0, 0, c._md, 0, 0); g.fillStyle = '#05080d'; g.fillRect(0, 0, W, Hh);
   g.globalAlpha = 0.85; g.drawImage(L.ground, ox, oy, Core.MAP_W * k, Core.MAP_H * k); g.globalAlpha = 1;
   const H = S.house; g.fillStyle = 'rgba(20,24,32,.95)'; for (const q of H.parts.concat(H.garage ? [H.garage] : [])) g.fillRect(ox + q.x * k, oy + q.y * k, q.w * k, q.h * k);
   for (const rm of S.rooms) if (rm.known) { g.fillStyle = rm.explored ? 'rgba(56,200,255,.45)' : 'rgba(56,200,255,.2)'; g.fillRect(ox + rm.x * k, oy + rm.y * k, rm.w * k, rm.h * k); }
   g.strokeStyle = 'rgba(255,90,100,.8)'; g.lineWidth = 1.2; g.strokeRect(ox + H.x0 * k - 1, oy + H.y0 * k - 1, (H.x1 - H.x0 + 1) * k + 2, (H.y1 - H.y0 + 1) * k + 2);
   if (gasAny) { g.globalAlpha = 0.8; g.drawImage(L.gas, ox, oy, Core.MAP_W * k, Core.MAP_H * k); g.globalAlpha = 1; }
-  const sp = S.suspect; const spot = sp.visible ? sp : sp.heat; if (spot) { g.fillStyle = sp.visible ? '#ff3b4e' : '#ff8a3a'; g.beginPath(); g.arc(ox + (spot.x + 0.5) * k, oy + (spot.y + 0.5) * k, 3.5, 0, 7); g.fill(); }
+  for (const sp of (Core.suspList ? Core.suspList() : [S.suspect])) { if (['detained', 'escaped'].includes(sp.mode)) continue; const spot = sp.visible ? sp : sp.heat; if (spot) { g.fillStyle = sp.visible ? '#ff3b4e' : '#ff8a3a'; g.beginPath(); g.arc(ox + (spot.x + 0.5) * k, oy + (spot.y + 0.5) * k, 3.5, 0, 7); g.fill(); } }
   for (const u of S.units) { if (u.status !== 'ok') continue; if (u.kind === 'patrol' && u.inCar) continue; const px = ox + (u.x + 0.5) * k, py = oy + (u.y + 0.5) * k;
     if (u.kind === 'cruiser') { const A = u.armored ? 1.25 : 1; g.fillStyle = u.armored ? '#3a5ca8' : '#e6e9ee'; g.save(); g.translate(px, py); g.rotate(u.dir || 0); g.fillRect(-1.5 * k * A, -0.7 * k * A, 3 * k * A, 1.4 * k * A); g.restore(); continue; }
     g.fillStyle = u.kind === 'team' ? (u.perch ? '#3ef0a0' : '#7fe3ff') : u.kind === 'patrol' ? '#c9d6e4' : '#b48cff'; g.beginPath(); g.arc(px, py, u.kind === 'team' ? 3 : 2.2, 0, 7); g.fill(); if (view.sel === u.uid) { g.strokeStyle = '#fff'; g.lineWidth = 1.2; g.beginPath(); g.arc(px, py, 5, 0, 7); g.stroke(); } }
@@ -709,10 +740,13 @@ function drawMini(c) {
   for (const c of S.contain) { const px = ox + (c.x + 0.5) * k, py = oy + (c.y + 0.5) * k; if (c.q === 'cruiser' && c.car && !c.screened) { g.strokeStyle = 'rgba(127,227,255,.8)'; g.lineWidth = 1; g.strokeRect(ox + (c.car.x - 1) * k, oy + c.car.y * k, 3 * k, 1.4 * k); } }
   const v = viewRect(); g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.strokeRect(ox + v.x * k, oy + v.y * k, v.w * k, v.h * k); g.fillStyle = 'rgba(255,255,255,.06)'; g.fillRect(ox + v.x * k, oy + v.y * k, v.w * k, v.h * k);
 }
+/** v11: the minimap backing store follows its CSS box (× dpr) so the neighborhood is never stretched; drawing is in CSS px. */
+function miniSize(c) { const r = c.getBoundingClientRect(), md = Math.min(2, window.devicePixelRatio || 1); if (!(r.width > 0 && r.height > 0)) { c._lw = c._lw || c.width; c._lh = c._lh || c.height; c._md = c._md || 1; return; }
+  const bw = Math.round(r.width * md), bh = Math.round(r.height * md); if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; } c._lw = r.width; c._lh = r.height; c._md = md; }
 /** Jump the camera so the overview point (canvas px) becomes the view centre. */
-function ovwJump(c, px, py) { const { k, ox, oy } = ovwGeom(c); centerOn((px - ox) / k, (py - oy) / k); }
+function ovwJump(c, px, py) { const m = c._md || 1; px /= m; py /= m; const { k, ox, oy } = ovwGeom(c); centerOn((px - ox) / k, (py - oy) / k); }
 
-function init(canvas) { cv = canvas; ctx = cv.getContext('2d'); resize(); }
+function init(canvas) { cv = canvas; ctx = cv.getContext('2d'); resize(true); }
 function invalidate() { compKey = ''; dynVer = -1; planVer = -1; L.expoVer = null; }
-return { init, resize, frame, fit, pan, zoomAt, toCell, toScreen, setSafe, snapshot, endAnim, pickUnit, pickCar, pickDoor, pickWindow, pickRoom, pickPerch, drawMini, ovwJump, centerOn, viewRect, view, cam, invalidate, CS, get animating() { return animating; } };
+return { init, resize, debugScale, viewportSize, frame, fit, pan, zoomAt, toCell, toScreen, setSafe, snapshot, endAnim, pickUnit, pickCar, pickDoor, pickWindow, pickRoom, pickPerch, drawMini, ovwJump, centerOn, viewRect, view, cam, invalidate, CS, get animating() { return animating; } };
 })();

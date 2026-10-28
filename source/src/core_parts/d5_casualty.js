@@ -130,7 +130,7 @@ function casAct(u, o, speed) {
 }
 /** Per tick: mobile casualties move themselves (cover first, then to EMS). Fog flags refresh. */
 function casualtyTick() {
-  for (const c of S.cas) { if (c.who === 'suspect' && casActive(c) && !c.carrier) { c.x = S.suspect.x; c.y = S.suspect.y; } casKnow(c); if (c.state !== 'mobile' || c.carrier || c.wait || c.who === 'suspect') continue;
+  for (const c of S.cas) { if (c.who === 'suspect' && casActive(c) && !c.carrier) { const so = suspById(c.ref) || S.suspect; c.x = so.x; c.y = so.y; } casKnow(c); if (c.state !== 'mobile' || c.carrier || c.wait || c.who === 'suspect') continue;
     if (!c.goal) { const d = expoAt(c.x, c.y) < 0.12 && roomAt(c.x, c.y) < 0 ? null : ccpFor(c.x, c.y); c.goal = d ? { x: d[0], y: d[1], k: 'cover' } : { x: S.ems.x, y: S.ems.y, k: 'ems' }; }
     if (c.goal.k === 'cover' && c.x === c.goal.x && c.y === c.goal.y) { c.goal = { x: S.ems.x, y: S.ems.y, k: 'ems' }; log(`${c.name}: in cover — making own way to EMS.`, 'radio'); continue; }
     if (c.goal.k === 'ems') { c.goal.x = S.ems.x; c.goal.y = S.ems.y; if (cheb(c.x, c.y, S.ems.x, S.ems.y) <= 1) { atEMS(c); continue; } }
@@ -143,16 +143,16 @@ function casualtyTurn() {
   for (const c of S.cas) { c.wait = false;
     if (c.state === 'transport') { if (--c.tr <= 0) { c.state = 'evacuated'; S.stats.evac++; log(`EMS: ${c.name} has reached hospital.`, 'good'); } continue; }
     if (!casActive(c) || c.stable) continue;
-    c.crit--; if (c.crit <= 0) { if (c.who === 'suspect' && c.state === 'mobile') { c.state = 'immobile'; c.crit = 3; if (hostile()) { S.suspect.mode = 'incapacitated'; S.suspect.walk = null; S.stats.method = 'Officer fire'; } if (S.suspect.visible) log('Suspect has collapsed — immobile.', 'alert'); continue; }
-      if (c.who === 'suspect') { suspectLost(c); continue; } c.state = 'lost'; S.stats.lost++; if (c.carrier) { const u = unit(c.carrier); if (u) { u.carrying = null; u.orders = u.orders.filter(q => q.cas !== c.id); } c.carrier = null; }
+    c.crit--; if (c.crit <= 0) { if (c.who === 'suspect' && c.state === 'mobile') { c.state = 'immobile'; c.crit = 3; withSp(suspById(c.ref), sp => { if (hostile()) { sp.mode = 'incapacitated'; sp.walk = null; S.stats.method = 'Officer fire'; sp.method = sp.method || 'Officer fire'; } if (sp.visible) log(`${spName()} has collapsed — immobile.`, 'alert'); }); continue; }
+      if (c.who === 'suspect') { withSp(suspById(c.ref), () => suspectLost(c)); continue; } c.state = 'lost'; S.stats.lost++; if (c.carrier) { const u = unit(c.carrier); if (u) { u.carrying = null; u.orders = u.orders.filter(q => q.cas !== c.id); } c.carrier = null; }
       log(`${c.name} did not survive the injuries.`, 'bad'); fx('text', c.x, c.y, { text: 'LOST', color: '#c9ced6' }); }
     else if (c.crit <= 2 && c.known && c.who !== 'suspect') log(`${c.name}: Critical — ${tDur(c.crit)} left without aid.`, 'alert'); }
 }
 /** Scene secured / operation over: EMS moves in. */
 function casualtyResolve(secure) {
   for (const c of S.cas) { if (c.state === 'transport') { c.state = 'evacuated'; S.stats.evac++; continue; }
-    if (!casActive(c)) continue; if (c.who === 'suspect' && S.suspect.deceased) continue;
-    if (c.stable || c.crit >= CAS_CFG.secureSave || (secure && c.state === 'mobile')) { c.state = 'evacuated'; S.stats.evac++; } else { c.state = 'lost'; S.stats.lost++; if (c.who === 'suspect') S.suspect.deceased = true; } c.known = true; }
+    if (!casActive(c)) continue; const so = c.who === 'suspect' ? (suspById(c.ref) || S.suspect) : null; if (so && so.deceased) continue;
+    if (c.stable || c.crit >= CAS_CFG.secureSave || (secure && c.state === 'mobile')) { c.state = 'evacuated'; S.stats.evac++; } else { c.state = 'lost'; S.stats.lost++; if (so) so.deceased = true; } c.known = true; }
 }
 /* ---------- the suspect as a casualty ---------- */
 function suspectLost(c) { const sp = S.suspect; c.state = 'lost'; sp.deceased = true; if (hostile()) { sp.mode = 'incapacitated'; sp.walk = null; } S.stats.lost++;

@@ -72,7 +72,7 @@ function setupSuspectArmor() { const r = makeRng(S.seed * 977 + 13), sp = S.susp
   const p = S.opts && S.opts.suspectArmor !== undefined ? S.opts.suspectArmor : ARMOR_CFG.suspect;
   sp.armor = r.chance(p) ? (r.chance(ARMOR_CFG.suspectPlate) ? 'plate' : 'soft') : 'none'; sp.armorKnown = false; }
 function revealSuspectArmor(how) { const sp = S.suspect; if (!sp.armor || sp.armor === 'none') return; if (how === 'stop') { sp.armorKnown = true; log('The round appears to have been stopped by body armor.', 'intel'); return; } if (sp.armorKnown) return; sp.armorKnown = true;
-  log(how === 'stop' ? 'The round appears to have been stopped by body armor.' : `Suspect appears to be wearing body armor (${sp.armor === 'plate' ? 'plate carrier' : 'soft vest'}).`, 'intel'); }
+  log(how === 'stop' ? 'The round appears to have been stopped by body armor.' : `${spName()} appears to be wearing body armor (${sp.armor === 'plate' ? 'plate carrier' : 'soft vest'}).`, 'intel'); }
 function hasShield(t) { return !!(t && t.equip && ((t.equip.shield || 0) + (t.equip.shield3 || 0)) > 0); }
 
 /** Armor summary for the UI: soft / plate counts and the best shield held. */

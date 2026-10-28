@@ -4,12 +4,12 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL', m); }
 const { execFileSync } = require('child_process');
 function runTurn() { Core.execute(); let g = 0; while (!Core.stepTick() && g++ < 50); }
 const K = Core.SCEN_KEYS;
-ok(K.join() === 'barricade,mental,domestic,flee,neighbor', 'five types: ' + K.join());
+ok(Core.BASE_KEYS.join() === 'barricade,mental,domestic,flee,neighbor' && K.length >= 5, 'base types: ' + K.join());
 // 1) selection by seed over many seeds: deterministic, every type appears, forced type wins
 const cnt = {}; let det = true; const N = 250;
 for (let i = 1; i <= N; i++) { const seed = i * 7919 % 999983; const a = Core.typeForSeed(seed), b = Core.typeForSeed(seed); if (a.key !== b.key || a.variant !== b.variant || a.legal !== b.legal) det = false; cnt[a.key] = (cnt[a.key] || 0) + 1; }
 ok(det, 'type selection deterministic per seed'); console.log('  type mix over', N, 'seeds', JSON.stringify(cnt));
-for (const k of K) ok((cnt[k] || 0) >= N * 0.07, `type ${k} appears (${cnt[k] || 0}/${N})`);
+for (const k of K) ok((cnt[k] || 0) >= N * (Core.SCEN_TYPES[k].xw ? Core.SCEN_TYPES[k].xw * 0.4 : 0.07), `type ${k} appears (${cnt[k] || 0}/${N})`);
 for (const seed of [11, 222, 3333]) { const S = Core.newGame(seed); ok(S.stype.key === Core.typeForSeed(seed).key, 'game uses the seed type ' + seed); }
 for (const k of K) { const S = Core.newGame(5150, { stype: k }); ok(S.stype.key === k, 'forced type ' + k); ok(S.brief.stype === k && S.brief.stypeName && S.brief.typeDesc, 'brief carries type ' + k); }
 ok(Core.newGame(5150, { stype: 'bogus' }).stype.key === Core.typeForSeed(5150).key, 'unknown forced type falls back to seed');

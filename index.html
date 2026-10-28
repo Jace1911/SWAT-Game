@@ -158,7 +158,7 @@ kbd{font:600 10.5px ui-monospace,monospace;background:#0b1b33;border:1px solid v
 #aimbox.show{display:block}
 #aimbox .pt{font-weight:800;color:var(--cyan2);letter-spacing:.08em;display:flex;align-items:center;margin-bottom:3px}#aimbox .pt b{margin-left:auto;font-size:17px;color:#fff}
 #aimbox .pr{display:flex;gap:6px;align-items:baseline;color:#bcd0e6}#aimbox .pr span{width:52px;color:var(--dim);text-transform:uppercase;font-size:9.5px;letter-spacing:.08em}#aimbox .pr i{flex:1;font-style:normal;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#aimbox .pr b{color:#fff}
-#ovwf{display:none;right:6px;width:200px;padding:4px;z-index:25}#ovwf.show{display:block}#ovw2{width:100%;height:auto;border-radius:6px}
+#ovwf{display:none;right:6px;width:200px;padding:4px;z-index:25}#ovwf.show{display:block}#ovw2{width:100%;height:auto;aspect-ratio:492/316;border-radius:6px}
 /* ---------- compact landscape (phones / small tablets on their side) ---------- */
 @media (max-height:560px) and (min-width:761px){
   #top{height:38px;top:calc(4px + var(--sat));left:calc(6px + var(--sal));right:calc(6px + var(--sar));gap:6px;padding:0 6px}
@@ -269,7 +269,9 @@ body.nogame .modal{background:transparent}
    ===================================================================== */
 const Core = (function () {
 'use strict';
-const MAP_W = 112, MAP_H = 72, TICKS = 8, LOSE_DOWN = 3; // LOSE_DOWN: kept only as the 'heavy losses' warning threshold — the mission never auto-ends on losses or time
+/** Rear row behind the suspect house: rear street (road + sidewalk) and a row of back-neighbour lots whose yards meet the target's back yard. */
+const REAR_CFG = { road: 4, walk: 2, depth: 18 }, REAR_OFF = 1 + REAR_CFG.road + REAR_CFG.walk + REAR_CFG.depth;
+const MAP_W = 112, MAP_H = 71 + REAR_OFF, TICKS = 8, LOSE_DOWN = 3; // LOSE_DOWN: kept only as the 'heavy losses' warning threshold — the mission never auto-ends on losses or time
 /* ---------- time display: logic stays turn-based; each executed turn = 30 s of scene time ---------- */
 const TURN_SEC = 30;
 function mmss(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
@@ -338,6 +340,7 @@ const SUSPECT_WEAPONS = {
   handgun: { name: 'handgun', range: 24, base: 0.34 },
   rifle:   { name: 'hunting rifle', range: 36, base: 0.30 },
   shotgun: { name: 'shotgun', range: 16, base: 0.42 },
+  none:    { name: 'no firearm', range: 0, base: 0 },   // v12: parole absconder may be unarmed
 };
 const STANCES = { return: 'Return fire', free: 'Fire at will', hold: 'Hold fire' };
 const TEAM_NAMES = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot'];
@@ -373,7 +376,7 @@ function cellOk(x, y, o) {
   if (!o.fly && (S.block[c] || S.dyn[c])) return false;
   if (o.fly && S.opaque[c]) return false;
   if (o.outdoor && S.room[c] >= 0) return false;
-  if (o.avoidSuspect && suspectActive() && S.suspect.x === x && S.suspect.y === y) return false;
+  if (o.avoidSuspect && (S.suspects && S.suspects.length > 1 ? S.suspects.some(s => s.x === x && s.y === y && !['detained', 'escaped'].includes(s.mode)) : suspectActive() && S.suspect.x === x && S.suspect.y === y)) return false;
   return true;
 }
 const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
@@ -699,11 +702,11 @@ function genFurniture(r) {
    sight and fire, so officers can run behind them for cover.
    ===================================================================== */
 function genGeo(r) {
-  const SW = r.int(36, 38), sw = r.int(6, 7), ST = SW + 2, SB = ST + sw - 1, SS = SB + 1;
+  const O = REAR_OFF - 1, SW = O + r.int(36, 38), sw = r.int(6, 7), ST = SW + 2, SB = ST + sw - 1, SS = SB + 1;
   const alley = r.chance(0.55);
   let cross = null;
   if (r.chance(0.55)) { const left = r.chance(0.5), x0 = left ? r.int(12, 22) : r.int(MAP_W - 28, MAP_W - 18); cross = { x0, x1: x0 + 5 }; }
-  const ny0 = alley ? 4 : 1;
+  const ny0 = O + (alley ? 4 : 1), RW = 1 + REAR_CFG.road, ry0 = RW + REAR_CFG.walk, ry1 = REAR_OFF - 1;
   const tw = r.int(36, 42), tx0 = Math.round(MAP_W / 2 - tw / 2) + r.int(-6, 6);
   const lots = [];
   const split = (a, b, side, y0, y1) => { let x = a; while (b - x + 1 >= 20) { let w = r.int(22, 32); if (b - (x + w) + 1 < 18) w = b - x + 1; lots.push({ x0: x, x1: x + w - 1, y0, y1, side }); x += w; }
@@ -713,8 +716,9 @@ function genGeo(r) {
   split(tx0 + tw, MAP_W - 2, 'n', ny0, SW - 1);
   if (cross) { split(1, cross.x0 - 1, 's', SS + 2, MAP_H - 2); split(cross.x1 + 1, MAP_W - 2, 's', SS + 2, MAP_H - 2); }
   else split(1, MAP_W - 2, 's', SS + 2, MAP_H - 2);
+  const nFront = lots.length; split(1, MAP_W - 2, 's', ry0, ry1); for (let i = nFront; i < lots.length; i++) lots[i].rear = true;
   lots.forEach((l, i) => { l.id = i; l.lawn = r(); });
-  S.geo = { SW, ST, SB, SS, streetW: sw, alley, cross, lots, target, name: r.pick(STREETS) + (r.chance(0.5) ? ' Street' : ' Drive') };
+  S.geo = { rear: { road0: 1, road1: REAR_CFG.road, walk0: RW, walk1: ry0 - 1, y0: ry0, y1: ry1 }, SW, ST, SB, SS, streetW: sw, alley, cross, lots, target, name: r.pick(STREETS) + (r.chance(0.5) ? ' Street' : ' Drive') };
   return target;
 }
 function markRect(q, f) { for (let y = q.y; y < q.y + q.h; y++) for (let x = q.x; x < q.x + q.w; x++) if (inb(x, y)) f(idx(x, y), x, y); }
@@ -731,7 +735,8 @@ function genNeighborhood(r) {
   const pave = (q, k) => markRect(q, c => { if (S.room[c] < 0) S.paved[c] = k; });
   pave({ x: 1, y: G.SW, w: MAP_W - 2, h: 2 }, 2); pave({ x: 1, y: G.ST, w: MAP_W - 2, h: G.streetW }, 1); pave({ x: 1, y: G.SS, w: MAP_W - 2, h: 2 }, 2);
   if (G.cross) { pave({ x: G.cross.x0 - 1, y: G.SS, w: 1, h: MAP_H - G.SS - 1 }, 2); pave({ x: G.cross.x0, y: G.SS, w: 6, h: MAP_H - G.SS - 1 }, 1); pave({ x: G.cross.x1 + 1, y: G.SS, w: 1, h: MAP_H - G.SS - 1 }, 2); }
-  if (G.alley) pave({ x: 1, y: 1, w: MAP_W - 2, h: 3 }, 3);
+  if (G.alley) pave({ x: 1, y: REAR_OFF, w: MAP_W - 2, h: 3 }, 3);
+  pave({ x: 1, y: G.rear.road0, w: MAP_W - 2, h: REAR_CFG.road }, 1); pave({ x: 1, y: G.rear.walk0, w: MAP_W - 2, h: REAR_CFG.walk }, 2);
   // ---- target lot: driveway, walk, patio, detached garage ----
   const T = G.target, fd = S.doors.find(d => d.name === 'Front Door'), fdo = fd.cells[0].find(c => roomAt(c[0], c[1]) < 0) || fd.cells[0][1];
   const gside = H.side === 'L' ? -1 : 1;
@@ -750,7 +755,7 @@ function genNeighborhood(r) {
     if (L.target || L.x1 - L.x0 < 17) continue;
     const north = L.side === 'n', lw = L.x1 - L.x0 + 1;
     const w = r.int(10, Math.min(18, lw - 10)), h = r.int(8, north ? 12 : 10);
-    const setback = north ? r.int(6, 10) : r.int(4, 7);
+    let setback = north ? r.int(6, 10) : r.int(4, 7); if (L.rear) setback = Math.min(setback, 5);
     const y = north ? L.y1 - setback - h + 1 : L.y0 + setback;
     const hasG = r.chance(0.5) && lw - w >= 17, gl = r.chance(0.5);
     const x = clamp(L.x0 + Math.floor((lw - w - (hasG ? 6 : 0)) / 2) + r.int(-2, 2) + (hasG && gl ? 6 : 0), L.x0 + 3 + (hasG && gl ? 6 : 0), L.x1 - w - 3 - (hasG && !gl ? 6 : 0));
@@ -758,16 +763,16 @@ function genNeighborhood(r) {
     if (r.chance(0.45)) { const ww = r.int(4, Math.max(4, Math.floor(w / 2))), wh = r.int(3, 4), wx = r.chance(0.5) ? x : x + w - ww; parts.push({ x: wx, y: north ? y - wh : y + h, w: ww, h: wh }); }
     let garage = null; if (hasG) { const gh = Math.min(h, r.int(6, 7)); garage = { x: gl ? x - 6 : x + w, y: north ? y + h - gh : y, w: 6, h: gh }; parts.push(garage); }
     if (!parts.every(q => q.y >= L.y0 + 1 && q.y + q.h <= L.y1 && q.x >= L.x0 + 2 && q.x + q.w <= L.x1 - 1 && rectFree(q, 1))) continue;
-    const nb = { lot: L.id, parts, garage, north, roof: r.int(0, 5), body: r.int(0, 4), storeys: r.chance(0.5) ? 2 : 1 };
+    const nb = { lot: L.id, parts, garage, north, rear: !!L.rear, roof: r.int(0, 5), body: r.int(0, 4), storeys: r.chance(0.5) ? 2 : 1 };
     parts.forEach(q => solid(q, 5, true));
     // driveway
     const dq = garage ? { x: garage.x, w: 6 } : { x: r.chance(0.5) ? Math.max(L.x0 + 1, x - 4) : Math.min(L.x1 - 3, x + w + 1), w: 3 };
-    const drive = north ? { x: dq.x, y: garage ? garage.y + garage.h : y + h - 4, w: dq.w, h: 0 } : { x: dq.x, y: G.SS + 2, w: dq.w, h: 0 };
+    const drive = north ? { x: dq.x, y: garage ? garage.y + garage.h : y + h - 4, w: dq.w, h: 0 } : { x: dq.x, y: L.y0, w: dq.w, h: 0 };
     drive.h = north ? G.SW - drive.y : (garage ? garage.y : y + 4) - drive.y;
     if (drive.h > 0 && drive.x >= L.x0 && drive.x + drive.w <= L.x1 + 1) { pave(drive, 4); W.drives.push(drive); nb.drive = drive;
-      if (r.chance(0.6)) { const cq = { x: drive.x + Math.floor((drive.w - 2) / 2), y: north ? G.SW - 5 : G.SS + 3, w: 2, h: 4 }; if (rectFree(cq) || true) { W.cars.push({ x: cq.x, y: cq.y, w: 2, h: 4, vert: true, color: r.int(0, 5) }); } } }
+      if (r.chance(0.6)) { const cq = { x: drive.x + Math.floor((drive.w - 2) / 2), y: north ? G.SW - 5 : L.y0 + 1, w: 2, h: 4 }; if (rectFree(cq) || true) { W.cars.push({ x: cq.x, y: cq.y, w: 2, h: 4, vert: true, color: r.int(0, 5) }); } } }
     const door = { x: x + r.int(2, w - 3), y: north ? y + h : y - 1 };
-    const walk = north ? { x: door.x, y: door.y, w: 1, h: G.SW - door.y } : { x: door.x, y: G.SS + 2, w: 1, h: door.y - G.SS - 1 };
+    const walk = north ? { x: door.x, y: door.y, w: 1, h: G.SW - door.y } : { x: door.x, y: L.y0, w: 1, h: door.y - L.y0 + 1 };
     pave(walk, 5); W.walks.push(walk);
     W.nb.push(nb);
   }
@@ -782,6 +787,8 @@ function genNeighborhood(r) {
   for (let i = 1; i < lotsS.length; i++) { const L = lotsS[i], P = lotsS[i - 1]; if (P.x1 + 1 !== L.x0) continue; const a = backOf(L), b = backOf(P); const yS = Math.max(a ? a.y0 + 2 : L.y0 + 8, b ? b.y0 + 2 : L.y0 + 8);
     if (r.chance(0.8)) fenceV(L.x0, yS, L.y1, [r.int(yS + 1, Math.max(yS + 1, L.y1 - 3))]); }
   if (G.alley) for (const L of lotsN) if (r.chance(0.8)) fenceH(L.x0, L.x1, L.y0, [r.int(L.x0 + 2, L.x1 - 4)]);
+  // rear row: back fence between the back neighbours' yards and the target block (or the alley), with a gate per lot
+  for (const L of lotsS.filter(l => l.rear)) if (r.chance(0.85)) fenceH(L.x0, L.x1, G.alley ? L.y1 : L.y1 + 1, [r.int(L.x0 + 2, L.x1 - 4)]);
   W.yf = {};
   for (const L of G.lots) { const b = backOf(L); if (!b || (!L.target && r.chance(0.35))) continue;
     const yf = L.side === 'n' ? b.y0 + Math.min(3, Math.max(1, b.y1 - b.y0 - 6)) : b.y1 - 2;
@@ -806,10 +813,10 @@ function genNeighborhood(r) {
       if (!rectFree(q, 2) || W.trees.some(o => dist(o.x, o.y, x, y) < 5)) continue; if (L.target && x >= H.x0 - 3 && x <= H.x1 + 3 && y >= H.y0 - 3 && y <= H.y1 + 3) continue;
       solid(q, 1, false); W.trees.push({ x, y, r: 1.5 + r() * 1.3, hue: r() }); k++; } }
   // ---- mailboxes ----
-  for (const L of G.lots) { const d = W.drives.find(q => q.x >= L.x0 && q.x <= L.x1) ; const x = d ? (d.x + d.w < L.x1 ? d.x + d.w : d.x - 1) : L.x0 + 3; const y = L.side === 'n' ? G.SW - 1 : G.SS + 2;
+  for (const L of G.lots) { const d = W.drives.find(q => q.x >= L.x0 && q.x <= L.x1) ; const x = d ? (d.x + d.w < L.x1 ? d.x + d.w : d.x - 1) : L.x0 + 3; const y = L.side === 'n' ? G.SW - 1 : L.y0;
     const q = { x, y, w: 1, h: 1 }; if (rectFree(q)) { solid(q, 6, false); W.mail.push({ x, y }); } }
   // ---- street lamps ----
-  for (let x = 6; x < MAP_W - 4; x += r.int(20, 26)) { for (const y of [G.SW, G.SS + 1]) { if (!S.block[idx(x, y)]) { S.block[idx(x, y)] = 1; W.lamps.push({ x, y }); } } }
+  for (let x = 6; x < MAP_W - 4; x += r.int(20, 26)) { for (const y of [G.SW, G.SS + 1, G.rear.walk0]) { if (!S.block[idx(x, y)]) { S.block[idx(x, y)] = 1; W.lamps.push({ x, y }); } } }
   // ---- SWAT truck + staging (out of the suspect's likely range) ----
   const hcx = (H.x0 + H.x1) / 2, far = r.chance(0.5) ? -1 : 1;
   let vx = Math.round(hcx + far * r.int(32, 38)); if (vx < 3 || vx > MAP_W - 10) vx = Math.round(hcx - far * r.int(32, 38));
@@ -829,6 +836,11 @@ function genNeighborhood(r) {
     const x = near > 0 ? Math.round(hcx + r.int(-14, 12)) : r.int(3, MAP_W - 8); if (!curbOk(x, y, L)) continue;
     if (near <= 0 && Math.abs(x + L / 2 - hcx) < 6) continue;
     const q = { x, y, w: L, h: 2 }; solid(q, 3, false); W.cars.push({ x, y, w: L, h: 2, vert: false, color: r.int(0, 7), type, street: true, flip: r.chance(0.5) }); nc--; if (Math.abs(x + L / 2 - hcx) < 16) near--; }
+  // parked cars on the rear street (north curb), never in front of a rear driveway
+  for (let n = r.int(2, 4), g = 0; n > 0 && g++ < 80;) { const [type, L] = r.pick(TYPES), x = r.int(4, MAP_W - 10), y = G.rear.road0;
+    if (W.drives.some(d => d.y === G.rear.y0 && x + L > d.x - 1 && x < d.x + d.w + 1) || W.cars.some(c => c.street && c.y === y && x + L + 2 > c.x && x < c.x + c.w + 2)) continue;
+    let ok = true; markRect({ x: x - 1, y, w: L + 2, h: 2 }, c => { if (S.block[c]) ok = false; }); if (!ok) continue;
+    solid({ x, y, w: L, h: 2 }, 3, false); W.cars.push({ x, y, w: L, h: 2, vert: false, color: r.int(0, 7), type, street: true, rear: true, flip: r.chance(0.5) }); n--; }
   S.ext = W;
 }
 /* cells a 3×1 cruiser can be centred on: outdoors, clear of solids and fences in a 3×3 box */
@@ -845,13 +857,14 @@ function buildDriveMask() {
 /** World validation for the harness: neighbor buildings never overlap the house, rooms, streets; key outdoor points connected. */
 function validateWorld() {
   const errs = [], W = S.world, G = S.geo, H = S.house;
-  for (const nb of W.nb) for (const q of nb.parts) markRect(q, (c, x, y) => { if (S.room[c] >= 0) errs.push('neighbor overlaps target house'); if (y >= G.SW && y < G.SS + 2) errs.push('neighbor on street'); });
+  for (const nb of W.nb) for (const q of nb.parts) markRect(q, (c, x, y) => { if (S.room[c] >= 0) errs.push('neighbor overlaps target house'); if (y >= G.SW && y < G.SS + 2) errs.push('neighbor on street'); if (y <= G.rear.walk1) errs.push('neighbor on rear street'); });
   for (const s of W.sheds) markRect(s, c => { if (S.room[c] >= 0) errs.push('shed overlaps house'); });
   const D = reach(W.staging.x, W.staging.y, { outdoor: true }, 1e6);
   const need = [[H.x0 - 2, H.y0 - 2, 'rear-left'], [H.x1 + 2, H.y0 - 2, 'rear-right'], [H.x0 - 2, H.y1 + 2, 'front-left'], [H.x1 + 2, H.y1 + 2, 'front-right']];
   for (const [x, y, n] of need) { let ok = false; for (let dy = -2; dy <= 2 && !ok; dy++) for (let dx = -2; dx <= 2; dx++) if (inb(x + dx, y + dy) && D[idx(x + dx, y + dy)] < 1e9) { ok = true; break; } if (!ok) errs.push('cannot reach ' + n + ' of house'); }
   for (const d of S.doors.filter(q => q.exterior)) { const o = d.cells[0].find(c => roomAt(c[0], c[1]) < 0); if (o && D[idx(o[0], o[1])] >= 1e9) errs.push('exterior door unreachable: ' + d.name); }
   for (const nb of W.nb) { const q = nb.parts[0]; let ok = false; for (let x = q.x - 2; x <= q.x + q.w + 1 && !ok; x++) for (const y of [q.y - 2, q.y - 1]) if (inb(x, y) && D[idx(x, y)] < 1e9) { ok = true; break; } if (!ok && nb.north) errs.push('no route behind a neighbor house'); }
+  if (!W.nb.some(n => n.rear)) errs.push('no rear-row neighbour house');
   let dr = 0; for (let c = 0; c < S.drive.length; c++) dr += S.drive[c]; if (dr < 600) errs.push('drive area too small');
   if (!S.drive[idx(Math.round((H.x0 + H.x1) / 2), G.ST + 3)]) errs.push('street in front not drivable');
   return errs;
@@ -1148,10 +1161,10 @@ function threatPoints() {
   const wgt = rm => kr < 0 ? 1 : rm === kr ? 1 : 0.4;
   for (const w of S.windows) { const e = w.edges[Math.floor(w.edges.length / 2)]; out.push({ x: e[0], y: e[1], w: wgt(w.room), kind: 'window', id: w.id }); }
   for (const d of S.doors) if (d.exterior && d.state !== 'closed') { const c = d.cells[Math.floor(d.cells.length / 2)]; const a = roomAt(c[0][0], c[0][1]) >= 0 ? c[0] : c[1]; out.push({ x: a[0], y: a[1], w: wgt(roomAt(a[0], a[1])), kind: 'door', id: d.id }); }
-  const sp = S.suspect; if (suspectActive() && sp.room < 0) out.push({ x: sp.x, y: sp.y, w: 1.5, kind: 'suspect' });
+  for (const sp of suspList()) if (spActive(sp) && sp.room < 0) out.push({ x: sp.x, y: sp.y, w: 1.5, kind: 'suspect' });
   return out;
 }
-function expoKey() { return S.doors.map(d => d.exterior ? d.state[0] : '').join('') + '|' + S.units.filter(u => u.kind === 'cruiser').map(c => c.x + ',' + c.y + carAxis(c)).join(';') + '|' + knownRoom() + '|' + (S.suspect && S.suspect.room < 0 ? S.suspect.x + ',' + S.suspect.y : ''); }
+function expoKey() { return S.doors.map(d => d.exterior ? d.state[0] : '').join('') + '|' + S.units.filter(u => u.kind === 'cruiser').map(c => c.x + ',' + c.y + carAxis(c)).join(';') + '|' + knownRoom() + '|' + suspList().filter(sp => sp.room < 0).map(sp => sp.x + ',' + sp.y).join(';'); }
 function computeExpo(force) {
   const key = expoKey(); if (!force && S.expoKey === key && S.expo) return; S.expoKey = key;
   if (!S.expo) S.expo = new Float32Array(MAP_W * MAP_H); S.expo.fill(0);
@@ -1251,8 +1264,7 @@ function updateVision() {
   for (const c of S.peek) S.vis[c] = 1;
   for (const u of W) if (u.slice && u.slice.ox === u.x && u.slice.oy === u.y && u.slice.cells.length) { for (const c of u.slice.cells) S.vis[c] = 1; u.vis = u.vis.concat(u.slice.cells); } // pie-slice reveal
   // mutual sight: if the suspect has a clear line to one of our units inside sight range, that unit sees him too (no facing needed)
-  const sp0 = S.suspect;
-  if (sp0 && suspectActive()) { const sc = idx(sp0.x, sp0.y); for (const u of W) { if (u.kind === 'cruiser' || !u.vis || u.vis.includes(sc)) continue; const p = visParamsG(u);
+  for (const sp0 of suspList()) if (spActive(sp0)) { const sc = idx(sp0.x, sp0.y); for (const u of W) { if (u.kind === 'cruiser' || !u.vis || u.vis.includes(sc)) continue; const p = visParamsG(u);
     if (dist(u.x, u.y, sp0.x, sp0.y) <= p.range && los(sp0.x, sp0.y, u.x, u.y) === 1 && los(u.x, u.y, sp0.x, sp0.y) === 1) { u.vis.push(sc); S.vis[sc] = 1; } } }
   // per-cell memory: indoor cells we have actually had eyes on (through open doors/doorways), drawn even while the room is not yet "explored"
   if (!S.seenCell || S.seenCell.length !== S.vis.length) S.seenCell = new Uint8Array(S.vis.length);
@@ -1263,14 +1275,15 @@ function updateVision() {
     if (!rm.explored && (occupied || counts[i] >= rm.w * rm.h * 0.3)) { rm.explored = true; if (!rm.known) rm.known = true; log(`${rm.name} now in view.`, 'intel'); } });
   S.doors.forEach(d => { if (d.exterior || d.rooms.some(q => q >= 0 && S.rooms[q].explored)) d.known = true; });
   S.doors.forEach(d => { if (d.storm && !d.stormKnown && d.cells.some(([a, b]) => (roomAt(a[0], a[1]) < 0 && S.vis[idx(a[0], a[1])]) || (roomAt(b[0], b[1]) < 0 && S.vis[idx(b[0], b[1])]))) { d.stormKnown = true; log(`${d.name}: outer storm door spotted — pry will take longer.`, 'intel'); } });
-  const sp = S.suspect;
-  if (sp && suspectActive() && (S.vis[idx(sp.x, sp.y)] || (sp.walk && sp.room < 0))) { // a walk-out in the yard is watched by everyone
-    if (!sp.seen) { log(`CONTACT — suspect visual in ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'yard'}!`, 'alert'); const sc = idx(sp.x, sp.y), who = [];
+  eachSp(sp => {
+  if (sp && suspectActive() && ((S.vis[idx(sp.x, sp.y)] && !hiddenNow(sp)) || (sp.walk && sp.room < 0))) { // a walk-out in the yard is watched by everyone
+    if (!sp.seen) { if (multiSp() && !sp.labelled) { sp.labelled = true; sp.label = SUS_LETTERS[suspList().filter(s => s.labelled).length - 1]; }
+      log(`CONTACT — ${multiSp() ? spName().toLowerCase() : 'suspect'} visual in ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'yard'}!`, 'alert'); const sc = idx(sp.x, sp.y), who = [];
       for (const u of W) if (u.kind === 'team' && u.vis.includes(sc)) who.push(...teamOk(u).map(o => o.id)); xpAct('locate', who.length ? who : null); }
     if (sp.armor && sp.armor !== 'none' && !sp.armorKnown) revealSuspectArmor('seen');
     sp.seen = true; sp.visible = true; sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn }; sp.heat = null;
-  } else if (sp) sp.visible = false;
-  containStatus();
+  } else if (sp) sp.visible = false; });
+  countObserve(); containStatus();
 }
 /* ===================== v8 INDIVIDUAL OFFICER INVENTORIES =====================
    Each officer carries o.inv = { hands:[L,R], holster:[...], slung:[...], packed:{k:n}, vest:{k:n}, nr:{k:turn}, ll:rounds }.
@@ -1490,7 +1503,7 @@ function setupSuspectArmor() { const r = makeRng(S.seed * 977 + 13), sp = S.susp
   const p = S.opts && S.opts.suspectArmor !== undefined ? S.opts.suspectArmor : ARMOR_CFG.suspect;
   sp.armor = r.chance(p) ? (r.chance(ARMOR_CFG.suspectPlate) ? 'plate' : 'soft') : 'none'; sp.armorKnown = false; }
 function revealSuspectArmor(how) { const sp = S.suspect; if (!sp.armor || sp.armor === 'none') return; if (how === 'stop') { sp.armorKnown = true; log('The round appears to have been stopped by body armor.', 'intel'); return; } if (sp.armorKnown) return; sp.armorKnown = true;
-  log(how === 'stop' ? 'The round appears to have been stopped by body armor.' : `Suspect appears to be wearing body armor (${sp.armor === 'plate' ? 'plate carrier' : 'soft vest'}).`, 'intel'); }
+  log(how === 'stop' ? 'The round appears to have been stopped by body armor.' : `${spName()} appears to be wearing body armor (${sp.armor === 'plate' ? 'plate carrier' : 'soft vest'}).`, 'intel'); }
 function hasShield(t) { return !!(t && t.equip && ((t.equip.shield || 0) + (t.equip.shield3 || 0)) > 0); }
 
 /** Armor summary for the UI: soft / plate counts and the best shield held. */
@@ -1526,7 +1539,7 @@ function genPerches() {
       const s = expoAt(x, y) * 4 + dist(x, y, best[0], best[1]) * 0.15; if (s < es) { es = s; entry = [x, y]; } }
     if (!entry) return;
     const cx = body[0].x + body[0].w / 2, cy = body[0].y + body[0].h / 2;
-    const where = (nb.north === (hy < S.geo.ST)) ? '' : ' across the street';
+    const where = nb.rear ? ' (rear row, behind the house)' : (nb.north === (hy < S.geo.ST)) ? '' : ' across the street';
     S.perches.push({ id: S.perches.length, nb: i, x: best[0], y: best[1], entry, kind: nb.storeys === 2 ? 'upper-floor window' : 'rooftop', sightLines: Math.round(bs * 10) / 10,
       name: `Neighbor house ${compass(cx - hx, cy - hy)}${where}` });
   });
@@ -1619,12 +1632,12 @@ function impairVis(u) { return (1 - 0.4 * (u.impair || 0)) * (masked(u) ? MASK.v
 function suspectGas() { // per tick
   const sp = S.suspect; const g = gasAt(sp.x, sp.y);
   if (sp.hasMask && !sp.maskOn && g > 0.08 && hostile()) { if (!sp.maskDon) { sp.maskDon = 2; } else if (--sp.maskDon <= 0) sp.maskOn = true; }
-  const t = sp.maskOn ? g * 0.05 : clamp(g * 1.3, 0, 1); sp.impair = Math.max(t, (sp.impair || 0) * 0.6); if (sp.impair < 0.03) sp.impair = 0;
-  if (sp.maskOn && sp.visible && !sp.maskSeen) { sp.maskSeen = true; log('Suspect is wearing a gas mask!', 'alert'); fx('text', sp.x, sp.y, { text: 'GAS MASK', color: '#ffb020' }); }
+  const t = sp.maskOn ? g * 0.05 : clamp(g * 1.3, 0, 1); sp.impair = Math.max(t, (sp.impair || 0) * 0.6); if (sp.impair < 0.03) sp.impair = 0; if (sp.hurt) sp.impair = Math.max(sp.impair, sp.hurt);
+  if (sp.maskOn && sp.visible && !sp.maskSeen) { sp.maskSeen = true; log(`${spName()} is wearing a gas mask!`, 'alert'); fx('text', sp.x, sp.y, { text: 'GAS MASK', color: '#ffb020' }); }
 }
 function suspectGasTurn() { // per turn: may relocate to clean air, run, or give up
   const sp = S.suspect; if (!hostile() || sp.maskOn || sp.mode === 'fleeing') return; const g = gasAt(sp.x, sp.y); if (g < 0.08) return;
-  if (S.rng.chance(clamp(0.05 + 0.25 * g, 0, 0.4))) { surrender('Suspect is coughing and shouting that he gives up!'); return; }
+  if (S.rng.chance(clamp(0.05 + 0.25 * g, 0, 0.4))) { surrender(`${spName()} is coughing and shouting ${multiSp() ? 'to give up' : 'that he gives up'}!`); return; }
   const pMove = clamp(0.2 + 0.7 * g, 0, 0.9); if (!S.rng.chance(pMove)) return;
   // gas-free room vs exit
   if (S.rng.chance(0.35 + 0.3 * g)) { startFlee(); if (sp.mode === 'fleeing') return; }
@@ -1708,7 +1721,7 @@ function detonateCharge(u, d) {
   else { log(`${by.name}: charge on ${d.name} fired but the door held — needs another breach.`, 'alert'); noise(mx, my, 18, 'breach'); d.barrKnown = d.barricaded; if (d.storm) d.stormState = 'breached'; }
   for (const q of S.units) { if (!onFoot(q) && q.kind !== 'team') continue; if (!unitAlive(q) || q.inCar) continue;
     const dd = dist(q.x, q.y, mx, my); if (dd < CHARGE_SAFE && los(q.x, q.y, Math.round(mx), Math.round(my))) { q.stun = 2; q.impair = Math.max(q.impair || 0, 0.5); log(`${q.name}: too close to the blast — dazed.`, 'alert'); fx('text', q.x, q.y, { text: 'DAZED', color: '#ffd080' }); } }
-  const sp = S.suspect; if (hostile()) { sp.agit = clamp(sp.agit + 15, 0, 100); if (dist(sp.x, sp.y, mx, my) < 4) { sp.stun = Math.max(sp.stun, 2); sp.daze = Math.max(sp.daze || 0, 8); log('Suspect stunned by the blast.', 'good'); } }
+  eachSp(sp => { if (hostile()) { sp.agit = clamp(sp.agit + 15, 0, 100); if (dist(sp.x, sp.y, mx, my) < 4) { sp.stun = Math.max(sp.stun, 2); sp.daze = Math.max(sp.daze || 0, 8); log(`${spName()} stunned by the blast.`, 'good'); } } });
 }
 /* =====================================================================
    DRACO ARM (v9) — front-mounted breaching boom/claw for the BearCat.
@@ -1900,7 +1913,7 @@ function casAct(u, o, speed) {
 }
 /** Per tick: mobile casualties move themselves (cover first, then to EMS). Fog flags refresh. */
 function casualtyTick() {
-  for (const c of S.cas) { if (c.who === 'suspect' && casActive(c) && !c.carrier) { c.x = S.suspect.x; c.y = S.suspect.y; } casKnow(c); if (c.state !== 'mobile' || c.carrier || c.wait || c.who === 'suspect') continue;
+  for (const c of S.cas) { if (c.who === 'suspect' && casActive(c) && !c.carrier) { const so = suspById(c.ref) || S.suspect; c.x = so.x; c.y = so.y; } casKnow(c); if (c.state !== 'mobile' || c.carrier || c.wait || c.who === 'suspect') continue;
     if (!c.goal) { const d = expoAt(c.x, c.y) < 0.12 && roomAt(c.x, c.y) < 0 ? null : ccpFor(c.x, c.y); c.goal = d ? { x: d[0], y: d[1], k: 'cover' } : { x: S.ems.x, y: S.ems.y, k: 'ems' }; }
     if (c.goal.k === 'cover' && c.x === c.goal.x && c.y === c.goal.y) { c.goal = { x: S.ems.x, y: S.ems.y, k: 'ems' }; log(`${c.name}: in cover — making own way to EMS.`, 'radio'); continue; }
     if (c.goal.k === 'ems') { c.goal.x = S.ems.x; c.goal.y = S.ems.y; if (cheb(c.x, c.y, S.ems.x, S.ems.y) <= 1) { atEMS(c); continue; } }
@@ -1913,16 +1926,16 @@ function casualtyTurn() {
   for (const c of S.cas) { c.wait = false;
     if (c.state === 'transport') { if (--c.tr <= 0) { c.state = 'evacuated'; S.stats.evac++; log(`EMS: ${c.name} has reached hospital.`, 'good'); } continue; }
     if (!casActive(c) || c.stable) continue;
-    c.crit--; if (c.crit <= 0) { if (c.who === 'suspect' && c.state === 'mobile') { c.state = 'immobile'; c.crit = 3; if (hostile()) { S.suspect.mode = 'incapacitated'; S.suspect.walk = null; S.stats.method = 'Officer fire'; } if (S.suspect.visible) log('Suspect has collapsed — immobile.', 'alert'); continue; }
-      if (c.who === 'suspect') { suspectLost(c); continue; } c.state = 'lost'; S.stats.lost++; if (c.carrier) { const u = unit(c.carrier); if (u) { u.carrying = null; u.orders = u.orders.filter(q => q.cas !== c.id); } c.carrier = null; }
+    c.crit--; if (c.crit <= 0) { if (c.who === 'suspect' && c.state === 'mobile') { c.state = 'immobile'; c.crit = 3; withSp(suspById(c.ref), sp => { if (hostile()) { sp.mode = 'incapacitated'; sp.walk = null; S.stats.method = 'Officer fire'; sp.method = sp.method || 'Officer fire'; } if (sp.visible) log(`${spName()} has collapsed — immobile.`, 'alert'); }); continue; }
+      if (c.who === 'suspect') { withSp(suspById(c.ref), () => suspectLost(c)); continue; } c.state = 'lost'; S.stats.lost++; if (c.carrier) { const u = unit(c.carrier); if (u) { u.carrying = null; u.orders = u.orders.filter(q => q.cas !== c.id); } c.carrier = null; }
       log(`${c.name} did not survive the injuries.`, 'bad'); fx('text', c.x, c.y, { text: 'LOST', color: '#c9ced6' }); }
     else if (c.crit <= 2 && c.known && c.who !== 'suspect') log(`${c.name}: Critical — ${tDur(c.crit)} left without aid.`, 'alert'); }
 }
 /** Scene secured / operation over: EMS moves in. */
 function casualtyResolve(secure) {
   for (const c of S.cas) { if (c.state === 'transport') { c.state = 'evacuated'; S.stats.evac++; continue; }
-    if (!casActive(c)) continue; if (c.who === 'suspect' && S.suspect.deceased) continue;
-    if (c.stable || c.crit >= CAS_CFG.secureSave || (secure && c.state === 'mobile')) { c.state = 'evacuated'; S.stats.evac++; } else { c.state = 'lost'; S.stats.lost++; if (c.who === 'suspect') S.suspect.deceased = true; } c.known = true; }
+    if (!casActive(c)) continue; const so = c.who === 'suspect' ? (suspById(c.ref) || S.suspect) : null; if (so && so.deceased) continue;
+    if (c.stable || c.crit >= CAS_CFG.secureSave || (secure && c.state === 'mobile')) { c.state = 'evacuated'; S.stats.evac++; } else { c.state = 'lost'; S.stats.lost++; if (so) so.deceased = true; } c.known = true; }
 }
 /* ---------- the suspect as a casualty ---------- */
 function suspectLost(c) { const sp = S.suspect; c.state = 'lost'; sp.deceased = true; if (hostile()) { sp.mode = 'incapacitated'; sp.walk = null; } S.stats.lost++;
@@ -2013,22 +2026,22 @@ function runTalk() {
   if (k === 'call') { N.attempts; if (!N.line && r.chance(T.noAnswer)) { N.attempts++; N.refusals++; negHist('Negotiator: the phone rings out — no answer.', 'radio'); return; }
     contactTry(N.line ? 'line' : 'phone'); return; }
   const C = NEGO_CFG.talk, m = talkMult(N.contact) * (stypeCfg().negoMul || 1); N.rounds++; xpAct('dialogue', negOnScene().map(o => o.id)); let gain = 0, msg = '';
-  if (k === 'rapport') { gain = r.int(C.rapport.gain[0], C.rapport.gain[1]) * m - sp.agit * NEGO_CFG.agitDrag; sp.agit += C.rapport.agit; msg = 'building rapport — talking about his family, what he needs.'; }
-  if (k === 'listen') { gain = r.int(C.listen.gain[0], C.listen.gain[1]) * m; sp.agit += C.listen.agit; msg = 'letting him vent. He is calming down.';
+  if (k === 'rapport') { gain = r.int(C.rapport.gain[0], C.rapport.gain[1]) * m - sp.agit * NEGO_CFG.agitDrag; sp.agit += C.rapport.agit; msg = flavor('rapport', 'building rapport — talking about his family, what he needs.'); }
+  if (k === 'listen') { gain = r.int(C.listen.gain[0], C.listen.gain[1]) * m; sp.agit += C.listen.agit; msg = flavor('listen', 'letting him vent. He is calming down.');
     if (r.chance(C.listen.intel)) { sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.located = true; msg += ` He mentions he is in the ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'house'}.`; } }
   if (k === 'concession') { gain = r.int(C.concession.gain[0], C.concession.gain[1]) * m - sp.agit * NEGO_CFG.agitDrag; sp.agit += C.concession.agit; N.concessions++;
-    msg = ['offered to pull the cruisers back a little.', 'got him cigarettes and water sent in on the robot line.', 'let him speak to his sister on the line.'][N.concessions - 1] || 'offered a concession.'; }
+    msg = flavor('concession', ['offered to pull the cruisers back a little.', 'got him cigarettes and water sent in on the robot line.', 'let him speak to his sister on the line.'][N.concessions - 1] || 'offered a concession.', N.concessions - 1); }
   if (k === 'status') { gain = r.int(C.status.gain[0], C.status.gain[1]) * m; S.intel.weapon = true; S.intel.threat = Math.max(S.intel.threat, 1);
-    msg = `status check — he says he is alone with a ${SUSPECT_WEAPONS[sp.weapon].name.toLowerCase()}${sp.injured ? ', and he is hurt' : ''}${S.gasActive && S.gas[idx(sp.x, sp.y)] > 0.2 ? ', coughing from the gas' : ''}.`;
+    msg = `${flavor('status', `status check — he says he is alone with a ${SUSPECT_WEAPONS[sp.weapon].name.toLowerCase()}`, SUSPECT_WEAPONS[sp.weapon].name.toLowerCase())}${sp.injured ? ', and he is hurt' : ''}${S.gasActive && S.gas[idx(sp.x, sp.y)] > 0.2 ? ', coughing from the gas' : ''}.`;
     if (N.hidden && !N.warn && r.chance(0.35 + negotiatorSkill() * 0.3)) { N.warn = true; msg += ' Something he said suggests he may be hiding a second weapon — run a full walk-out protocol.'; } }
   if (k === 'ultimatum') { if (sp.talk >= C.ultimatum.need && r.chance(C.ultimatum.surrender + (sp.talk - C.ultimatum.need) / 100)) { negHist('Negotiator: ultimatum — he agrees to come out.', 'good'); walkout('talk'); return; }
-    sp.agit += C.ultimatum.agit; sp.talk = clamp(sp.talk + C.ultimatum.talk, 0, 100); negHist('Negotiator: ultimatum rejected — he is furious.', 'alert');
+    sp.agit += C.ultimatum.agit; sp.talk = clamp(sp.talk + C.ultimatum.talk, 0, 100); negHist(flavor('ultimatum', 'Negotiator: ultimatum rejected — he is furious.'), 'alert');
     if (r.chance(C.ultimatum.hang)) { N.contact = null; N.quiet = 1; negHist('He has cut contact.', 'alert'); } sp.agit = clamp(sp.agit, 0, 100); return; }
   sp.agit = clamp(sp.agit, 0, 100); sp.talk = clamp(sp.talk + gain, 0, 100);
   negHist(`Negotiator: ${msg}`, 'radio');
   if (N.contact === 'pa' && r.chance(NEGO_CFG.pa.yell * 0.5)) shoutReveal(paUnits()[0], false);
   const SU = NEGO_CFG.surrender;
-  if (sp.talk >= SU.sure || sp.talk >= SU.from && r.chance((sp.talk - SU.from) / SU.div)) { negHist('Negotiator: he says he is ready to come out.', 'good'); walkout('talk'); return; }
+  if (sp.talk >= SU.sure || sp.talk >= SU.from && r.chance((sp.talk - SU.from) / SU.div)) { negHist(flavor('ready', 'Negotiator: he says he is ready to come out.'), 'good'); walkout('talk'); return; }
   if (r.chance(T.hang * sp.agit / 50)) { N.contact = null; N.quiet = r.int(0, 1); negHist('He hangs up / stops answering mid-conversation.', 'alert'); }
 }
 /** He shouts back: steps to a window (briefly visible) or shouts through a door (location revealed). Optionally fires at the PA unit. */
@@ -2116,10 +2129,13 @@ function setSurrenderSpot(x, y) { if (S.phase !== 'planning') return { ok: false
   const p = findPath(S.suspect.x, S.suspect.y, (xx, yy) => xx === x && yy === y, { suspect: true, canOpen: true, allDoors: true }); if (!p) return { ok: false, reason: 'He cannot walk there from the house' };
   const [hx, hy] = houseCenter(); if (dist(x, y, hx, hy) > 24) return { ok: false, reason: 'Too far from the house — keep it within view' };
   S.surrSpot = { x, y }; log('Walk-out point set. When he comes out he will be told to stop and kneel there.', 'system'); S.version++; return { ok: true }; }
-function walkout(how) { const sp = S.suspect, N = S.nego; if (!hostile()) return false; sp.mode = 'surrendered'; sp.stun = 0; N.how = how; N.outcome = how === 'callout' ? 'Call-out surrender' : 'Negotiated surrender';
-  sp.walk = { stage: 'wait', turn: S.turn, spot: surrSpot(), amb: false, rolled: false };
+function walkout(how) { const r = walkout1(how, 0); if (r !== false) groupWalkout(how); return r; }
+/** One suspect agrees to walk out. k > 0: a group member following the lead (comes out k turns later, kneels beside the walk-out point). */
+function walkout1(how, k) { const sp = S.suspect, N = S.nego; if (!hostile()) return false; sp.mode = 'surrendered'; sp.stun = 0; if (!k) { N.how = how; N.outcome = how === 'callout' ? 'Call-out surrender' : 'Negotiated surrender'; }
+  let spot = surrSpot(); if (k) { for (const [dx, dy] of [[2 * k, 0], [-2 * k, 0], [0, 2 * k], [k, k], [-k, k]]) if (cellOk(spot[0] + dx, spot[1] + dy, { outdoor: true })) { spot = [spot[0] + dx, spot[1] + dy]; break; } }
+  sp.walk = { stage: 'wait', turn: S.turn + (k || 0), spot, amb: false, rolled: false, how };
   S.doors.forEach(d => { if (d.rooms.includes(sp.room)) { d.barricaded = false; d.locked = false; } if (d.exterior) { d.locked = false; d.barricaded = false; } });
-  log('He will come out through the front door in the next 30 seconds. Set up the protocol: cover team (shield), overwatch, PA commands. Then cuff him at the walk-out point.', 'good'); S.version++; }
+  if (!k) log(multiSp() ? `${spName()} will come out through the front door in the next 30 seconds. Set up the protocol: cover team (shield), overwatch, PA commands. Then take each one into custody at the walk-out point.` : 'He will come out through the front door in the next 30 seconds. Set up the protocol: cover team (shield), overwatch, PA commands. Then cuff him at the walk-out point.', 'good'); S.version++; }
 /** Score the surrender protocol at the moment he steps outside. */
 function protocolNow(spot) {
   const [x, y] = spot, P = { cover: false, shield: false, overwatch: false, commands: false, who: [] };
@@ -2139,10 +2155,10 @@ function ambushChance(P) { const C = NEGO_CFG; let p = S.nego.hidden ? C.ambushH
 /** One tick of the walk-out (suspectTick while surrendered). */
 function walkoutTick() {
   const sp = S.suspect, w = sp.walk, N = S.nego; if (!w) return;
-  if (w.stage === 'wait') { if (S.turn <= w.turn) return; w.stage = 'out'; log('Suspect is coming out — hands up.', 'alert'); }
+  if (w.stage === 'wait') { if (S.turn <= w.turn) return; w.stage = 'out'; log(`${spName()} is coming out — hands up.`, 'alert'); }
   if (w.stage === 'out') {
     if (sp.x === w.spot[0] && sp.y === w.spot[1]) { w.stage = 'kneel'; const cmd = N.protocol && N.protocol.commands;
-      log(cmd ? 'PA: "STOP. KNEEL. HANDS ON YOUR HEAD." — he kneels at the walk-out point.' : 'He stops at the walk-out point, standing, hands raised. (No PA commands.)', 'radio'); return; }
+      log(cmd ? `PA: "STOP. KNEEL. HANDS ON YOUR HEAD." — ${multiSp() ? spName() + ' kneels' : 'he kneels'} at the walk-out point.` : `${multiSp() ? spName() : 'He'} stops at the walk-out point, standing, hands raised. (No PA commands.)`, 'radio'); return; }
     const p = findPath(sp.x, sp.y, (x, y) => x === w.spot[0] && y === w.spot[1], { suspect: true, canOpen: true, allDoors: true });
     if (!p || !p.length) { w.spot = [sp.x, sp.y]; return; } const [nx, ny] = p[0]; const e = edge(sp.x, sp.y, nx, ny); if (e.t === 'D') { e.d.state = 'open'; e.d.barricaded = false; e.d.locked = false; }
     sp.x = nx; sp.y = ny; sp.room = roomAt(nx, ny); sp.atWindow = false; sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn };
@@ -2151,16 +2167,16 @@ function walkoutTick() {
     return; }
   if (w.stage === 'kneel') {
     const near = S.units.filter(u => onFoot(u) && !u.perch && cheb(u.x, u.y, sp.x, sp.y) <= 2).sort((a, b) => dist(a.x, a.y, sp.x, sp.y) - dist(b.x, b.y, sp.x, sp.y));
-    if (!S.units.some(u => u.detain)) { const c = S.units.filter(u => onFoot(u) && !u.perch && roomAt(u.x, u.y) < 0 && !(u.orders[0] && u.orders[0].cas)).sort((a, b) => (b.kind === 'team') - (a.kind === 'team') || dist(a.x, a.y, sp.x, sp.y) - dist(b.x, b.y, sp.x, sp.y))[0];
-      if (c) { c.detain = true; c.orders = []; log(`${c.name}: moving up to take him into custody.`, 'radio'); } }
+    const myKey = sp.key || true; if (!S.units.some(u => u.detain === myKey)) { const c = S.units.filter(u => onFoot(u) && !u.perch && roomAt(u.x, u.y) < 0 && !(u.orders[0] && u.orders[0].cas)).sort((a, b) => (b.kind === 'team') - (a.kind === 'team') || dist(a.x, a.y, sp.x, sp.y) - dist(b.x, b.y, sp.x, sp.y))[0];
+      if (c) { c.detain = myKey; c.orders = []; log(`${c.name}: moving up to take ${multiSp() ? spName() : 'him'} into custody.`, 'radio'); } }
     if (near.length && w.amb) { ambushNow(near[0]); return; }
-    const adj = near.find(u => cheb(u.x, u.y, sp.x, sp.y) <= 1); if (adj) { sp.walk = null; S.units.forEach(u => u.detain = false); detained(adj, N.outcome || 'Surrendered'); } }
+    const adj = near.find(u => cheb(u.x, u.y, sp.x, sp.y) <= 1); if (adj) { const how = w.how === 'callout' ? 'Call-out surrender' : w.how ? 'Negotiated surrender' : N.outcome || 'Surrendered'; sp.walk = null; S.units.forEach(u => { if (u.detain === myKey) u.detain = false; }); detained(adj, how); } }
 }
 function ambushNow(T) {
   const sp = S.suspect, N = S.nego, P = N.protocol || {}, r = S.rng; sp.walk = null; sp.mode = 'alert'; sp.weapon = 'handgun'; sp.ambush = true; sp.retreat = true; N.contact = null; N.quiet = 3; sp.talk = 0; sp.agit = 90;
-  S.units.forEach(u => u.detain = false); S.stats.shots++; N.ambush = { turn: S.turn + 1, score: P.score || 0, hit: false };
+  S.units.forEach(u => { if (u.detain === (sp.key || true)) u.detain = false; }); S.stats.shots++; N.ambush = { turn: S.turn + 1, score: P.score || 0, hit: false };
   fx('muzzle', sp.x, sp.y, { suspect: true }); fx('shot', sp.x, sp.y, { tx: T.x, ty: T.y }); sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn };
-  log('AMBUSH — he pulls a hidden handgun on the arrest team!', 'bad'); N.outcome = 'Walk-out ambush';
+  log(`AMBUSH — ${multiSp() ? spName() + ' pulls' : 'he pulls'} a hidden handgun on the arrest team!`, 'bad'); N.outcome = 'Walk-out ambush';
   let p = NEGO_CFG.ambushHit * (P.commands ? 0.5 : 1) * (T_HIT[targetClass(T, sp.x, sp.y)] || 1);
   if (r.chance(p)) { N.ambush.hit = true; shotOfficer(T, 'pistol', dist(T.x, T.y, sp.x, sp.y), sp.x, sp.y, 'walk-out spot'); } else log(`Rounds miss ${T.name}.`, 'alert');
   const resp = S.units.filter(u => unitAlive(u) && (onFoot(u) || u.perch) && weaponOf(u) && los(u.x, u.y, sp.x, sp.y) && dist(u.x, u.y, sp.x, sp.y) <= WEAPONS[weaponOf(u)].range)
@@ -2176,7 +2192,7 @@ function retreatStep() { const sp = S.suspect; const p = findPath(sp.x, sp.y, (x
 function negoTurn() { const N = S.nego; if (N.quiet > 0) N.quiet--; if (N.contact === 'pa' && !paUnits().length) { N.contact = null; negHist('PA contact lost — no loudspeaker in range.', 'radio'); } }
 function negoSummary() { const N = S.nego, sp = S.suspect;
   return { onScene: negOnScene().length, contact: contactLive() ? N.contact : null, numberKnown: N.numberKnown, numberSrc: N.numberSrc, line: N.line, quiet: N.quiet, attempts: N.attempts, refusals: N.refusals, rounds: N.rounds,
-    concessions: N.concessions, mood: moodWord(), rapport: rapportWord(), read: N.read, warn: N.warn, pick: N.pick, hist: N.hist.slice(-6), outcome: N.outcome, walk: sp.walk ? sp.walk.stage : null,
+    concessions: N.concessions, mood: moodWord(), rapport: rapportWord(), read: N.read, warn: N.warn, pick: N.pick, hist: N.hist.slice(-6), outcome: N.outcome, walk: (suspList().find(s => s.walk) || {}).walk ? suspList().find(s => s.walk).walk.stage : null,
     protocol: N.protocol, preview: sp.walk || hostile() ? protocolNow(surrSpot()) : null, spot: surrSpot(), avail: Object.fromEntries(TALK_KEYS.map(k => [k, talkAvail(k)])), names: TALK_NAMES }; }
 
 /* =====================================================================
@@ -2321,7 +2337,19 @@ function makeBrief() {
     occupants: ST === 'flee' ? 'Vacant house — no residents. He is alone.' : ST === 'domestic' ? 'Partner is out and at the perimeter; she says nobody else is inside. Not confirmed.' : self ? 'Caller says he is alone. Not confirmed.' : 'Caller does not know whether anyone else is inside. Not confirmed.',
     stype: ST, stypeName: stv.name || 'Barricaded subject', typeDesc: SCEN_TYPES[ST].desc, legal: stv.legal || null, variant: stv.variant || null, side: stv.side || null,
     patrol, known, officerDown: !!sc.injury, transcript: L, background: bg.sort(), phone: self || giveNum ? phone : null, giveNum, reviewed: false };
+  if (ST === 'flee') fleeBrief(S.brief);
+  typeBrief(S.brief);
 }
+/** Flee calls: what the patrol and the caller believe about the number of subjects (seeded, may under-report). */
+function fleeBrief(B) { const R = patrolReport(); B.report = R; const many = R.n > 1, words = ['', 'one', 'two', 'three', 'four'];
+  B.belief = R.kind === 'atleast' ? 'Officer belief: at least one suspect — possibly more than one.' : many ? `Officer belief: ${words[R.n]} suspects seen going in — there could be more. Not confirmed.` : 'Officer belief: one suspect, probably alone. Not confirmed.';
+  B.occupants = 'Vacant house — no residents. ' + (R.kind === 'atleast' ? 'Patrol saw at least one subject run in, possibly more than one. Count unknown.' : many ? `Patrol saw ${words[R.n]} subjects run in. Count not confirmed.` : 'Patrol saw one subject run in. Count not confirmed.');
+  const lead = R.kind === 'atleast' ? 'At least one guy — maybe more, it was hard to see — that the police were chasing' : many ? `${words[R.n][0].toUpperCase() + words[R.n].slice(1)} guys the police were chasing` : 'A guy the police were chasing';
+  B.transcript.forEach(e => { if (e.who === 'Caller' && e.text.startsWith('A guy the police were chasing')) e.text = e.text.replace('A guy the police were chasing just kicked', lead + (many || R.kind === 'atleast' ? ' just kicked' : ' just kicked')); });
+  if (many) B.typeDesc = 'Several suspects ran from patrol into an empty house. Nobody else inside, little interest in talking — and they will leave through any side nobody watches. The head count is not confirmed.';
+  else if (R.kind === 'atleast') B.typeDesc = 'At least one suspect — possibly more — ran from patrol into an empty house. Nobody else inside, little interest in talking — and anyone in there will leave through any side nobody watches.';
+  B.known = B.known.map(k => k.startsWith('Ran on foot from a traffic stop') ? (many ? 'They ran on foot from a traffic stop; patrol lost sight of them at the back of this house.' : k) : k);
+  B.patrol.splice(B.patrol.length - 1, 0, `Patrol: ${R.kind === 'atleast' ? 'at least one subject went in — possibly more than one' : many ? words[R.n] + ' subjects went in the back' : 'one subject went in the back'}.`); }
 /** Listening to the 911 recording (from the brief or the intel menu): same transcript, same intel, applied once. */
 function review911() {
   const B = S.brief; if (!B) return { ok: false }; const first = !S.intel.call911; S.intel.call911 = true; B.reviewed = true;
@@ -2343,15 +2371,16 @@ function statusCheck() {
 }
 /** End of turn: a side nobody watches gives him a way out. */
 function sceneTurn() {
-  const sc = S.scene, sp = S.suspect; if (!sc) return;
+  const sc = S.scene, sp = S.suspect; if (!sc) return; const G = multiSp() ? sp : sc; // gap clock: per suspect when there are several
   const sw = sideWatch(); if (sc.gap0.length && sc.gapClosed == null && !sw.gaps.some(g => sc.gap0.includes(g))) { sc.gapClosed = S.turn; xpAct('contain', null); }
-  const TT = stypeCfg(); if (!hostile() || sp.mode !== 'barricaded' || sp.walk || (S.nego && S.nego.contact && !TT.vacant) || S.turn < Math.min(2, TT.slipAfter)) { sc.gapTurns = 0; return; }
+  const TT = stypeCfg(); if (!hostile() || sp.mode !== 'barricaded' || sp.walk || (S.nego && S.nego.contact && !TT.vacant) || S.turn < Math.min(2, TT.slipAfter)) { G.gapTurns = 0; return; }
   const wins = S.windows.filter(w => w.room !== sp.room && !w.broken && sw.gaps.includes(watchPts().find(p => p.win === w.id).side));
-  if (!wins.length) { sc.gapTurns = 0; return; }
-  sc.gapTurns++; if (sc.gapTurns < (TT.slipAfter || SCENE_CFG.slipAfter) || !S.rng.chance(Math.min(0.6, SCENE_CFG.slip * (TT.slipMul || 1)))) return;
+  if (!wins.length) { G.gapTurns = 0; return; }
+  G.gapTurns = (G.gapTurns || 0) + 1; const dm = sp.disp === 'fleeing' && multiSp() ? MULTI_CFG.fleeSlip : sp.disp === 'surrendering' ? 0.5 : 1;
+  if (G.gapTurns < (TT.slipAfter || SCENE_CFG.slipAfter) || !S.rng.chance(Math.min(0.6, SCENE_CFG.slip * (TT.slipMul || 1) * dm))) return;
   let best = null, bp = null; for (const w of wins) { const [cx, cy] = w.edges[0]; const p = findPath(sp.x, sp.y, (x, y) => x === cx && y === cy, { suspect: true, canOpen: true }); if (p && (!bp || p.length < bp.length)) { bp = p; best = w; } }
   if (!best) return; sp.mode = 'fleeing'; sp.flee = best.id; sc.slipTried = true; const side = watchPts().find(p => p.win === best.id).side;
-  log(`Movement inside — sounds like he is heading for the ${side} side of the house!`, 'alert');
+  log(`Movement inside — sounds like ${multiSp() ? 'someone' : 'he'} is heading for the ${side} side of the house!`, 'alert');
 }
 /** Debrief lines about the starting situation and how it was handled. */
 function sceneDebrief() {
@@ -2389,19 +2418,31 @@ const SCEN_TYPES = {
   neighbor: { name: 'Neighbor dispute — firearm displayed', short: 'Neighbor dispute', w: 0.15, agit: 55, fireMul: 1, sideMul: 1.35, offSideMul: 0.85, negoMul: 0.9, calloutMul: 1, slipMul: 1, slipAfter: 2,
     temperW: { talker: 0.3, withdrawn: 0.25, volatile: 0.45 }, knownArmed: true,
     desc: 'He pointed a gun at the neighbor. Known armed; most hostile toward the neighbor\u2019s side of the house. The neighbor can be interviewed.' },
+  // v12 types — 'xw' is the share of ALL calls (tunable); picked first on a separate seed stream so the five base types keep their seeds.
+  parole: { name: 'Parole absconder — warrant', short: 'Parole absconder', xw: 0.06, agit: 35, fireMul: 0.7, negoMul: 0.9, calloutMul: 1.1, slipMul: 1.2, slipAfter: 2,
+    temperW: { talker: 0.3, withdrawn: 0.6, volatile: 0.1 }, variants: { seen: 0.4, window: 0.3, caller: 0.3 }, legal: { parole: 1 },
+    desc: 'Patrol went to pick up a parole absconder on a violation warrant. He will not come out — he hides and waits, often in an attic or basement. Armed is possible, not certain.' },
+  sovcit: { name: 'Eviction standoff — sovereign citizen', short: 'Eviction standoff', xw: 0.05, agit: 50, fireMul: 1.05, negoMul: 0.8, calloutMul: 0.6, slipMul: 0.6, slipAfter: 3,
+    temperW: { talker: 0.5, withdrawn: 0.25, volatile: 0.25 }, variants: { eviction: 0.6, papers: 0.4 }, legal: { eviction: 1 }, fortified: true,
+    desc: 'He refused to leave when patrol came to enforce an eviction or serve civil papers. He rejects the court\u2019s authority and argues every point. Long guns, armor, gas masks and reinforced doors are more likely.' },
 };
 const SCEN_KEYS = Object.keys(SCEN_TYPES);
-const LEGAL_TXT = { discharge: 'He fired a round inside the house — reckless discharge charge.', warrant: 'Active warrant (failure to appear) on file.', interview: 'No crime reported — emergency mental-health evaluation (transport hold) only.' };
+const BASE_KEYS = SCEN_KEYS.filter(k => !SCEN_TYPES[k].xw);
+const LEGAL_TXT = { parole: 'Parole-violation warrant on file (absconded from supervision).', eviction: 'Court order on file (writ of possession / civil process).', discharge: 'He fired a round inside the house — reckless discharge charge.', warrant: 'Active warrant (failure to appear) on file.', interview: 'No crime reported — emergency mental-health evaluation (transport hold) only.' };
 /* ============================================================ */
 function wpick(r, W) { let p = r() * Object.values(W).reduce((a, b) => a + b, 0); for (const k in W) { p -= W[k]; if (p <= 0) return k; } return Object.keys(W)[0]; }
 /** Scenario type for a seed (deterministic; independent of the map generator's random stream). */
 function typeForSeed(seed, force) {
-  const r = makeRng(((seed >>> 0) % 1000000 || 1) * 7393 + 11), key = SCEN_TYPES[force] ? force : wpick(r, Object.fromEntries(SCEN_KEYS.map(k => [k, SCEN_TYPES[k].w]))), T = SCEN_TYPES[key];
+  const r = makeRng(((seed >>> 0) % 1000000 || 1) * 7393 + 11), base = SCEN_TYPES[force] ? null : wpick(r, Object.fromEntries(BASE_KEYS.map(k => [k, SCEN_TYPES[k].w])));
+  let xk = null; { const rx = makeRng(((seed >>> 0) % 1000000 || 1) * 8803 + 5); let p = rx(); for (const k of SCEN_KEYS) if (SCEN_TYPES[k].xw) { p -= SCEN_TYPES[k].xw; if (p < 0) { xk = k; break; } } }
+  const key = SCEN_TYPES[force] ? force : xk || base, T = SCEN_TYPES[key];
   const st = { key, name: T.name, short: T.short, variant: null, legal: null, risk: false, side: null };
   if (T.variants) st.variant = wpick(r, T.variants);
   if (T.legal) st.legal = wpick(r, T.legal);
   if (key === 'mental') st.risk = true;            // neutral debrief flag only
   if (key === 'neighbor') st.side = r.chance(0.5) ? 'left' : 'right';
+  if (key === 'parole') st.name = T.name + { seen: ' (seen going in)', window: ' (seen at a window)', caller: ' (caller says he is inside)' }[st.variant];
+  if (key === 'sovcit') st.name = st.variant === 'papers' ? 'Civil papers standoff — sovereign citizen' : T.name;
   if (st.variant === 'violent') st.name = T.name + ' (violent)'; else if (st.variant === 'firearm') st.name = T.name + ' (firearm)';
   return st;
 }
@@ -2428,6 +2469,7 @@ function typeDebrief() {
     out.push({ k: '  Risk flag', v: 'Risk to himself reported at the call. ' + (S.intel.emsEval ? 'Referred for EMS evaluation.' : 'No EMS evaluation arranged.') }); }
   if (st.key === 'domestic') out.push({ k: '  Partner interview', v: S.intel.partner ? 'Done — layout, weapons and history obtained.' : 'Not done.' });
   if (st.key === 'neighbor') out.push({ k: '  Neighbor side', v: `Most hostile toward the ${st.side} side (neighbor's house).` });
+  typeExtraDebrief(out);
   if (st.key === 'flee') out.push({ k: '  Vacant house', v: S.stats.escaped ? 'He got out through an unwatched side.' : 'Contained.' });
   return out;
 }
@@ -2436,6 +2478,220 @@ function typeScore(add) {
   if (st.key === 'mental' && resolvedNoForce()) add('Crisis resolved without force', T.bonus.noForce);
   if (st.key === 'mental' && S.result && S.result.win && S.intel.emsEval) add('EMS evaluation arranged', T.bonus.ems);
 }
+/* =====================================================================
+   MULTIPLE SUSPECTS (v11) — the 'flee' call type can have 1-4 suspects.
+   Every suspect is the same object model as the classic single suspect;
+   rules written against S.suspect run per suspect through withSp(), which
+   swaps S.suspect for the duration of a call. Outside a swap, S.suspect is
+   always the "lead" (first still-hostile suspect) — negotiation talks to
+   the lead and its result applies to the group (others may break away).
+   Single-suspect types keep S.suspects = [S.suspect] and behave as before.
+   Rules only: no DOM. Neutral wording.
+   ===================================================================== */
+/* ================== TUNABLE: MULTIPLE SUSPECTS ================== */
+const MULTI_CFG = {
+  countW: [0.50, 0.30, 0.14, 0.06],     // P(1), P(2), P(3), P(4) suspects on a 'flee' call
+  dispW: { hiding: 0.30, fighting: 0.25, fleeing: 0.20, surrendering: 0.15, injured: 0.10 }, // starting state of each extra suspect
+  weapons: ['handgun', 'handgun', 'handgun', 'shotgun', 'rifle'],
+  mask: 0.05,
+  follow: { base: 0.75, surrendering: 1, fighting: 0.45, injured: 0.9 }, // chance another suspect joins a group surrender
+  hideFire: 0.6, fightFire: 1.15, fleeSlip: 1.6, surrTalk: 40, injImpair: 0.25,
+  report: { exact: 0.45, under: 0.35, atleast: 0.20 } // what the patrol tells dispatch about the number of subjects
+};
+const SUS_LETTERS = 'ABCD';
+let SP_DEPTH = 0;
+function suspList() { return S.suspects && S.suspects.length ? S.suspects : (S.suspect ? [S.suspect] : []); }
+function multiSp() { return !!(S.suspects && S.suspects.length > 1); }
+function spActive(s) { return !!s && !['detained', 'escaped'].includes(s.mode); }
+function spHostile(s) { return !!s && ['barricaded', 'alert', 'fleeing'].includes(s.mode); }
+function suspById(k) { return suspList().find(s => s.key === k) || null; }
+/** Lead = first hostile, else first walking out, else first active, else the first. Only changes S.suspect outside a swap. */
+function setLead() { const L = S.suspects; if (!L || L.length < 2 || SP_DEPTH) return; S.suspect = L.find(spHostile) || L.find(s => s.walk) || L.find(spActive) || L[0]; }
+function withSp(sp, fn) { if (!sp) return fn(S.suspect); const keep = S.suspect; S.suspect = sp; SP_DEPTH++;
+  try { return fn(sp); } finally { SP_DEPTH--; S.suspect = keep; if (!SP_DEPTH) setLead(); } }
+function eachSp(fn) { for (const s of suspList().slice()) withSp(s, fn); }
+function spName(sp = S.suspect) { return multiSp() && sp && sp.label ? 'Suspect ' + sp.label : 'Suspect'; }
+function labelAll() { for (const s of suspList()) if (!s.label) { s.labelled = true; s.label = SUS_LETTERS[suspList().filter(q => q.labelled).length - 1]; } }
+function spPron(sp = S.suspect) { return multiSp() ? spName(sp) : 'He'; }
+/** The suspect a shot at cell (tx,ty) is aimed at: one on/next to the cell, else the nearest active one in the same room. */
+function suspectFor(tx, ty, fromX, fromY) { const L = suspList().filter(spActive); if (L.length < 2) return S.suspect;
+  const on = L.filter(s => dist(s.x, s.y, tx, ty) <= 1.5).sort((a, b) => dist(a.x, a.y, tx, ty) - dist(b.x, b.y, tx, ty) || spHostile(b) - spHostile(a));
+  if (on.length) return on[0]; const rm = roomAt(tx, ty); const inRm = L.filter(s => rm >= 0 && s.room === rm && (fromX == null || los(fromX, fromY, s.x, s.y) === 1));
+  if (inRm.length) return inRm.sort((a, b) => dist(a.x, a.y, tx, ty) - dist(b.x, b.y, tx, ty))[0];
+  return L.slice().sort((a, b) => dist(a.x, a.y, tx, ty) - dist(b.x, b.y, tx, ty))[0]; }
+/** Best less-lethal / taser target from (sx,sy): nearest active suspect in view with a clear line, else the lead. */
+function devTarget(sx, sy) { const L = suspList().filter(spActive); if (L.length < 2) return S.suspect;
+  const c = L.filter(s => (s.visible || (s.lastKnown && s.lastKnown.turn === S.turn)) && los(sx, sy, s.x, s.y) === 1).sort((a, b) => spHostile(b) - spHostile(a) || dist(a.x, a.y, sx, sy) - dist(b.x, b.y, sx, sy));
+  return c[0] || S.suspect; }
+function suspectAtCell(x, y) { return suspList().find(s => spActive(s) && s.x === x && s.y === y) || null; }
+function spInRoom(rm, pred = spActive) { return suspList().some(s => pred(s) && s.room === rm); }
+/** Seeded count draw: separate stream so the map / scenario are unchanged by the count. */
+function fleeCount(seed, opts) { if (opts && opts.suspects) return clamp(Math.round(opts.suspects), 1, 4);
+  const r = makeRng(seed * 6101 + 29), W = MULTI_CFG.countW, tot = W.reduce((a, b) => a + b, 0); let p = r() * tot;
+  for (let i = 0; i < W.length; i++) { p -= W[i]; if (p <= 0) return i + 1; } return 1; }
+function wpick(r, W) { const ks = Object.keys(W); let p = r() * ks.reduce((a, k) => a + W[k], 0); for (const k of ks) { p -= W[k]; if (p <= 0) return k; } return ks[0]; }
+/** Tag the classic suspect, then (flee calls only) add the extra suspects, each with its own spot, weapon, armor, mask and starting state. */
+function setupSuspects() {
+  const lead = S.suspect; lead.sid = 0; lead.key = 'S'; lead.label = 'A'; lead.disp = lead.disp || null; S.suspects = [lead];
+  const n = S.stype && S.stype.key === 'flee' ? fleeCount(S.seed, S.opts) : 1;
+  S.intel.suspSeen = 0; S.intel.suspConfirmed = null;
+  if (n < 2) { setupSuspectArmor(); S.susCount = 1; return; }
+  const r = makeRng(S.seed * 4421 + 71), used = [[lead.x, lead.y]];
+  lead.disp = 'fleeing';
+  const rooms = S.rooms.map((q, i) => i).filter(i => i !== lead.room && S.rooms[i].type !== 'hall');
+  for (let k = 1; k < n; k++) {
+    let best = null, bs = -1e9;
+    for (let t = 0; t < 60; t++) { const ri = rooms.length && r.chance(0.85) ? r.pick(rooms) : lead.room; const q = S.rooms[ri];
+      const x = q.x + r.int(0, q.w - 1), y = q.y + r.int(0, q.h - 1); if (S.block[idx(x, y)] || roomAt(x, y) !== ri) continue;
+      const near = Math.min(...used.map(([a, b]) => dist(a, b, x, y))); if (near < 2) continue;
+      const sameRoom = S.suspects.some(s => s.room === ri); const s = near * 0.3 - (sameRoom ? 3 : 0) + r();
+      if (s > bs) { bs = s; best = [x, y, ri]; } }
+    if (!best) break; used.push([best[0], best[1]]);
+    const disp = wpick(r, MULTI_CFG.dispW);
+    const sp = { x: best[0], y: best[1], home: { x: best[0], y: best[1] }, room: best[2], mode: disp === 'fighting' ? 'alert' : 'barricaded', stun: 0, agit: lead.agit, cd: 0, ambush: false,
+      hasMask: r.chance(MULTI_CFG.mask), maskOn: false, maskSeen: false, maskDon: 0, impair: 0, phone: false, talk: 0, seen: false, lastKnown: null, heat: null, unseenTurns: 0, path: null, dir: r() * 6.28,
+      weapon: r.pick(MULTI_CFG.weapons), atWindow: false, suppressed: 0, duck: 0, sid: k, key: 'S' + (k + 1), label: SUS_LETTERS[k], disp };
+    if (disp === 'fighting') sp.agit = clamp(sp.agit + 15, 0, 100);
+    if (disp === 'surrendering') { sp.talk = MULTI_CFG.surrTalk; sp.agit = clamp(sp.agit - 20, 0, 100); }
+    if (disp === 'injured') { sp.injured = true; sp.hurt = MULTI_CFG.injImpair; sp.impair = MULTI_CFG.injImpair; }
+    S.suspects.push(sp);
+  }
+  S.susCount = S.suspects.length; S.suspects.forEach(s => { s.label = null; s.labelled = false; }); // letters are given in the order they are first seen
+  // armor per suspect: the lead keeps the classic stream, extras get their own
+  setupSuspectArmor();
+  const p = S.opts && S.opts.suspectArmor !== undefined ? S.opts.suspectArmor : ARMOR_CFG.suspect;
+  S.suspects.slice(1).forEach(sp => { const ra = makeRng(S.seed * 977 + 13 + sp.sid * 131); sp.armor = ra.chance(p) ? (ra.chance(ARMOR_CFG.suspectPlate) ? 'plate' : 'soft') : 'none'; sp.armorKnown = false; });
+}
+/** What the patrol reported: { n, kind: 'exact'|'under'|'atleast', text }. Seeded, separate stream. */
+function patrolReport() { const n = S.susCount || 1; if (!(S.stype && S.stype.key === 'flee')) return { n: 1, kind: 'exact', text: 'one subject' };
+  const r = makeRng(S.seed * 3331 + 5); let kind = wpick(r, MULTI_CFG.report); if (kind === 'under' && n === 1) kind = 'exact';
+  const said = kind === 'exact' ? n : kind === 'under' ? r.int(1, n - 1) : 1; const words = ['', 'one', 'two', 'three', 'four'];
+  const text = kind === 'atleast' ? 'at least one subject — possibly more' : said === 1 ? 'one subject' : words[said] + ' subjects';
+  return { n: said, kind, text }; }
+/** Status-panel view of the suspect count: unknown until every suspect has been seen. */
+function suspectCountInfo() { const L = suspList(), seen = L.filter(s => s.seen).length; const flee = S.stype && S.stype.key === 'flee'; const conf = !flee || !!S.intel.suspConfirmed || S.phase === 'over';
+  const R = S.brief && S.brief.report; return { seen, total: conf ? L.length : null, confirmed: !!conf, belief: R ? R.text : 'one subject',
+    custody: L.filter(s => s.mode === 'detained').length, down: L.filter(s => s.mode === 'incapacitated').length, active: L.filter(spHostile).length }; }
+/** Reveal bookkeeping after a vision pass: when every suspect has been seen, the count is confirmed. */
+function countObserve() { const L = suspList(); if (!(S.stype && S.stype.key === 'flee') || S.intel.suspConfirmed) return; const seen = L.filter(s => s.seen).length;
+  const all = seen === L.length && S.rooms.every(q => q.explored || q.type === 'hall');
+  if (seen > (S.intel.suspSeen || 0)) { S.intel.suspSeen = seen; if (!all) log(`${seen} suspect${seen > 1 ? 's' : ''} seen so far — the house is not cleared, there may be more.`, 'intel'); }
+  // confirmation: all have been seen, and every room has been explored or the count is fully in view
+  if (all) { S.intel.suspConfirmed = S.turn + 1; log(`Suspect count confirmed: ${L.length}.`, 'intel'); } }
+function spState(sp) { return sp.mode === 'detained' ? 'in custody' : sp.mode === 'escaped' ? 'escaped' : sp.mode === 'incapacitated' ? 'down' : sp.mode === 'surrendered' ? 'surrendering'
+  : sp.mode === 'fleeing' ? 'fleeing' : sp.stun > 0 ? 'stunned' : sp.injured && sp.mode === 'alert' ? 'injured' : sp.mode === 'alert' ? 'fighting' : 'hiding'; }
+/** Group surrender: after the lead agrees to walk out, every other hostile suspect follows (one per turn) or breaks away. */
+function groupWalkout(how) { if (!multiSp()) return; const lead = S.suspect; let k = 0;
+  for (const s of suspList()) { if (s === lead || !spHostile(s) || s.stun > 0) continue; const F = MULTI_CFG.follow; const p = F[s.disp] != null ? F[s.disp] : F.base;
+    if (S.rng.chance(p)) { k++; withSp(s, () => { walkout1(how, k); }); log(`${spName(s)} is coming out too.`, 'good'); }
+    else { s.agit = clamp(s.agit + 15, 0, 100); if (s.mode === 'barricaded') s.mode = 'alert'; s.breakaway = true; log(`${spName(s)} refuses to come out with the others.`, 'alert'); } } }
+/** Per-suspect debrief lines and stats. */
+function suspectsDebrief() { const L = suspList(); if (L.length > 1) labelAll(); return L.map(sp => { const sc = S.cas.find(c => c.who === 'suspect' && c.ref === sp.key);
+  return { k: L.length > 1 ? spName(sp) : 'Suspect', v: (sp.deceased ? 'Did not survive' : sc ? (sc.state === 'evacuated' ? 'Injured — evacuated to hospital in custody' : 'Injured') : sp.mode === 'detained' ? 'Uninjured, in custody' : sp.mode === 'escaped' ? 'Escaped' : sp.mode === 'incapacitated' ? 'Down, not secured' : 'Still inside')
+    + (L.length > 1 && sp.method ? ` (${sp.method})` : '') + (L.length > 1 ? ` · ${SUSPECT_WEAPONS[sp.weapon].name}${sp.armor && sp.armor !== 'none' ? ', ' + sp.armor + ' armor' : ''}` : '') }; }); }
+
+/* =====================================================================
+   v12 CALL TYPES — parole absconder and eviction / civil-papers standoff.
+   Rules only (no DOM). Neutral wording. Each uses its own seed streams so
+   the map and the base scenario stay identical for a given seed.
+   ===================================================================== */
+/* ================== TUNABLE ================== */
+const PAROLE_CFG = {
+  armed: 0.55,                                   // chance he has a firearm at all (otherwise none)
+  weapons: { handgun: 0.7, shotgun: 0.18, rifle: 0.12 },
+  hideP: 0.6, hideKinds: { attic: 0.5, basement: 0.5 }, // chance he is in an attic/basement hide instead of a barricaded room
+  findDist: 1,                                   // officers/robot/K9 must be this close (cells) to spot him in the hide
+  foundGiveUp: 0.45,                             // chance he gives up on the spot when found in the hide
+};
+const SOVCIT_CFG = { boost: 0.25, cap: 0.95, doorBase: 0.10, maskBase: 0.05, rifleBase: 0.25, postsP: 0.5 };
+/* ============================================= */
+const capP = (p) => Math.min(SOVCIT_CFG.cap, p);
+/** After the suspects exist: weapons/armor/masks/doors per type, and the parole hide. */
+function applyTypeExtras() {
+  const st = S.stype; if (!st) return; const sp = S.suspect;
+  if (st.key === 'parole') { const r = makeRng(S.seed * 6229 + 41);
+    sp.weapon = r.chance(PAROLE_CFG.armed) ? wpick(r, PAROLE_CFG.weapons) : 'none';
+    if (sp.weapon === 'none' && S.scene && S.scene.injury) sp.weapon = 'handgun'; // an officer was hit: he is armed
+    if (r.chance(PAROLE_CFG.hideP)) setupHide(r, wpick(r, PAROLE_CFG.hideKinds)); }
+  if (st.key === 'sovcit') { const r = makeRng(S.seed * 7451 + 23), C = SOVCIT_CFG;
+    // rifle: base share + boost (capped); keeps the stream deterministic
+    if (sp.weapon !== 'rifle' && r.chance((capP(C.rifleBase + C.boost) - C.rifleBase) / (1 - C.rifleBase))) sp.weapon = 'rifle';
+    if (!(S.opts && S.opts.suspectArmor !== undefined)) { sp.armor = r.chance(capP(ARMOR_CFG.suspect + C.boost)) ? (r.chance(ARMOR_CFG.suspectPlate) ? 'plate' : 'soft') : 'none'; sp.armorKnown = false; }
+    sp.hasMask = r.chance(capP(C.maskBase + C.boost));
+    S.doors.forEach(d => { if (d.exterior && d.kind !== 'garage' && r.chance(capP(C.doorBase + C.boost))) { d.barricaded = true; d.locked = true; d.fortified = true; } });
+    S.intel.posts = r.chance(C.postsP); }
+}
+/** Parole absconder hide: an attic hatch or basement door in a room; he waits there out of sight. */
+function setupHide(r, kind) {
+  const sp = S.suspect, pref = kind === 'attic' ? { hall: 3, bed: 2, office: 1 } : { kitchen: 3, hall: 2, living: 1, office: 1 };
+  const cands = S.rooms.filter(q => q.type !== 'garage'), wt = cands.map(q => pref[q.type] || 0.4); let tot = wt.reduce((a, b) => a + b, 0), p = r() * tot, rm = cands[0];
+  for (let i = 0; i < cands.length; i++) { p -= wt[i]; if (p <= 0) { rm = cands[i]; break; } }
+  const ext = S.doors.filter(d => d.exterior).map(d => d.cells[0][0]); let best = null, bs = -1;
+  for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) { if (S.block[idx(x, y)] || roomAt(x, y) !== rm.id) continue;
+    const s = Math.min(...ext.map(c => dist(c[0], c[1], x, y)), 99) + r() * 0.5; if (s > bs) { bs = s; best = [x, y]; } }
+  if (!best) return;
+  S.doors.forEach(d => { if (d.rooms.includes(sp.room) && !d.exterior) { d.barricaded = false; d.locked = false; } }); // he left his room for the hide
+  sp.x = best[0]; sp.y = best[1]; sp.home = { x: best[0], y: best[1] }; sp.room = rm.id; sp.hidden = true;
+  S.hide = { kind, x: best[0], y: best[1], room: rm.id, name: kind === 'attic' ? 'Attic hatch' : 'Basement door', found: false };
+}
+/** Is this suspect concealed in the hide from every unit right now? */
+function hiddenNow(sp) {
+  if (!sp.hidden || !S.hide) return false;
+  if (sp.x !== S.hide.x || sp.y !== S.hide.y || sp.mode !== 'barricaded') { sp.hidden = false; return false; }
+  const near = S.units.find(u => unitAlive(u) && (onFoot(u) || u.kind === 'robot') && cheb(u.x, u.y, sp.x, sp.y) <= PAROLE_CFG.findDist && roomAt(u.x, u.y) === sp.room);
+  if (!near) return true;
+  sp.hidden = false; S.hide.found = true; log(`${near.name}: found him — hiding in the ${S.hide.kind === 'attic' ? 'attic above the' : 'basement under the'} ${S.rooms[sp.room].name}!`, 'alert');
+  if (S.rng.chance(PAROLE_CFG.foundGiveUp)) { sp.agit = clamp(sp.agit - 30, 0, 100); sp.talk = clamp((sp.talk || 0) + 60, 0, 100); }
+  return false;
+}
+/** Negotiation flavor per call type: returns a replacement line or the default. */
+const NEGO_FLAVOR = {
+  sovcit: { rapport: 'letting him lay out his legal theory — staying patient, not arguing the paperwork.', listen: 'letting him read his "notice" to the court again. He lists every agency he says has no authority over him.',
+    concession: ['agreed to read the court order aloud over the PA so he can "note his objection".', 'offered to take his written statement to a supervisor.', 'let a family member speak with him on the line.'],
+    status: w => `status check — he says he is "a private man on private property" with a ${w}`, ultimatum: 'Negotiator: ultimatum rejected — he says nobody here has jurisdiction over him.', ready: 'Negotiator: he says he will walk out "under protest, without consent".' },
+  parole: { rapport: 'talking about his kids and what happens at a violation hearing.', listen: 'letting him vent about his parole officer and the conditions.',
+    concession: ['agreed to have his parole agent call him back.', 'got him water and cigarettes sent in on the robot line.', 'let him speak to his mother on the line.'],
+    status: w => w === 'no firearm' ? 'status check — he says he has no gun and just does not want to go back' : `status check — he says he has a ${w} and is not going back`, ultimatum: 'Negotiator: ultimatum rejected — he says he is not going back inside.', ready: 'Negotiator: he says he is done hiding — coming out.' },
+};
+function flavor(k, def, arg) { const F = NEGO_FLAVOR[(S.stype || {}).key]; if (!F || F[k] == null) return def; const v = F[k]; if (typeof v === 'function') return v(arg); if (Array.isArray(v)) return v[arg] || def; return v; }
+/** Brief and 911 rewrite for the v12 types (separate stream; base brief generation is unchanged). */
+function typeBrief(B) {
+  const st = S.stype, ST = st.key; if (ST !== 'parole' && ST !== 'sovcit') return; const r = makeRng(S.seed * 9157 + 3), sp = S.suspect, first = B.name.split(' ')[0];
+  const L = [], t0 = B.callAt, add = (who, text) => L.push({ t: t0, who, text });
+  B.legal = st.legal; B.typeDesc = SCEN_TYPES[ST].desc; B.self = false; B.phone = null; B.giveNum = false;
+  if (ST === 'parole') { const v = st.variant; B.type = 'parole violation warrant';
+    if (v === 'caller') { B.caller = r.pick(['Neighbor', 'Landlord', 'Former roommate']) + ' (anonymous)';
+      add('Dispatcher', '911, what is the address of your emergency?'); add('Caller', `The guy on the news — ${B.name}, the one who skipped parole — he's inside ${B.addr} right now. I saw him go in the back an hour ago.`);
+      add('Dispatcher', 'Is he armed?'); add('Caller', r.chance(0.5) ? "I don't know. He used to carry." : "I didn't see a gun."); add('Dispatcher', 'Is anyone else inside?'); add('Caller', "I don't think so. The family moved out.");
+      add('Dispatcher', 'Officers are on the way. Stay away from the house.'); }
+    else { B.caller = 'No 911 call — patrol request';
+      add('Patrol', `Dispatch, unit at ${B.addr} for the parole pickup on ${B.name}.`);
+      add('Patrol', v === 'seen' ? 'We just saw him go in the side door when we pulled up. He is not answering.' : 'Movement at a window — it is him, he ducked back out of sight. Not answering the door.');
+      add('Dispatcher', 'Copy. Is he known to carry?'); add('Patrol', 'Unknown. History of hiding from the warrant squad — attic and basement both.'); }
+    B.occupants = 'Believed alone. Family moved out. Not confirmed.';
+    B.known = [LEGAL_TXT.parole, `Absconded from parole supervision ${r.int(3, 11)} weeks ago; photo and history on file.`, sp.weapon === 'none' ? 'No firearm on record — armed status unknown.' : 'Firearm possible — prior weapons arrest.',
+      'He has hidden from officers before (attic / basement). Clear every space; a robot or K9 helps.'];
+    B.patrol.splice(B.patrol.length - 1, 0, v === 'seen' ? 'Patrol saw him enter the house when they arrived.' : v === 'window' ? 'Patrol saw him at a window; he ducked out of sight.' : 'A caller reported he is inside; patrol saw movement but no clear view.');
+    B.sawGun = false; B.shots = !!B.officerDown; }
+  if (ST === 'sovcit') { const v = st.variant; B.type = v === 'papers' ? 'civil papers service' : 'eviction enforcement'; B.caller = 'No 911 call — civil process unit';
+    add('Deputy', `Dispatch, civil unit at ${B.addr}. ${v === 'papers' ? 'Serving papers' : 'Enforcing the writ of possession'} on ${B.name}.`);
+    add('Deputy', `He says he is a "sovereign" and does not recognize the court. He told us to leave his property${r.chance(0.5) ? ' and said he is armed' : ''}.`);
+    add('Dispatcher', 'Copy. Weapons seen?'); { const lg = ['rifle', 'shotgun'].includes(sp.weapon) && r.chance(0.5), fd = S.doors.some(d => d.fortified); add('Deputy', lg ? 'A long gun leaning by the door when he cracked it open.' : fd ? 'Nothing seen. He has a door brace and boards on the inside.' : 'Nothing seen. He says he has the right to defend his property.'); if (lg) B.sawGun = true; }
+    add('Deputy', 'He shut the door. We are backing out and requesting SWAT.');
+    B.occupants = 'Believed alone. Not confirmed.';
+    B.known = [LEGAL_TXT.eviction, v === 'papers' ? 'Civil papers refused; he filed "sovereign" notices with the county.' : 'Eviction ordered after months of non-payment; he filed "sovereign" notices with the county.',
+      'Higher odds of long guns, body armor, gas masks and reinforced doors on this type of call.'];
+    if (S.intel.posts) B.known.push('Online posts: talks about "defending the property" and shows a rifle and a vest.');
+    B.sawGun = !!L.find(e => /long gun/.test(e.text)); B.shots = !!B.officerDown;
+    if (S.doors.some(d => d.fortified)) B.patrol.splice(B.patrol.length - 1, 0, 'Deputies report the doors are braced from inside.'); }
+  if (!B.shots) { B.patrol = B.patrol.filter(t => !/heard (one shot|shots) from inside/.test(t)); for (const k of Object.keys(B)) if (Array.isArray(B[k]) && k !== 'transcript') B[k] = B[k].filter(t => typeof t !== 'string' || !/a loud bang/.test(t)); }
+  if (!(ST === 'parole' && st.variant === 'caller')) B.channel = 'radio';
+  B.transcript = L;
+}
+function typeExtraDebrief(out) { const st = S.stype; if (!st) return;
+  if (st.key === 'parole') out.push({ k: '  Warrant', v: S.result && S.result.win ? 'Parole-violation warrant served.' : 'Warrant not served.' }, { k: '  Hide', v: S.hide ? `${S.hide.name} in the ${S.rooms[S.hide.room].name}${S.hide.found ? ' — found.' : ' — not found.'}` : 'He stayed in a room; no hide used.' });
+  if (st.key === 'sovcit') { const sp = S.suspect; out.push({ k: '  Court order', v: S.result && S.result.win ? 'Order enforced; subject removed in custody.' : 'Order not enforced.' },
+    { k: '  Gear', v: `${SUSPECT_WEAPONS[sp.weapon].name}${sp.armor && sp.armor !== 'none' ? ', ' + sp.armor + ' armor' : ''}${sp.hasMask ? ', gas mask' : ''}; ${S.doors.filter(d => d.fortified).length} reinforced door(s).` }); } }
 
 /* =====================================================================
    PER-ACTION EXPERIENCE · STATE TEAM HAND-OVER · SCENARIO PREVIEW
@@ -2509,8 +2765,8 @@ function cornerTick(u, o) {
   u.dir = o.c.a; u.holding = true; o.t++; if (o.t % CORNER_CFG.ticks) return;
   o.cut++; const lim = o.cut * CORNER_CFG.step, add = o.c.hidden.filter(h => h[1] <= lim && h[1] > lim - CORNER_CFG.step).map(h => h[0]);
   u.slice.cells.push(...add); u.slice.cut = o.cut; u.dir = o.c.a + (o.c.hidden.length ? Math.sign(o.c.hidden[o.c.hidden.length - 1][1]) * 0 : 0);
-  updateVision(); const sp = S.suspect, sc = sp && idx(sp.x, sp.y);
-  if (suspectActive() && hostile() && u.slice.cells.includes(sc)) { u.dir = Math.atan2(sp.y - u.y, sp.x - u.x); u.slice.active = false; u.slice.threat = true; popOrder(u);
+  updateVision(); const sp = suspList().find(s => spHostile(s) && u.slice.cells.includes(idx(s.x, s.y))) || S.suspect;
+  if (withSp(sp, () => suspectActive() && hostile()) && u.slice.cells.includes(idx(sp.x, sp.y))) { u.dir = Math.atan2(sp.y - u.y, sp.x - u.x); u.slice.active = false; u.slice.threat = true; popOrder(u);
     log(`${u.name}: THREAT — suspect seen around the corner (cut ${o.cut}, ${o.cut * 45}°). Corner work stopped.`, 'alert'); fx('text', u.x, u.y, { text: 'THREAT', color: '#ff5d6c' }); xpAct('threat', u); return; }
   const left = o.c.hidden.filter(h => h[1] > lim).length;
   if (o.cut >= CORNER_CFG.cuts || !left) { u.slice.active = false; popOrder(u); log(`${u.name}: corner clear (${o.cut} cut${o.cut > 1 ? 's' : ''}, ${Math.min(180, o.cut * 45)}°).`, 'good'); fx('text', u.x, u.y, { text: 'CORNER CLEAR', color: '#3ef0a0' }); xpAct('corner', u); return; }
@@ -2661,7 +2917,7 @@ function planOrder(u, o, sx, sy, assume) {
       const p = path(o.x, o.y); if (!p) return { ok: false, reason: 'No route to that vantage point' };
       if (!overwatchSees(o.x, o.y)) return { ok: false, reason: 'No sight line to any window or door from there' };
       return { ok: true, path: p, end: [o.x, o.y] }; }
-    case 'taser': case 'llfire': { const q = deviceShotReq(u, o.type, sx, sy); if (q) return { ok: false, reason: q }; const sp = S.suspect; o.x = sp.x; o.y = sp.y; o.est = deviceChance(u, o.type, dist(sx, sy, sp.x, sp.y)); return { ok: true, path: [], end: [sx, sy] }; }
+    case 'taser': case 'llfire': { const sp = devTarget(sx, sy); const q = withSp(sp, () => deviceShotReq(u, o.type, sx, sy)); if (q) return { ok: false, reason: q }; o.x = sp.x; o.y = sp.y; o.tgt = sp.key; o.est = deviceChance(u, o.type, dist(sx, sy, sp.x, sp.y)); return { ok: true, path: [], end: [sx, sy] }; }
     case 'shoot': { const q = shotReq(u, sx, sy, o.x, o.y); if (q) return { ok: false, reason: q }; return { ok: true, path: [], end: [sx, sy] }; }
     case 'clear': { const tc = roomTargetCell(o.room); if (!tc) return { ok: false, reason: 'Room not reachable' }; const p = path(tc[0], tc[1]);
       if (!p) return { ok: false, reason: 'No entry route — breach a door first' }; o.x = tc[0]; o.y = tc[1]; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
@@ -2789,7 +3045,7 @@ function hitChance(u, tx, ty, from, opt) {
   let p = add('base', w.base, w.name);
   if (u.kind === 'team') { const tw = teamWeapon(u); if (tw && tw.oh) { p *= add('grip', ITEM_CFG.rifle.oneHandMul, 'rifle fired one-handed'); notes.push('one-handed'); } }
   p *= add('range', 1 - 0.55 * d / w.range, Math.round(d) + ' m of ' + w.range);
-  const sp = S.suspect, inside = roomAt(tx, ty) >= 0, atWin = winCellSet().has(idx(tx, ty));
+  const sp = suspectFor(tx, ty), inside = roomAt(tx, ty) >= 0, atWin = winCellSet().has(idx(tx, ty));
   let cm, ct; if (!inside) { cm = 1.4; ct = 'in the open'; } else if (atWin) { cm = wk === 'sniper' ? 1.25 : 1.0; ct = 'at window (frame + glass)'; } else if (l === 2) { cm = 0.45; ct = 'deep in room behind glass'; } else { cm = 0.6; ct = 'through doorway / walls'; }
   if (inside && S.doors.some(dd => dd.barricaded && dd.rooms.includes(roomAt(tx, ty)))) { cm *= 0.85; ct += ', barricade'; }
   p *= add('cover', cm, ct); notes.push(ct);
@@ -2829,7 +3085,9 @@ function runCommand(key) {
       if (r.chance(NEGO_CFG.number.interview)) learnNumber('neighbor'); break; }
     case 'blueprint': S.intel.blueprint = S.turn + 2; log('Records desk: blueprints requested, ETA 1 min.', 'intel'); break;
     case 'flyby': { S.intel.flybyReady = S.turn + 3; S.rooms.forEach(q => { if (S.windows.some(w => w.room === q.id)) q.known = true; });
-      sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.threat = Math.max(S.intel.threat, 1); S.intel.located = true;
+      const hs = multiSp() ? suspList().filter(spActive) : [sp]; hs.forEach(s => { s.heat = { room: s.room, x: s.x, y: s.y, turn: S.turn }; }); S.intel.threat = Math.max(S.intel.threat, 1); S.intel.located = true;
+      const hr = [...new Set(hs.map(s => S.rooms[s.room] ? 'the ' + S.rooms[s.room].name : 'near the house'))];
+      if (hs.length > 1) log(`Drone flyby: heat signatures — ${hr.join(', ')}. Thermal cannot give a reliable head count. Window rooms mapped.`, 'intel'); else
       log(`Drone flyby: thermal signature ${S.rooms[sp.room] ? 'in the ' + S.rooms[sp.room].name : 'near the house'}. Window rooms mapped.`, 'intel'); fx('flyby', S.house.x0, S.house.y0); break; }
     case 'partner': { S.intel.partner = true; S.intel.floors = true; S.intel.threat = Math.max(S.intel.threat, 1); S.rooms.forEach(q => q.known = true); const T = NEGO_CFG.temper[S.nego.temper]; S.nego.read = T.hint;
       const srm = S.rooms[sp.room], v = S.stype && S.stype.variant; if (v === 'firearm') S.intel.weapon = true;
@@ -2844,7 +3102,7 @@ function runCommand(key) {
   }
 }
 function surrender(msg) { const sp = S.suspect; sp.mode = 'surrendered'; sp.stun = 0; log(msg, 'good');
-  S.doors.forEach(d => { if (d.rooms.includes(sp.room)) { d.barricaded = false; d.locked = false; } if (d.name === 'Front Door') d.locked = false; }); log('He has pulled the barricade. Doors unlocked — move in and secure him.', 'good'); }
+  S.doors.forEach(d => { if (d.rooms.includes(sp.room)) { d.barricaded = false; d.locked = false; } if (d.name === 'Front Door') d.locked = false; }); log(multiSp() ? `${spName()} is giving up. Doors unlocked — move in and secure ${spName()}.` : 'He has pulled the barricade. Doors unlocked — move in and secure him.', 'good'); }
 function aggressive(n) { const sp = S.suspect; sp.agit = clamp(sp.agit + n, 0, 100); if (sp.talk > 0) sp.talk = Math.max(0, sp.talk - 25);
   if (S.nego && S.nego.contact && n >= 10 && S.rng.chance(0.5)) { S.nego.contact = null; S.nego.quiet = 1; negHist('Tactical action — he has cut off contact with the negotiator.', 'alert'); } }
 
@@ -2860,7 +3118,7 @@ function execute() {
   if (S.units.some(u => u.kind === 'team' && unitAlive(u) && u.orders.some(o => o.type === 'gas'))) donMasks('CS gas going in');
   computeExpo();
   // officers left standing in a line of fire with nothing to do get behind something
-  if (hostile()) for (const u of S.units) if (onFoot(u) && !u.orders.length && !u.stayPut && roomAt(u.x, u.y) < 0 && expoAt(u.x, u.y) >= 0.6) seekCover(u, 'exposed to the house windows');
+  if (suspList().some(spHostile)) for (const u of S.units) if (onFoot(u) && !u.orders.length && !u.stayPut && roomAt(u.x, u.y) < 0 && expoAt(u.x, u.y) >= 0.6) seekCover(u, 'exposed to the house windows');
   updateVision(); return true;
 }
 function stepTick() {
@@ -2872,9 +3130,9 @@ function stepTick() {
     if (u.kind === 'team' && u.mask === 'donning') { u.mask = 'on'; log(`${u.name}: masks on.`, 'radio'); continue; }
     unitAct(u); }
   casualtyTick();
-  if (S.gasEver) suspectGas();
+  if (S.gasEver) eachSp(suspectGas);
   rebuildDyn(); computeExpo();
-  updateVision(); suspectTick(); officersFire(); teamResponses(); updateVision(); checkEnd();
+  updateVision(); eachSp(suspectTick); officersFire(); teamResponses(); updateVision(); checkEnd();
   if (S.phase === 'over') return true;
   if (S.tick >= TICKS) { endTurn(); return true; }
   S.version++; return false;
@@ -2931,8 +3189,8 @@ function unitAct(u) {
   if (u.inCar && u.orders[0] && u.orders[0].type === 'exit') { const o = u.orders[0], c = unit(u.inCar); if (c && o.side === 'safe' && houseSideOf(c) === 'driver' && c.occ[0] === u.uid && !o.slid) { o.slid = true; log(`${u.name}: sliding across to the far-side door…`); return; } exitCar(u, o.side || 'safe'); popOrder(u); return; }
   if (u.kind === 'team' && u.inCar) { const o = u.orders[0]; if (o && o.type === 'move') exitCar(u, 'safe'); else return; }
   if (u.kind === 'patrol' && u.inCar) { const o = u.orders[0]; if (o && o.type === 'move') { const c = unit(u.inCar); if (c && houseSideOf(c) === 'driver' && c.occ[0] === u.uid && !o.slid) { o.slid = true; log(`${u.name}: sliding across to the far-side door…`); return; } exitCar(u, 'safe'); } return; }
-  if ((u.kind === 'team' || u.kind === 'patrol' && !u.inCar) && u.detain && suspectActive()) { const sp = S.suspect;
-    stepAlong(u, null, (x, y) => cheb(x, y, sp.x, sp.y) <= 1 && !(x === sp.x && y === sp.y)); return; }
+  if ((u.kind === 'team' || u.kind === 'patrol' && !u.inCar) && u.detain) { const sp = u.detain === true ? S.suspect : suspById(u.detain);
+    if (sp && spActive(sp)) { stepAlong(u, null, (x, y) => cheb(x, y, sp.x, sp.y) <= 1 && !(x === sp.x && y === sp.y)); return; } u.detain = false; }
   if (u.kind === 'team') dracoInterrupt(u);
   const o = u.orders[0]; if (!o) return;
   if (u.kind === 'cruiser') {
@@ -2962,7 +3220,7 @@ function unitAct(u) {
   if (o.type === 'move' || o.type === 'clear') {
     const r = stepAlong(u, o, (x, y) => x === o.x && y === o.y, speed);
     if (r === null) failOrders(u, 'route blocked'); else if (r) { popOrder(u); if (o.type === 'move') u.stayPut = !!o.exposed; if (o.type === 'clear') { const rm = S.rooms[o.room];
-      if (!(S.suspect.room === o.room && suspectActive())) { log(`${u.name}: ${rm.name} CLEAR.`, 'good'); xpAct('clear', u, rm.name); fx('text', u.x, u.y, { text: 'CLEAR', color: '#3ef0a0' }); } } }
+      if (!spInRoom(o.room)) { log(`${u.name}: ${rm.name} CLEAR.`, 'good'); xpAct('clear', u, rm.name); fx('text', u.x, u.y, { text: 'CLEAR', color: '#3ef0a0' }); } } }
     return;
   }
   if (o.type === 'board') { const c = unit(o.car); if (!c || seatsUsed(c) + seatsNeeded(u) > carSeats(c)) { failOrders(u, 'vehicle full'); return; }
@@ -2991,7 +3249,7 @@ function unitAct(u) {
     const other = (() => { for (const [a, b] of d.cells) { if (a[0] === u.x && a[1] === u.y) return b; if (b[0] === u.x && b[1] === u.y) return a; } return d.cells[0][1]; })();
     faceTo(u, other[0], other[1]);
     if (o.type === 'polecam') { const rr = roomAt(other[0], other[1]); if (rr >= 0) { const rm = S.rooms[rr]; for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) S.peek.push(idx(x, y)); }
-      log(`${u.name}: pole cam under the door — ${rr >= 0 ? S.rooms[rr].name : 'outside'} ${S.suspect.room === rr && suspectActive() ? 'has the SUSPECT' : 'looks empty'}.`, S.suspect.room === rr ? 'alert' : 'intel'); popOrder(u); return; }
+      log(`${u.name}: pole cam under the door — ${rr >= 0 ? S.rooms[rr].name : 'outside'} ${spInRoom(rr) ? (suspList().filter(s => spActive(s) && s.room === rr).length > 1 ? `has ${suspList().filter(s => spActive(s) && s.room === rr).length} SUSPECTS` : 'has the SUSPECT') : 'looks empty'}.`, spInRoom(rr) ? 'alert' : 'intel'); popOrder(u); return; }
     if (o.type === 'detonate') { if (!d.charge) { popOrder(u); return; } detonateCharge(u, d); popOrder(u); return; }
     if (d.state !== 'closed') { if (d.charge) d.charge = null; popOrder(u); return; }
     breachTick(u, o, d, other); return;
@@ -3006,7 +3264,8 @@ function unitAct(u) {
     if (!th) { failOrders(u, 'nobody can free both hands to throw (shield / ram)'); return; }
     if (th.stowed.length) log(`${th.o.name}: ${th.stowed.map(k => WEAPONS[k] ? WEAPONS[k].short.toLowerCase() : k).join(' + ')} put away for the two-handed throw — back in hand, not ready until next turn.`); popOrder(u);
     if (o.type === 'bang') { fx('flash', tc[0], tc[1], { fromX: u.x, fromY: u.y }); log(`${u.name}: BANG OUT — flashbang into ${rm.known ? rm.name : 'room'}.`, 'radio'); noise(tc[0], tc[1], 10, 'bang');
-      if (S.suspect.room === o.room && hostile()) { S.suspect.stun = 5; S.suspect.stunBy = null; S.suspect.daze = FIRE_CFG.bangDaze; S.suspect.ambush = false; xpAct('bang', u); log('Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
+      let nb = 0; eachSp(sp => { if (sp.room === o.room && hostile()) { sp.stun = 5; sp.stunBy = null; sp.daze = FIRE_CFG.bangDaze; sp.ambush = false; nb++; } });
+      if (nb) { xpAct('bang', u); log(nb > 1 ? `${nb} suspects disoriented by flashbang.` : 'Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
     else { gasDeploy(o.room); fx('gas', tc[0], tc[1], { room: o.room, fromX: u.x, fromY: u.y }); log(`${u.name}: CS gas deployed into ${rm.known ? rm.name : 'room'}.`, 'radio'); aggressive(15); }
     return;
   }
@@ -3020,10 +3279,11 @@ function doBreach(u, d, how) {
   noise(mx, my, how === 'charge' ? 18 : 14, 'breach'); aggressive(how === 'charge' ? 25 : 20);
   const sp = S.suspect; if (false) { sp.stun = Math.max(sp.stun, 2); log('Suspect stunned by the blast.', 'good'); }
 }
-function noise(x, y, loud, kind) {
+function noise(x, y, loud, kind) { eachSp(() => noise1(x, y, loud, kind)); }
+function noise1(x, y, loud, kind) {
   const sp = S.suspect; if (!hostile()) return; const d = dist(sp.x, sp.y, x, y);
   if (d > loud) return;
-  if (sp.mode === 'barricaded') { sp.mode = 'alert'; log('Suspect is alerted — movement heard inside.', 'alert'); }
+  if (sp.mode === 'barricaded') { sp.mode = 'alert'; const k = S.turn + ':' + S.tick; if (S.alertLogAt !== k) { S.alertLogAt = k; log('Suspect is alerted — movement heard inside.', 'alert'); } }
   sp.agit = clamp(sp.agit + (kind === 'breach' ? 12 : 4), 0, 100);
   const ownDoor = S.doors.some(dd => dd.rooms.includes(sp.room) && dd.cells.some(([a, b]) => dist(a[0], a[1], x, y) < 1.6 || dist(b[0], b[1], x, y) < 1.6));
   if ((kind === 'breach' || kind === 'ram' || kind === 'door') && ownDoor && sp.stun === 0) { sp.ambush = true; sp.dir = Math.atan2(y - sp.y, x - sp.x); }
@@ -3076,7 +3336,7 @@ function suspectTick() {
   if (sp.duck > 0) { sp.duck--; backHome(); return; }
   if (roomAt(sp.home.x, sp.home.y) !== sp.room && sp.room >= 0) { backHome(); sp.room = roomAt(sp.x, sp.y); return; } // relocating (e.g. away from gas)
   // best (position, target) pair: his current cell or a window of his room
-  const spots = [[sp.x, sp.y]].concat(sp.room >= 0 ? suspectWindowCells() : []);
+  const spots = [[sp.x, sp.y]].concat(sp.room >= 0 && !(sp.disp === 'hiding' && sp.agit < 75 && !sp.atWindow) ? suspectWindowCells().filter(([x, y]) => !suspList().some(o => o !== sp && spActive(o) && o.x === x && o.y === y)) : []);
   let best = null;
   const tg = primaryOf(); let pool = shooters();
   if (tg) { const T = unit(tg.uid); const up = primaryUp(tg); pool = pool.filter(u => u.uid === tg.uid && (up || (u.kind === 'team' && (tg.spill || 0) < SHOOT_CFG.spillMax))); } // no retarget until next turn
@@ -3091,7 +3351,7 @@ function suspectTick() {
   const indoor = (best.u.kind === 'team' || best.u.kind === 'robot') && roomAt(best.u.x, best.u.y) >= 0;
   let tryP = indoor ? (sp.ambush ? FIRE_CFG.indoorAmbush : FIRE_CFG.indoor)
     : FIRE_CFG.outside * (T_TRY[best.cls] / T_TRY.open) * (0.75 + sp.agit / 200) * (sp.ambush ? 1.3 : 1) * (contactLive() && !sp.ambush ? NEGO_CFG.talkingFire : 1);
-  tryP *= fireImpair() * typeFireMul(best.u); best.indoor = indoor;
+  tryP *= fireImpair() * typeFireMul(best.u) * (sp.disp === 'hiding' ? MULTI_CFG.hideFire : sp.disp === 'fighting' ? MULTI_CFG.fightFire : 1); best.indoor = indoor;
   if (!S.rng.chance(clamp(tryP, 0, 0.95))) return;
   suspectFire(best);
 }
@@ -3144,12 +3404,13 @@ function returnFirers() { const sp = S.suspect, c = [];
 /** The nearest officers with a sight line shoot back at the muzzle flash (max 3); the log lists who fired and the result. */
 function returnFire() {
   const sp = S.suspect; if (!hostile()) return; const who = returnFirers(); if (!who.length) return; let res = 'no hits';
-  for (const f of who) { if (!hostile()) break; const r = fireAt(f.u, sp.x, sp.y, 'fire', true); if (r === 'hit') { res = `${f.name} hit the suspect`; break; } if (r === 'stopped') res = `${f.name}'s round was stopped by body armor`; }
+  for (const f of who) { if (!hostile()) break; const r = fireAt(f.u, sp.x, sp.y, 'fire', true); if (r === 'hit') { res = `${f.name} hit ${multiSp() ? spName().toLowerCase() : 'the suspect'}`; break; } if (r === 'stopped') res = `${f.name}'s round was stopped by body armor`; }
   S.stats.returnVolleys = (S.stats.returnVolleys || 0) + 1; S.lastReturn = who.map(f => f.o.id || f.u.uid);
   log(`Return fire: ${who.map(f => f.name).join(', ')} — ${res}.`, 'radio'); if (who.length >= 2 && hostile()) sp.suppressed = Math.max(sp.suppressed, 1);
 }
 /** One officer volley at a cell. Returns 'hit' | 'miss' | 'empty'. */
-function fireAt(u, tx, ty, mode, isReturn) {
+function fireAt(u, tx, ty, mode, isReturn) { return withSp(suspectFor(tx, ty, u.x, u.y), () => fireAt1(u, tx, ty, mode, isReturn)); }
+function fireAt1(u, tx, ty, mode, isReturn) {
   const sp = S.suspect; fx('muzzle', u.x, u.y, { friendly: true }); fx('shot', u.x, u.y, { tx, ty, friendly: true }); S.stats.ofShots = (S.stats.ofShots || 0) + 1;
   faceTo(u, tx, ty); if (!isReturn) aggressive(mode === 'suppress' ? 3 : 5); noise(tx, ty, 8, 'shot');
   if (!hostile()) return 'empty';
@@ -3164,19 +3425,19 @@ function suspectHit(u) { const sp = S.suspect;
   if (suspectArmorStops(weaponOf(u) || 'pistol')) { fx('text', sp.x, sp.y, { text: 'ARMOR', color: '#ffd080' }); S.stats.susArmorStops = (S.stats.susArmorStops || 0) + 1;
     log(`${u.name}: hit on the suspect's torso.`, 'radio'); revealSuspectArmor('stop'); sp.duck = Math.max(sp.duck || 0, 1); aggressive(3); return false; }
   sp.stun = 0; sp.downBy = 'fire'; fx('hitflash', sp.x, sp.y);
-  const prev = S.cas.find(c => c.who === 'suspect' && casActive(c));
-  const c = prev ? (prev.state = 'immobile', prev.crit = Math.min(prev.crit, S.rng.int(2, 4)), prev) : addCasualty('suspect', 'S', 'Suspect', sp.x, sp.y, { kia: CAS_CFG.suspectKia, mobile: CAS_CFG.suspectMobile, by: u.uid });
+  const key = sp.key || 'S', prev = S.cas.find(c => c.who === 'suspect' && casActive(c) && (c.ref || 'S') === key);
+  const c = prev ? (prev.state = 'immobile', prev.crit = Math.min(prev.crit, S.rng.int(2, 4)), prev) : addCasualty('suspect', key, spName(), sp.x, sp.y, { kia: CAS_CFG.suspectKia, mobile: CAS_CFG.suspectMobile, by: u.uid });
   c.x = sp.x; c.y = sp.y; c.seen = true; c.known = true;
   if (c.state === 'mobile') { sp.impair = Math.max(sp.impair || 0, 0.45); sp.duck = 2; sp.injured = true; aggressive(6);
-    fx('text', sp.x, sp.y, { text: 'SUSPECT HIT', color: '#ffb020' }); log(`${u.name}: suspect HIT — he is still moving and still armed. Injured.`, 'alert'); return; }
-  sp.mode = 'incapacitated'; sp.walk = null; S.stats.method = 'Officer fire'; sp.injured = true;
-  if (c.state === 'kia') { sp.deceased = true; fx('text', sp.x, sp.y, { text: 'SUSPECT DOWN', color: '#c9ced6' }); log(`${u.name}: suspect hit — he is not moving. Move in and secure the scene.`, 'good'); return; }
-  fx('text', sp.x, sp.y, { text: 'SUSPECT DOWN', color: '#ffb020' }); log(`${u.name}: suspect HIT — immobile, weapon out of reach. Move in, secure him, get EMS.`, 'good'); }
+    fx('text', sp.x, sp.y, { text: 'SUSPECT HIT', color: '#ffb020' }); log(`${u.name}: ${multiSp() ? spName().toLowerCase() : 'suspect'} HIT — still moving and still armed. Injured.`, 'alert'); return; }
+  sp.mode = 'incapacitated'; sp.walk = null; S.stats.method = 'Officer fire'; sp.method = sp.method || 'Officer fire'; sp.injured = true;
+  if (c.state === 'kia') { sp.deceased = true; fx('text', sp.x, sp.y, { text: 'SUSPECT DOWN', color: '#c9ced6' }); log(`${u.name}: ${multiSp() ? spName().toLowerCase() : 'suspect'} hit — not moving. Move in and secure the scene.`, 'good'); return; }
+  fx('text', sp.x, sp.y, { text: 'SUSPECT DOWN', color: '#ffb020' }); log(`${u.name}: ${multiSp() ? spName().toLowerCase() : 'suspect'} HIT — immobile, weapon out of reach. Move in, secure ${multiSp() ? 'the suspect' : 'him'}, get EMS.`, 'good'); }
 /** Stance 'free': fire at a visible suspect every 3rd tick. */
-function officersFire() {
-  const sp = S.suspect; if (!hostile() || !sp.visible || S.tick % 3 !== 0) return;
+function officersFire() { if (S.tick % 3 !== 0) return; const done = new Set(); // each officer engages the nearest visible hostile suspect; a suspect hit this tick is not engaged again
   for (const u of S.units) { if (!onFoot(u) || u.stance !== 'free' || u.installing || (u.orders[0] && u.orders[0].type === 'shoot')) continue; const wk = weaponOf(u); if (!wk) continue;
-    if (dist(u.x, u.y, sp.x, sp.y) > WEAPONS[wk].range || !los(u.x, u.y, sp.x, sp.y)) continue; if (fireAt(u, sp.x, sp.y, 'fire') === 'hit') return; }
+    const c = suspList().filter(sp => !done.has(sp) && spHostile(sp) && sp.visible && dist(u.x, u.y, sp.x, sp.y) <= WEAPONS[wk].range && los(u.x, u.y, sp.x, sp.y)).sort((a, b) => dist(u.x, u.y, a.x, a.y) - dist(u.x, u.y, b.x, b.y));
+    if (!c.length) continue; const sp = c[0]; if (fireAt(u, sp.x, sp.y, 'fire') === 'hit') { done.add(sp); if (!suspList().some(s => !done.has(s) && spHostile(s))) return; } }
 }
 /** An officer is hit: becomes a casualty (KIA / injured-mobile / immobile). stats.down counts officers out of the fight unless a medic stabilised them on the spot. */
 function bluntMsg(nm, ctx, c, cal) { return `${nm} (${ctx}) hit in the vest at close range — the armor stopped the ${cal === 'shotgun' ? 'shotgun load' : 'round'}, but the impact causes a minor blunt-trauma injury. Mobile, leaving the line for EMS.`; }
@@ -3249,7 +3510,8 @@ function deviceTransition(t, o, k, hands, fn) {
   if (!had) { stowOne(o, k); autoRedraw(o, st); }
   syncEquip(t); return { o, r, stowed: st, drew: !had }; }
 /** Runs during the turn: waits (holding) until the suspect is in view and in range; order clears at end of turn otherwise. */
-function deviceTick(u, o) { const sp = S.suspect;
+function deviceTick(u, o) { const t = o.tgt && suspById(o.tgt); return withSp(t && spActive(t) && t.visible ? t : devTarget(u.x, u.y), () => deviceTick1(u, o)); }
+function deviceTick1(u, o) { const sp = S.suspect;
   if (!hostile() || !suspectActive()) { popOrder(u); return; }
   const why = deviceShotReq(u, o.type, u.x, u.y); u.holding = true;
   if (why) { if (!o.waitLog) { o.waitLog = 1; log(`${u.name}: ${o.type === 'taser' ? 'taser' : 'less-lethal'} ready — waiting for a clear line (${why.toLowerCase()}).`, 'radio'); } return; }
@@ -3283,15 +3545,15 @@ function startFlee() {
   const sp = S.suspect; const wins = S.windows.filter(w => w.room !== sp.room);
   let best = null, bp = null;
   for (const w of wins) { const [cx, cy] = w.edges[0]; const p = findPath(sp.x, sp.y, (x, y) => x === cx && y === cy, { suspect: true, canOpen: true }); if (p && (!bp || p.length < bp.length)) { bp = p; best = w; } }
-  if (!best) return; sp.mode = 'fleeing'; sp.flee = best.id; log('Suspect is moving — he is trying to get out of the gas!', 'alert');
+  if (!best) return; sp.mode = 'fleeing'; sp.flee = best.id; log(`${spName()} is moving — ${multiSp() ? 'trying' : 'he is trying'} to get out of the gas!`, 'alert');
 }
 function fleeStep() {
   const sp = S.suspect, w = S.windows[sp.flee]; const [cx, cy, ox, oy] = w.edges[0];
   if (sp.x === cx && sp.y === cy) {
     w.broken = true; sp.x = ox; sp.y = oy; sp.room = -1; fx('glass', ox, oy);
     const catcher = S.units.find(u => onFoot(u) && !(u.perch && u.perch.entry) && dist(u.x, u.y, ox, oy) <= 6 && los(u.x, u.y, ox, oy)) || S.units.find(u => u.kind === 'cruiser' && u.occ.length && dist(u.x, u.y, ox, oy) <= 4);
-    if (catcher) { sp.mode = 'detained'; S.stats.method = 'Caught by perimeter'; log(`Suspect bails out a window — straight into ${catcher.name}. SUSPECT DETAINED.`, 'good'); }
-    else { sp.mode = 'detained'; S.stats.escaped = true; S.stats.method = 'Caught after escape (outer units)'; log('Suspect went out a window through a perimeter gap — outer units and K9 tracked him down after a foot pursuit. SUSPECT DETAINED (perimeter breach).', 'bad'); }
+    if (catcher) { sp.mode = 'detained'; sp.method = S.stats.method = 'Caught by perimeter'; log(`${spName()} bails out a window — straight into ${catcher.name}. ${multiSp() ? spName().toUpperCase() : 'SUSPECT'} DETAINED.${custodyTally()}`, 'good'); }
+    else { sp.mode = 'detained'; sp.escapedOut = true; S.stats.escaped = true; S.stats.escapedN = (S.stats.escapedN || 0) + 1; sp.method = S.stats.method = 'Caught after escape (outer units)'; log(`${spName()} went out a window through a perimeter gap — outer units and K9 tracked ${multiSp() ? 'the suspect' : 'him'} down after a foot pursuit. ${multiSp() ? spName().toUpperCase() : 'SUSPECT'} DETAINED (perimeter breach).${custodyTally()}`, 'bad'); }
     return;
   }
   const p = findPath(sp.x, sp.y, (x, y) => x === cx && y === cy, { suspect: true, canOpen: true });
@@ -3299,13 +3561,14 @@ function fleeStep() {
   const [nx, ny] = p[0]; const e = edge(sp.x, sp.y, nx, ny); if (e.t === 'D') { e.d.state = 'open'; e.d.barricaded = false; }
   sp.x = nx; sp.y = ny; sp.room = roomAt(nx, ny);
 }
-function teamResponses() {
-  const sp = S.suspect; if (!suspectActive()) return;
+function teamResponses() { eachSp(teamResponses1); }
+function teamResponses1() {
+  const sp = S.suspect; if (!suspectActive()) return; const myKey = sp.key || true;
   for (const u of S.units) {
     if (sp.walk) break; // walk-out protocol handles custody (see walkoutTick)
     if (u.kind !== 'team' || !unitAlive(u) || !u.deployed) continue;
     const sees = u.vis.includes(idx(sp.x, sp.y)); const d = dist(u.x, u.y, sp.x, sp.y);
-    if (u.detain || (sees && (sp.mode === 'surrendered' || sp.mode === 'incapacitated' || sp.stun > 0) && d < 10)) u.detain = true;
+    if (u.detain === myKey || ((!u.detain || !spActive(suspById(u.detain))) && sees && (sp.mode === 'surrendered' || sp.mode === 'incapacitated' || sp.stun > 0) && d < 10)) u.detain = myKey;
     if (cheb(u.x, u.y, sp.x, sp.y) <= 1 && los(u.x, u.y, sp.x, sp.y) === 1) {
       if (!hostile() || sp.stun > 0) { detained(u, sp.mode === 'surrendered' ? 'Surrendered' : sp.mode === 'incapacitated' ? 'Less-lethal + arrest' : sp.stunBy === 'taser' ? 'Taser + arrest' : sp.stunBy === 'll' ? 'Less-lethal + arrest' : 'Dynamic entry (flashbang)'); return; }
       const p = (0.2 + teamOk(u).length * 0.05 + (hasShield(u) ? 0.1 : 0)) * (sp.ambush ? 0.6 : 1);
@@ -3316,9 +3579,9 @@ function teamResponses() {
     if (u.challenged !== S.tick) { u.challenged = S.tick; if (outside) u.chTurn = S.turn;
       const comply = ((outside ? NEGO_CFG.outsideChallenge : 1) * 0.05 + S.units.filter(q => q.kind === 'team' && q.vis && q.vis.includes(idx(sp.x, sp.y))).length * 0.05) * (outside ? 1 : 0.45) + sp.talk / 250 - sp.agit / 300;
       if (S.rng.chance(comply)) { if (outside) { log(`${u.name}: "POLICE! DROP IT AND COME OUT!" — he shouts that he is coming out.`, 'good'); walkout('callout'); break; }
-        surrender(`${u.name}: "POLICE! DROP IT!" — suspect drops the weapon and gets on the ground.`); u.detain = true; continue; }
+        surrender(`${u.name}: "POLICE! DROP IT!" — ${multiSp() ? spName().toLowerCase() : 'suspect'} drops the weapon and gets on the ground.`); u.detain = myKey; continue; }
       if (u.equip.lesslethal > 0 && u.stance !== 'hold' && d <= 11 && !(u.llcd > S.tick)) { u.llcd = S.tick + 3; /* single-shot launcher: re-load before the next round */ const llo = useItem(u, 'lesslethal'); if (llo && invOf(llo).ll <= 0) log(`${llo.name}: 40mm launcher is out of rounds.`, 'radio'); const p = (0.3 + (hasSpec(u, 'marksman') ? 0.15 : 0) + teamSkill(u) * 0.15) * (sp.ambush ? 0.45 : 1);
-        if (S.rng.chance(p)) { sp.mode = 'incapacitated'; fx('ll', sp.x, sp.y, { fromX: u.x, fromY: u.y }); log(`${u.name}: less-lethal round — suspect incapacitated, weapon dropped.`, 'good'); u.detain = true; continue; }
+        if (S.rng.chance(p)) { sp.mode = 'incapacitated'; fx('ll', sp.x, sp.y, { fromX: u.x, fromY: u.y }); log(`${u.name}: less-lethal round — ${multiSp() ? spName().toLowerCase() : 'suspect'} incapacitated, weapon dropped.`, 'good'); u.detain = myKey; continue; }
         else log(`${u.name}: less-lethal round missed.`, 'radio'); }
       else if (sp.cd > 0) { sp.cd += 1; if (u.duckLog !== S.turn) { u.duckLog = S.turn; log(`${u.name}: "POLICE! DROP THE WEAPON!" — suspect ducks into cover.`, 'radio'); } }
     }
@@ -3327,12 +3590,18 @@ function teamResponses() {
   for (const u of S.units) if (u.kind === 'team' && unitAlive(u) && u.deployed && hasSpec(u, 'k9') && dist(u.x, u.y, sp.x, sp.y) <= 5 && !sp.visible && (!sp.heat || sp.heat.turn !== S.turn)) {
     sp.heat = { room: sp.room, x: sp.x, y: sp.y, turn: S.turn }; S.intel.located = true; log(`${u.name}: K9 is indicating — suspect close, ${S.rooms[sp.room] ? S.rooms[sp.room].name : 'nearby'}.`, 'intel'); }
 }
-function detained(u, how) { const sp = S.suspect; sp.mode = 'detained'; xpAct('detain', u && u.kind ? u : null); if (sp.downBy === 'fire' && how === 'Less-lethal + arrest') how = 'Officer fire + arrest'; S.stats.method = how; fx('text', sp.x, sp.y, { text: 'SECURED', color: '#3ef0a0' }); log(`${u.name}: SUSPECT IN CUSTODY. Scene secure. (${how})`, 'good'); }
+function detained(u, how) { const sp = S.suspect; sp.mode = 'detained'; xpAct('detain', u && u.kind ? u : null); if (sp.downBy === 'fire' && how === 'Less-lethal + arrest') how = 'Officer fire + arrest'; S.stats.method = how; sp.method = how; fx('text', sp.x, sp.y, { text: 'SECURED', color: '#3ef0a0' });
+  S.units.forEach(q => { if (q.detain && q.detain === sp.key) q.detain = false; });
+  if (multiSp()) { const left = suspList().filter(spActive).length; log(`${u.name}: ${spName().toUpperCase()} IN CUSTODY. (${how})${custodyTally()}${left ? ' Scene NOT secure — ' + (S.intel.suspConfirmed ? left + ' still outstanding.' : 'keep clearing.') : ' Scene secure.'}`, 'good'); }
+  else log(`${u.name}: SUSPECT IN CUSTODY. Scene secure. (${how})`, 'good'); }
+function custodyTally() { if (!multiSp()) return ''; const L = suspList(), n = L.filter(s => s.mode === 'detained').length; return S.intel.suspConfirmed ? ` (${n}/${L.length} in custody)` : ` (${n} in custody)`; }
 /** The mission ends only when the suspect is in custody or command chooses to withdraw — never on losses or elapsed time. */
 function checkEnd() {
   if (S.phase === 'over') return;
-  const sp = S.suspect;
-  if (sp.mode === 'detained') { S.phase = 'over'; S.result = { win: true, title: S.stats.escaped ? 'SUSPECT CAUGHT AFTER ESCAPE' : 'SUSPECT IN CUSTODY', text: `Resolved after ${tMin(S.turn + 1)} (${elapsedAt(S.turn + 1)}). Method: ${S.stats.method}. Officers hit: ${S.stats.down}.` }; }
+  const L = suspList(); // every suspect must be in custody (escapes are tracked down by outer units and end 'detained' too)
+  if (L.length && L.every(s => s.mode === 'detained')) { const multi = L.length > 1; S.phase = 'over';
+    S.result = { win: true, title: multi ? (S.stats.escaped ? `ALL ${L.length} SUSPECTS IN CUSTODY (ONE OR MORE AFTER ESCAPE)` : `ALL ${L.length} SUSPECTS IN CUSTODY`) : S.stats.escaped ? 'SUSPECT CAUGHT AFTER ESCAPE' : 'SUSPECT IN CUSTODY',
+      text: `Resolved after ${tMin(S.turn + 1)} (${elapsedAt(S.turn + 1)}). Method: ${multi ? L.map(s => spName(s) + ' — ' + (s.method || '?')).join('; ') : S.stats.method}. Officers hit: ${S.stats.down}.` }; }
   if (S.phase === 'over') finishMission();
 }
 function finishMission() { casualtyResolve(S.result.win); S.result.debrief = debrief(); log(S.result.title, S.result.win ? 'good' : 'bad'); S.version++; }
@@ -3342,18 +3611,17 @@ function forceLeft() { const offs = S.officers.filter(o => o.status === 'enroute
 /** Player ends the operation without a resolution (e.g. no mobile officers left). */
 function withdraw() { if (S.phase === 'over') return { ok: false, reason: 'Mission already over' };
   const sp = S.suspect; S.phase = 'over'; S.stats.withdrawn = true;
-  S.result = { win: false, title: 'OPERATION WITHDRAWN', text: `Command ended the operation after ${tMin(S.turn)} without taking the suspect into custody${sp.mode === 'incapacitated' ? ' (suspect down but not secured)' : ''}. Scene handed over.` };
+  S.result = { win: false, title: 'OPERATION WITHDRAWN', text: `Command ended the operation after ${tMin(S.turn)} without taking ${multiSp() ? 'every suspect' : 'the suspect'} into custody${multiSp() ? ` (${suspList().filter(s => s.mode === 'detained').length} of ${suspList().length} in custody)` : sp.mode === 'incapacitated' ? ' (suspect down but not secured)' : ''}. Scene handed over.` };
   log('Command: withdraw — all units pull back to the perimeter.', 'bad'); finishMission(); return { ok: true }; }
 function endTurn() {
   S.turn++; S.phase = 'planning'; S.tick = 0; S.peek = []; syncAll(); // weapons become ready again
   for (const u of S.units) { u.orders = u.orders.filter(o => o.type !== 'hold' && o.type !== 'shoot' && !DEVICE_ORDERS.includes(o.type)); u.holding = false; u.waiting = false; u.exiting = null;
     if ((u.kind === 'drone' || u.kind === 'robot') && unitAlive(u)) { u.battery--; if (u.battery <= 0) { u.status = 'down'; log(`${u.name}: battery depleted.`); } } }
-  gasTurn(); suspectGasTurn(); casualtyTurn(); negoTurn(); sceneTurn();
+  gasTurn(); eachSp(suspectGasTurn); casualtyTurn(); negoTurn(); eachSp(sceneTurn);
   if (S.intel.blueprint && S.intel.blueprint === S.turn) { S.rooms.forEach(q => q.known = true); S.doors.forEach(d => d.known = true); S.intel.floors = true; log('Blueprints received — full floor plan on screen.', 'intel'); }
   for (const o of S.officers) { if (o.status === 'enroute') { if (o.eta <= S.turn) { o.status = 'staged'; log(`PAGER: ${o.name} (${SPECS[o.spec].name}) on scene at staging.`, 'pager'); S.events.push({ type: 'pager' }); } } }
-  const sp = S.suspect;
-  if (hostile()) { sp.agit = clamp(sp.agit - 4, 0, 100); if (!sp.visible) sp.unseenTurns++; else sp.unseenTurns = 0;
-    if (sp.mode === 'alert' && sp.unseenTurns >= 3 && sp.stun === 0) { sp.mode = 'barricaded'; sp.ambush = false; sp.unseenTurns = 0; } }
+  eachSp(sp => { if (hostile()) { sp.agit = clamp(sp.agit - 4, 0, 100); if (!sp.visible) sp.unseenTurns++; else sp.unseenTurns = 0;
+    if (sp.mode === 'alert' && sp.unseenTurns >= 3 && sp.stun === 0 && sp.disp !== 'fighting') { sp.mode = 'barricaded'; sp.ambush = false; sp.unseenTurns = 0; } } });
   
   rebuildDyn(); computeExpo(); updateVision(); gasObserve(); checkEnd(); S.version++;
 }
@@ -3372,26 +3640,28 @@ function debrief() {
   const sc = S.cas.find(c => c.who === 'suspect');
   const M = missionScore(); out.push({ k: 'Score', v: `${M.score} — ${M.grade}` });
   M.items.forEach(i => out.push({ k: '  ' + (i.pts < 0 ? 'Deduction' : 'Bonus'), v: `${i.label}: ${i.pts > 0 ? '+' : '−'}${Math.abs(i.pts)}`, pts: i.pts }));
-  out.push({ k: 'Suspect', v: sp.deceased ? 'Did not survive' : sc ? (sc.state === 'evacuated' ? 'Injured — evacuated to hospital in custody' : 'Injured') : sp.mode === 'detained' ? 'Uninjured, in custody' : sp.mode === 'escaped' ? 'Escaped' : 'Still inside' });
+  if (multiSp()) out.push({ k: 'Suspects', v: `${suspList().length} — ${suspList().filter(s => s.mode === 'detained').length} in custody. Patrol reported ${S.brief && S.brief.report ? S.brief.report.text : 'one subject'}.` });
+  out.push(...suspectsDebrief()); void sc;
   return out;
 }
 
 /** Commendation score for the debrief / career. No time component. Losses are deductions, never an early end.
     items: [{label, pts}] — every bonus and deduction, listed in the debrief. */
-const SCORE = { resolved: 500, talked: 250, rescued: 150, gapClosed: 50, officerHit: -200, officerLost: -400, civHurt: -300, civKilled: -600, hostageHurt: -300, hostageKilled: -800, suspectLost: -150, escape: -300, withdraw: -400, stateTeam: -250 };
+const SCORE = { resolved: 500, talked: 250, rescued: 150, gapClosed: 50, officerHit: -200, officerLost: -400, civHurt: -300, civKilled: -600, hostageHurt: -300, hostageKilled: -800, suspectLost: -150, escape: -300, withdraw: -400, stateTeam: -250, extraSuspect: 100 };
 function missionScore() {
   const R = S.result || {}, sp = S.suspect, N = S.nego, items = [], add = (label, pts) => { if (pts) items.push({ label, pts }); };
   const after = S.cas.filter(c => !c.initial), lostSt = c => c.state === 'kia' || c.state === 'lost';
   const ours = after.filter(c => c.who === 'officer' || c.who === 'patrol'), civ = after.filter(c => c.who === 'civilian' && !c.hostage), hos = after.filter(c => c.who === 'hostage' || c.hostage);
   if (R.win) { add('Suspect resolved', SCORE.resolved); if (N.how) add('Talked out (no force)', SCORE.talked); }
-  if (S.stats.escaped) add('Perimeter breach — suspect escaped before capture', SCORE.escape);
+  const escN = S.stats.escapedN || (S.stats.escaped ? 1 : 0); if (escN) add(escN > 1 ? `Perimeter breach — ${escN} suspects escaped before capture` : 'Perimeter breach — suspect escaped before capture', escN * SCORE.escape);
+  const extraIn = suspList().slice(1).filter(s => s.mode === 'detained').length; if (multiSp() && extraIn) add(`Additional suspects in custody (${extraIn})`, extraIn * SCORE.extraSuspect);
   if (S.stats.withdrawn) add('Withdrew without resolution', SCORE.withdraw);
   if (S.stats.stateTeam) add('Scene handed to the State SWAT team', SCORE.stateTeam);
   const oh = ours.filter(c => !lostSt(c)).length, ol = ours.filter(lostSt).length;
   if (oh) add(`Officers hit (${oh})`, oh * SCORE.officerHit); if (ol) add(`Officers killed or lost (${ol})`, ol * SCORE.officerLost);
   const ch = civ.filter(c => !lostSt(c)).length, ck = civ.filter(lostSt).length; if (ch) add(`Civilians hurt (${ch})`, ch * SCORE.civHurt); if (ck) add(`Civilians killed (${ck})`, ck * SCORE.civKilled);
   const hh = hos.filter(c => !lostSt(c)).length, hk = hos.filter(lostSt).length; if (hh) add(`Hostages hurt (${hh})`, hh * SCORE.hostageHurt); if (hk) add(`Hostages killed (${hk})`, hk * SCORE.hostageKilled);
-  if (sp.deceased) add('Suspect did not survive', SCORE.suspectLost);
+  const lostN = suspList().filter(s => s.deceased).length; if (lostN) add(lostN > 1 ? `Suspects who did not survive (${lostN})` : 'Suspect did not survive', lostN * SCORE.suspectLost);
   const init = S.cas.find(c => c.initial && c.state !== 'kia'); if (init && (init.state === 'evacuated' || init.state === 'transport' || init.stable)) add('Rescued officer down on arrival', SCORE.rescued);
   typeScore(add);
   if (S.scene && S.scene.gap0.length && S.scene.gapClosed != null && !S.scene.slipTried) add('Closed perimeter gap', SCORE.gapClosed);
@@ -3410,7 +3680,7 @@ function careerSummary() {
   const M = missionScore();
   return { seed: S.seed, win: !!R.win, title: R.title || '', method: m, outcome, turns: S.turn + 1, timeSec: (S.turn + 1) * TURN_SEC, score: M.score, grade: M.grade, deductions: M.deductions.map(d => ({ label: d.label, pts: d.pts })), officers,
     patrol: { hit: pc.length, lost: pc.filter(c => c.state === 'kia' || c.state === 'lost').length },
-    suspect: sp.deceased ? 'lost' : scs ? 'injured' : sp.mode === 'escaped' ? 'escaped' : sp.mode === 'detained' ? 'unhurt' : 'inside', variant: S.scene ? S.scene.variant : null, stype: S.stype ? S.stype.key : 'barricade',
+    suspect: suspList().some(s => s.deceased) ? 'lost' : scs ? 'injured' : suspList().some(s => s.mode === 'escaped') ? 'escaped' : suspList().every(s => s.mode === 'detained') ? 'unhurt' : 'inside', suspects: suspList().length, variant: S.scene ? S.scene.variant : null, stype: S.stype ? S.stype.key : 'barricade',
     stateTakeover: !!S.stats.stateTeam, actions: (S.xpLog || []).map(x => ({ key: x.key, label: x.label, xp: x.xp, ids: x.ids.slice(), by: x.by, detail: x.detail, turn: x.turn })), level: (S.opts && S.opts.level) || null };
 }
 /* ---------- team management (planning phase only) ---------- */
@@ -3470,11 +3740,14 @@ function renameTeam(uid, name) { const t = unit(uid); if (t && name && name.trim
 function intelInfo() {
   const known = S.rooms.filter(q => q.known).length, exp = S.rooms.filter(q => q.explored).length, sp = S.suspect;
   const lvl = Math.round(100 * (0.55 * known / S.rooms.length + 0.15 * (S.intel.threat ? 1 : 0) + 0.15 * (S.intel.floors ? 1 : 0) + 0.15 * (sp.seen || S.intel.located ? 1 : 0)));
-  let threat = 'UNKNOWN'; if (S.intel.threat) threat = '1 ARMED SUSPECT'; if (sp.visible) threat = 'VISUAL — ' + (S.rooms[sp.room] ? S.rooms[sp.room].name.toUpperCase() : 'YARD'); else if (sp.heat) threat = 'LOCATED (THERMAL/K9)';
+  const CI = suspectCountInfo(), flee = S.stype && S.stype.key === 'flee', vis = suspList().filter(s => s.visible && spActive(s));
+  let threat = 'UNKNOWN'; if (S.intel.threat) threat = !flee ? (sp.weapon === 'none' && S.intel.weapon ? '1 SUSPECT — NO FIREARM' : '1 ARMED SUSPECT') : CI.confirmed ? `${CI.total} ARMED SUSPECT${CI.total > 1 ? 'S' : ''}` : 'ARMED — COUNT UNCONFIRMED';
+  if (flee && vis.length > 1) threat = `VISUAL — ${vis.length} SUSPECTS`; else if (sp.visible) threat = 'VISUAL — ' + (S.rooms[sp.room] ? S.rooms[sp.room].name.toUpperCase() : 'YARD'); else if (sp.heat) threat = 'LOCATED (THERMAL/K9)';
   const status = { barricaded: 'BARRICADED', alert: 'ALERTED', fleeing: 'FLEEING', surrendered: 'SURRENDERED', incapacitated: 'INCAPACITATED', detained: 'IN CUSTODY', escaped: 'ESCAPED' }[sp.mode];
   return { arch: S.intel.floors ? S.house.archName : 'UNKNOWN', weapon: S.intel.weapon ? SUSPECT_WEAPONS[sp.weapon].name : 'UNKNOWN', floors: S.intel.floors ? '1 (single storey)' : 'UNKNOWN', roomsKnown: known, roomsTotal: S.intel.floors ? S.rooms.length : '?', explored: exp, level: clamp(lvl, 0, 100), threat,
     suspect: (sp.seen || S.intel.threat || !hostile()) ? status : 'UNKNOWN', contain: S.contain.filter(c => c.covered).length, containTotal: S.contain.length, containKnown: !!S.intel.status, sides: (() => { const w = sideWatch(); return { n: w.watched.length, of: w.all.length, gaps: w.gaps }; })(), down: S.stats.down, downMax: LOSE_DOWN, talk: Math.round(sp.talk), phone: !!S.nego.contact, mood: moodWord(), rapport: rapportWord(),
-    cas: S.cas.filter(c => casActive(c) && c.known && c.who !== 'suspect').length };
+    cas: S.cas.filter(c => casActive(c) && c.known && c.who !== 'suspect').length,
+    count: CI, multiType: !!flee, suspects: suspList().filter(s => s.seen || S.phase === 'over').map(s => ({ key: s.key, name: spName(s), state: spState(s), visible: !!s.visible, weapon: s.seen ? SUSPECT_WEAPONS[s.weapon].name : '?', armor: s.armorKnown ? s.armor : null })) };
 }
 
 function newGame(seed, opts) {
@@ -3502,11 +3775,11 @@ function newGame(seed, opts) {
     const X = S.ext; let best = null; for (let d = 7; d < 22 && !best; d++) for (const dx of [-d, d]) { const x = X.staging.x + dx, y = S.geo.ST + 4; if (S.drive[idx(x, y)] && !carClash(x, y, null)) { best = [x, y]; break; } }
     if (best) { S.units.push({ uid: 'C4', kind: 'cruiser', name: 'BearCat', num: 4, x: best[0], y: best[1], dir: 0, occ: [], orders: [], status: 'ok', hits: 0, marks: [], vis: [], disabled: false, armored: true }); rebuildDyn(); } }
   S.stype = typeForSeed(seed, S.opts.stype); applyScenType();
-  setupSuspectArmor();
+  setupSuspects(); applyTypeExtras(); // tags the suspect; 'flee' calls may add more (1-4); armor per suspect
   setupStaging2(); S.ems = defaultEMS(); initNego(seed); makeBrief();
   updateVision();
   log(`${S.opName} — seed ${seed}. ${S.house.archName}, ${S.geo.name}.`, 'system');
-  const B = S.brief; log(`Dispatch ${B.time}: ${B.type} at ${B.addr}. ${B.shots ? 'Shots fired. ' : ''}${S.stype.key === 'flee' ? 'Suspect fled from patrol into a vacant house.' : S.stype.key === 'mental' ? 'Adult male in crisis, armed, alone inside.' : 'Adult male barricaded inside.'} Patrol cruisers blocking traffic at both ends of the block.`, 'alert');
+  const B = S.brief; log(`Dispatch ${B.time}: ${B.type} at ${B.addr}. ${B.shots ? 'Shots fired. ' : ''}${S.stype.key === 'flee' ? (S.brief.report && S.brief.report.kind === 'atleast' ? 'At least one suspect — possibly more — fled from patrol into a vacant house.' : S.brief.report && S.brief.report.n > 1 ? `${S.brief.report.n} suspects fled from patrol into a vacant house.` : 'Suspect fled from patrol into a vacant house.') : S.stype.key === 'mental' ? 'Adult male in crisis, armed, alone inside.' : 'Adult male barricaded inside.'} Patrol cruisers blocking traffic at both ends of the block.`, 'alert');
   if (S.scene.injury) { const c = casById(S.scene.injury.cas), mate = S.units.find(u => u.kind === 'patrol' && u.status === 'ok' && !u.inCar);
     log(c.state === 'kia' ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit in the front yard — he's not moving. We can't get to him!"` : c.state === 'mobile' ? `${c.name}: "I'm hit — I can move. I'm in the open out front, need cover!"` : c.sev === 3 ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit out front, his condition is critical — we need help NOW!"` : `${c.name}: "I'm hit — I can't move. Front yard. Somebody get me out of here!"`, 'bad'); }
   log('SWAT team paged. Set containment from cover while the team responds.', 'system');
@@ -3516,8 +3789,8 @@ function newGame(seed, opts) {
   return S;
 }
 
-return { SCEN_TYPES, SCEN_KEYS, typeForSeed, stypeCfg, resolvedNoForce, onNeighborSide, typeFireMul, LEGAL_TXT, typeDebrief, SHOOT_CFG, MAX_RETURN_FIRE, returnFirers, returnFire, memberWeapon, primaryOf, suspectTick, suspectFire, TASER_CFG, doorExposed, FORM_CFG, wallSpots, doorStack, pickVictim, LL_CFG, DEVICE_ORDERS, deviceUser, deviceWhyNot, deviceShotReq, deviceChance, ARMOR, ARMOR_CFG, SHIELDS, SHIELD_CFG, SUSPECT_CAL, armorOf, shieldOf, armorHit, shotOfficer, suspectArmorStops, hasShield, teamArmor, revealSuspectArmor, officerDown, suspectHit, fireAt, DRACO_CFG, bearcat, installTicks, dracoTick, passE, edge, dracoTargetReq, openingMid,
-  newGame, get state() { return S; }, MAP_W, MAP_H, TICKS, LOSE_DOWN, SCORE, withdraw, forceLeft, updateVision, computeVis, checkEnd, EQUIP, SPECS, QUALS, WEAPONS, SUSPECT_WEAPONS, STANCES, COVER_NAMES, COMMANDS, idx, roomAt, edge, los, losEx, findPath, planFor, queueOrder, undoOrder, clearOrders,
+return { PAROLE_CFG, SOVCIT_CFG, BASE_KEYS, hiddenNow, applyTypeExtras, NEGO_FLAVOR, SCEN_TYPES, SCEN_KEYS, typeForSeed, stypeCfg, resolvedNoForce, onNeighborSide, typeFireMul, LEGAL_TXT, typeDebrief, SHOOT_CFG, MAX_RETURN_FIRE, returnFirers, returnFire, memberWeapon, primaryOf, suspectTick, suspectFire, TASER_CFG, doorExposed, FORM_CFG, wallSpots, doorStack, pickVictim, LL_CFG, DEVICE_ORDERS, deviceUser, deviceWhyNot, deviceShotReq, deviceChance, ARMOR, ARMOR_CFG, SHIELDS, SHIELD_CFG, SUSPECT_CAL, armorOf, shieldOf, armorHit, shotOfficer, suspectArmorStops, hasShield, teamArmor, revealSuspectArmor, officerDown, suspectHit, fireAt, DRACO_CFG, bearcat, installTicks, dracoTick, passE, edge, dracoTargetReq, openingMid,
+  REAR_CFG, REAR_OFF, reach, newGame, get state() { return S; }, MULTI_CFG, suspList, multiSp, spName, spState, suspectCountInfo, fleeCount, patrolReport, suspById, withSp, eachSp, spHostile, spActive, setLead, MAP_W, MAP_H, TICKS, LOSE_DOWN, SCORE, withdraw, forceLeft, updateVision, computeVis, checkEnd, EQUIP, SPECS, QUALS, WEAPONS, SUSPECT_WEAPONS, STANCES, COVER_NAMES, COMMANDS, idx, roomAt, edge, los, losEx, findPath, planFor, queueOrder, undoOrder, clearOrders,
   setCommand, execute, stepTick, formTeam, assign, equip, renameTeam, intelInfo, unit, off, teamOk, hasSpec, teamSkill, nearStaging, orderReq, setStance, BREACH, CHARGE_SAFE, breachEst, breachMethods, breachCan, defaultMethod, doorMid, gasAt, gasTurn, gasDeploy, gasCond, gasExpose, suspectGas, suspectGasTurn, masked, impairAcc, impairVis, donMasks, detonateCharge, dist, hitChance, coverInfo, expoAt, computeExpo,
   validateHouse, sceneTurn, validateWorld, footprint, carAxis, houseSideOf, exitCell, spotterOf, perchAt, owCone, weaponOf, onFoot, skillOf, houseCenter, carAt, snapCover, shieldAt, validateContain, COVER_CFG, exposedOrders, ITEM_CFG, INV_CFG, invAct, invView, invOf, isReady, teamWeapon, syncEquip, setTeamOrder, atEquipment, stagePos, CAR_SEATS, carSeats, seatsUsed, TURN_SEC, missionScore, careerSummary, ACT_XP, xpAct, xpSummary, callState, preview, cornerAt, cornerAvail, CORNER_CFG, FIRE_CFG, fireImpair, formationFor, FORM_CFG, initialArrivals, ARRIVE_CFG, mmss, tDur, tMin, clockAt, elapsedAt, sideWatch, watchAt, houseSides, statusCheck, review911, roadblockHeld, withVirtualCar, SCENE_CFG, VARIANT_TXT, setupScene, sceneDebrief, T_HIT, T_TRY,
   CAS_CFG, NEGO_CFG, TALK_KEYS, TALK_NAMES, casById, casActive, casKnow, sevWord, casLabel, setEMS, emsCheck, ccpFor, setSurrenderSpot, surrSpot, setTalk, talkAvail, negoSummary, negOnScene, paCapable, paInRange, paUnits, protocolNow, ambushChance, ambushRisk, walkout, addCasualty, officerDown, suspectHit, robotPhoneGoal, defaultEMS, hostile, contactTry, runTalk, paAct, casualtyTurn, applyAid };
@@ -3604,6 +3877,8 @@ function bakeGround() {
   // street markings and curbs
   const my = (G.ST + G.streetW / 2) * k; g.strokeStyle = 'rgba(214,170,60,.5)'; g.lineWidth = 2; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(k, my); g.lineTo((MW - 1) * k, my); g.stroke(); g.setLineDash([]);
   g.fillStyle = '#4a505a'; g.fillRect(k, G.ST * k - 2, (MW - 2) * k, 3); g.fillRect(k, (G.ST + G.streetW) * k - 1, (MW - 2) * k, 3);
+  if (G.rear) { const ry = (G.rear.road0 + (G.rear.road1 - G.rear.road0 + 1) / 2) * k; g.strokeStyle = 'rgba(214,170,60,.4)'; g.lineWidth = 2; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(k, ry); g.lineTo((MW - 1) * k, ry); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#4a505a'; g.fillRect(k, G.rear.walk0 * k - 1, (MW - 2) * k, 3); }
   if (G.cross) { const cx = (G.cross.x0 + 3) * k; g.strokeStyle = 'rgba(214,170,60,.5)'; g.setLineDash([k * 0.9, k * 0.8]); g.beginPath(); g.moveTo(cx, (G.SS + 2) * k); g.lineTo(cx, (MH - 1) * k); g.stroke(); g.setLineDash([]); }
   // driveway oil stains
   for (const d of X.drives) for (let i = 0; i < 3; i++) { const px = (d.x + 0.5 + r() * (d.w - 1)) * k, py = (d.y + 0.5 + r() * (d.h - 1)) * k, rad = k * (0.6 + r() * 0.6); const rg = g.createRadialGradient(px, py, 0, px, py, rad); rg.addColorStop(0, 'rgba(0,0,0,.25)'); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(px - rad, py - rad, rad * 2, rad * 2); }
@@ -3811,12 +4086,28 @@ function updateDyn() {
 /* =====================================================================
    CAMERA  (cam.x/y in world px at CS scale; z = screen px per world px)
    ===================================================================== */
-function resize() { if (!cv) return; dpr = Math.min(2, window.devicePixelRatio || 1); const r = cv.getBoundingClientRect(); VW = r.width; VH = r.height; cv.width = Math.round(VW * dpr); cv.height = Math.round(VH * dpr); clampCam(); }
+/** v11: viewport size from the layout viewport (iOS can report stale sizes right after a rotate; callers re-measure later too).
+ *  The canvas CSS box is set explicitly in px and the backing store is exactly CSS × dpr, so x and y always share ONE scale. */
+function viewportSize() { const vv = window.visualViewport, iw = window.innerWidth || 0, ih = window.innerHeight || 0, de = document.documentElement;
+  let w = iw || (de && de.clientWidth) || 1, h = ih || (de && de.clientHeight) || 1;
+  if (vv && vv.width > 0 && vv.height > 0 && (vv.scale || 1) <= 1.01) { w = Math.min(w, Math.round(vv.width)) || w; h = Math.min(h, Math.round(vv.height)) || h; }
+  return [Math.max(1, Math.round(w)), Math.max(1, Math.round(h))]; }
+let userCam = false, lastSize = '';
+function resize(force) { if (!cv) return; const odpr = dpr, [w, h] = viewportSize(); dpr = Math.min(2, window.devicePixelRatio || 1);
+  const key = w + 'x' + h + '@' + dpr; if (!force && key === lastSize && cv.width === Math.round(w * dpr) && cv.height === Math.round(h * dpr)) return false;
+  const had = VW > 0 && VH > 0 && lastSize !== ''; let wc = null; if (had) { const [vx, vy] = viewCenter(); wc = toCell(vx, vy); }
+  VW = w; VH = h; cv.style.width = w + 'px'; cv.style.height = h + 'px'; cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); lastSize = key;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); compKey = ''; // cached layers are world-space; force a recompose / redraw anyway
+  if (had && wc && userCam) centerOn(wc[0], wc[1]); else if (had && Core.state) fit('house'); else clampCam();
+  window.__debugScale = debugScale(); return true; }
+/** Test hook: CSS px per backing px on each axis (must be equal), and the world→screen scale (one value). */
+function debugScale() { if (!cv) return null; const r = cv.getBoundingClientRect(); return { x: r.width / cv.width * dpr, y: r.height / cv.height * dpr, zx: cam.z, zy: cam.z, dpr, css: [r.width, r.height], backing: [cv.width, cv.height], VW, VH }; }
 function setSafe(s) { safe = Object.assign({ l: 0, t: 0, r: 0, b: 0 }, s); }
 function viewCenter() { return [safe.l + (VW - safe.l - safe.r) / 2, safe.t + (VH - safe.t - safe.b) / 2]; }
 /** fit(): 'house' (default) frames the target house plus the street in front; 'all' frames the whole neighborhood. */
-function fit(what) { if (!Core.state) return; const S = Core.state, H = S.house, G = S.geo; let box;
+function fit(what) { if (!Core.state) return; userCam = false; const S = Core.state, H = S.house, G = S.geo; let box;
   if (what === 'all') box = { x: 0, y: 0, w: Core.MAP_W, h: Core.MAP_H };
+  else if (what === 'rear' && G.rear) box = { x: H.x0 - 24, y: G.rear.road0 - 1, w: H.x1 - H.x0 + 49, h: H.y1 + 3 - G.rear.road0 };
   else { const north = H.side !== 's' && H.y1 < G.ST; const y0 = north ? H.y0 - 3 : G.ST - 1, y1 = north ? G.SB + 2 : H.y1 + 3; box = { x: H.x0 - 5, y: y0, w: H.x1 - H.x0 + 11, h: y1 - y0 }; }
   const aw = Math.max(120, VW - safe.l - safe.r), ah = Math.max(120, VH - safe.t - safe.b);
   cam.z = Math.min(aw / (box.w * CS), ah / (box.h * CS)); const [vx, vy] = viewCenter(); cam.x = (box.x + box.w / 2) * CS - (vx - VW / 2) / cam.z; cam.y = (box.y + box.h / 2) * CS - (vy - VH / 2) / cam.z; clampCam(); }
@@ -3824,15 +4115,15 @@ function clampCam() { cam.z = Math.max(0.08, Math.min(3, cam.z)); const W = Core
 function centerOn(cx, cy) { const [vx, vy] = viewCenter(); cam.x = cx * CS - (vx - VW / 2) / cam.z; cam.y = cy * CS - (vy - VH / 2) / cam.z; clampCam(); }
 function toScreen(cx, cy) { return [(cx * CS - cam.x) * cam.z + VW / 2, (cy * CS - cam.y) * cam.z + VH / 2]; }
 function toCell(sx, sy) { return [((sx - VW / 2) / cam.z + cam.x) / CS, ((sy - VH / 2) / cam.z + cam.y) / CS]; }
-function pan(dx, dy) { cam.x -= dx / cam.z; cam.y -= dy / cam.z; clampCam(); }
-function zoomAt(sx, sy, f) { const [a, b] = toCell(sx, sy); cam.z *= f; clampCam(); const [c, d] = toCell(sx, sy); cam.x += (a - c) * CS; cam.y += (b - d) * CS; clampCam(); }
+function pan(dx, dy) { userCam = true; cam.x -= dx / cam.z; cam.y -= dy / cam.z; clampCam(); }
+function zoomAt(sx, sy, f) { userCam = true; const [a, b] = toCell(sx, sy); cam.z *= f; clampCam(); const [c, d] = toCell(sx, sy); cam.x += (a - c) * CS; cam.y += (b - d) * CS; clampCam(); }
 const sz = () => Math.max(0.7, Math.min(1.25, 0.6 + cam.z * 0.6));
 function viewRect() { const [a, b] = toCell(0, 0), [c, d] = toCell(VW, VH); return { x: a, y: b, w: c - a, h: d - b }; }
 
 /* =====================================================================
    ANIMATION BRIDGE — UI calls snapshot() before each Core.stepTick()
    ===================================================================== */
-function snapshot(dur) { const S = Core.state; prev.clear(); for (const u of S.units) prev.set(u.uid, [u.x, u.y, u.dir]); prev.set('S', [S.suspect.x, S.suspect.y, S.suspect.dir]); tickT0 = performance.now(); tickDur = dur || 280; animating = true; }
+function snapshot(dur) { const S = Core.state; prev.clear(); for (const u of S.units) prev.set(u.uid, [u.x, u.y, u.dir]); for (const sp of (Core.suspList ? Core.suspList() : [S.suspect])) prev.set('S' + (sp.key || 'S'), [sp.x, sp.y, sp.dir]); tickT0 = performance.now(); tickDur = dur || 280; animating = true; }
 function endAnim() { animating = false; prev.clear(); }
 function posOf(id, x, y) { const p = prev.get(id); if (!p || !animating) return [x, y]; const t = ease(Math.min(1, (performance.now() - tickT0) / tickDur)); return [lerp(p[0], x, t), lerp(p[1], y, t)]; }
 function dirOf(id, d) { const p = prev.get(id); if (!p || !animating || p[2] == null) return d; const t = ease(Math.min(1, (performance.now() - tickT0) / tickDur)); let a = p[2], dd = d - a; while (dd > Math.PI) dd -= 2 * Math.PI; while (dd < -Math.PI) dd += 2 * Math.PI; return a + dd * t; }
@@ -3850,7 +4141,7 @@ function drawStageTags(g) { const S = Core.state, X = S && S.ext; if (!X || !X.s
   for (const [p, txt, col] of tags) { if (!p) continue; const [sx, sy] = toScreen(p.x + 0.5, p.y + 2); const w = g.measureText(txt).width + 8; const cx = Math.max(w / 2 + (VW > 600 ? 78 : 6), Math.min(VW - w / 2 - 4, sx));
     g.fillStyle = 'rgba(5,10,18,.75)'; g.fillRect(cx - w / 2, sy, w, 13); g.fillStyle = col; g.fillText(txt, cx, sy + 2); }
   g.restore(); }
-function frame(now) {
+function frame(now) { if (cv) { const [w, h] = viewportSize(); if (w !== VW || h !== VH || cv.width !== Math.round(w * Math.min(2, window.devicePixelRatio || 1))) resize(); } // self-heal a missed or stale rotate event
   const S = Core.state; if (!S || !cv) return;
   if (builtSeed !== S.seed) { rebake(); }
   if (knowledgeKey() !== compKey) buildComp();
@@ -3888,8 +4179,8 @@ function drawExpo(g) { const S = Core.state; if (!S.expo) return; const MW = Cor
 function drawGas(g, now) { const W = Core.MAP_W * CS, H = Core.MAP_H * CS, t = now / 1000;
   g.save(); g.imageSmoothingEnabled = true;
   g.globalAlpha = 0.55; g.drawImage(L.gas, Math.sin(t * 0.5) * CS * 0.25, Math.cos(t * 0.4) * CS * 0.2, W, H);
-  g.globalAlpha = 0.4; g.drawImage(L.gas, -CS * 0.6 + Math.cos(t * 0.3) * CS * 0.3, -CS * 0.6 + Math.sin(t * 0.35) * CS * 0.3, W + CS * 1.2, H + CS * 1.2);
-  g.globalAlpha = 0.25 + 0.08 * Math.sin(t * 1.3); g.drawImage(L.gas, CS * 0.4, CS * 0.3, W - CS * 0.8, H - CS * 0.6);
+  g.globalAlpha = 0.4; g.drawImage(L.gas, -W * 0.02 + Math.cos(t * 0.3) * CS * 0.3, -H * 0.02 + Math.sin(t * 0.35) * CS * 0.3, W * 1.04, H * 1.04);
+  g.globalAlpha = 0.25 + 0.08 * Math.sin(t * 1.3); g.drawImage(L.gas, W * 0.0125, H * 0.0125, W * 0.975, H * 0.975); // uniform inset keeps the aspect
   g.restore(); }
 function lights(g, now, layer) {
   const S = Core.state, X = S.ext;
@@ -4082,20 +4373,33 @@ function drawAim(g, now) { const a = view.aim; if (!a || !view.sel) return; cons
   g.beginPath(); g.arc(x1, y1, 12 * s, 0, 7); g.moveTo(x1 - 17 * s, y1); g.lineTo(x1 + 17 * s, y1); g.moveTo(x1, y1 - 17 * s); g.lineTo(x1, y1 + 17 * s); g.stroke();
   const t = a.p > 0 ? `HIT ${Math.round(a.p * 100)}%` : (a.why || 'no shot').toUpperCase(); g.font = `800 ${12 * s}px system-ui,sans-serif`; const tw = g.measureText(t).width + 12; g.fillStyle = 'rgba(30,4,8,.9)'; rr(g, x1 + 16 * s, y1 - 24 * s, tw, 18 * s, 4); g.fill(); g.fillStyle = '#ffd0d5'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(t, x1 + 22 * s, y1 - 15 * s); g.restore(); }
 function drawMarkers(g, now) {
-  const S = Core.state, sp = S.suspect, s = sz();
+  const S = Core.state, s = sz();
   drawCasualties(g, now, s);
+  const L_ = Core.suspList ? Core.suspList() : [S.suspect], multi = L_.length > 1;
+  for (const sp of L_) drawSuspectMark(g, now, s, S, sp, multi);
+  drawHide(g, s, S);
+}
+/** Parole hide (attic hatch / basement door): shown once its room has been seen or the hide was found. */
+function drawHide(g, s, S) { const H = S.hide; if (!H || !(H.found || (S.rooms[H.room] && S.rooms[H.room].explored) || S.phase === 'over')) return;
+  const [x, y] = toScreen(H.x + 0.5, H.y + 0.5), w = 14 * s; g.save(); g.strokeStyle = '#d8b46a'; g.lineWidth = 2; g.fillStyle = 'rgba(40,30,10,.75)'; g.fillRect(x - w / 2, y - w / 2, w, w); g.strokeRect(x - w / 2, y - w / 2, w, w);
+  g.beginPath(); if (H.kind === 'attic') { g.moveTo(x - w / 2, y - w / 2); g.lineTo(x + w / 2, y + w / 2); g.moveTo(x + w / 2, y - w / 2); g.lineTo(x - w / 2, y + w / 2); } else { for (let i = 1; i < 4; i++) { g.moveTo(x - w / 2, y - w / 2 + i * w / 4); g.lineTo(x + w / 2, y - w / 2 + i * w / 4); } } g.stroke();
+  g.fillStyle = '#e8cf95'; g.font = `700 ${9 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(H.kind === 'attic' ? 'ATTIC HATCH' : 'BASEMENT', x, y - w / 2 - 7 * s); g.restore(); }
+/** One suspect marker (v11: drawn for every suspect; letters in multi-suspect calls). */
+function drawSuspectMark(g, now, s, S, sp, multi) {
+  if (sp.mode === 'escaped' && !sp.visible) return;
   if (sp.heat && !sp.visible) { const [x, y] = toScreen(sp.heat.x + 0.5, sp.heat.y + 0.5); const p = 0.5 + 0.5 * Math.sin(now / 300); const R = Math.min(60, 26 * s * cam.z + 10); const rg = g.createRadialGradient(x, y, 0, x, y, R);
     rg.addColorStop(0, `rgba(255,120,40,${0.55 + 0.2 * p})`); rg.addColorStop(0.5, 'rgba(255,60,30,.25)'); rg.addColorStop(1, 'rgba(255,60,30,0)'); g.fillStyle = rg; g.beginPath(); g.arc(x, y, R, 0, 7); g.fill();
     g.fillStyle = '#ffb38a'; g.font = `700 ${10 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillText('HEAT', x, y - 18 * s); }
   if (sp.lastKnown && !sp.visible) { const [x, y] = toScreen(sp.lastKnown.x + 0.5, sp.lastKnown.y + 0.5); g.strokeStyle = 'rgba(255,59,78,.6)'; g.setLineDash([4, 4]); g.lineWidth = 2; g.beginPath(); g.arc(x, y, 12 * s, 0, 7); g.stroke(); g.setLineDash([]);
     g.fillStyle = 'rgba(255,120,130,.8)'; g.font = `600 ${9 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillText('LAST SEEN', x, y + 22 * s); }
-  if (sp.visible || S.phase === 'over' && sp.mode !== 'escaped') { const [px, py] = posOf('S', sp.x, sp.y); const [x, y] = toScreen(px + 0.5, py + 0.5); const hostile = ['barricaded', 'alert', 'fleeing'].includes(sp.mode);
+  if (sp.visible || S.phase === 'over' && sp.mode !== 'escaped') { const [px, py] = posOf('S' + (sp.key || 'S'), sp.x, sp.y); const [x, y] = toScreen(px + 0.5, py + 0.5); const hostile = ['barricaded', 'alert', 'fleeing'].includes(sp.mode);
     const col = hostile ? '#ff3b4e' : sp.mode === 'detained' ? '#3ef0a0' : '#ffb020'; const r = 11 * s;
     g.save(); g.shadowColor = col; g.shadowBlur = 16; g.fillStyle = 'rgba(30,4,8,.9)'; g.translate(x, y); g.rotate(Math.PI / 4); g.fillRect(-r * 0.75, -r * 0.75, r * 1.5, r * 1.5); g.strokeStyle = col; g.lineWidth = 2.5; g.strokeRect(-r * 0.75, -r * 0.75, r * 1.5, r * 1.5); g.restore();
     g.fillStyle = col; g.font = `800 ${11 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('!', x, y + 0.5);
     if (sp.maskSeen) badge(g, x - r - 2, y - r - 2, 'M', '#ffb020', '#2a1a04', s);
     if ((sp.impair || 0) > 0.2 && !(sp.maskOn)) badge(g, x + r + 2, y - r - 2, '☁', '#cfe8b0', '#1a2a10', s);
-    const tag = sp.injured && ['barricaded', 'alert'].includes(sp.mode) ? 'SUSPECT · INJURED' : sp.walk && sp.mode === 'surrendered' ? (sp.walk.stage === 'kneel' ? 'KNEELING · HANDS UP' : 'WALKING OUT') : sp.deceased ? 'DECEASED' : { barricaded: 'SUSPECT · ARMED', alert: 'SUSPECT · ALERT', fleeing: 'SUSPECT · FLEEING', surrendered: 'SURRENDERED', incapacitated: 'INCAPACITATED', detained: 'IN CUSTODY' }[sp.mode] || 'SUSPECT';
+    const nm = multi && sp.label ? 'SUSPECT ' + sp.label : 'SUSPECT', tag0 = sp.injured && ['barricaded', 'alert'].includes(sp.mode) ? nm + ' · INJURED' : sp.walk && sp.mode === 'surrendered' ? (sp.walk.stage === 'kneel' ? 'KNEELING · HANDS UP' : 'WALKING OUT') : sp.deceased ? 'DECEASED' : { barricaded: nm + (sp.weapon === 'none' ? '' : ' · ARMED'), alert: nm + ' · ALERT', fleeing: nm + ' · FLEEING', surrendered: 'SURRENDERED', incapacitated: 'INCAPACITATED', detained: 'IN CUSTODY' }[sp.mode] || nm;
+    const tag = multi && sp.label && !tag0.startsWith('SUSPECT') ? sp.label + ' · ' + tag0 : tag0;
     g.font = `700 ${10 * s}px system-ui,sans-serif`; const tw = g.measureText(tag).width + 10; g.fillStyle = 'rgba(20,4,8,.85)'; rr(g, x - tw / 2, y + r + 4, tw, 16 * s, 4); g.fill(); g.fillStyle = col; g.fillText(tag, x, y + r + 4 + 8 * s); }
 }
 /** Casualties (✚ + critical countdown, '?' when status unknown), memorial plaques, EMS point, walk-out spot. No gore: neutral symbols only. */
@@ -4215,17 +4519,17 @@ function pickWindow(cx, cy) { const S = Core.state; let best = null, bd = 1.4;
 function pickRoom(cx, cy) { const r = Core.roomAt(Math.floor(cx), Math.floor(cy)); if (r < 0) return null; return Core.state.rooms[r].known ? r : null; }
 function pickPerch(cx, cy) { const S = Core.state; let best = null, bd = 2.2; for (const p of S.perches) { const d = Math.hypot(cx - p.x - 0.5, cy - p.y - 0.5); if (d < bd) { bd = d; best = p.id; } } if (best == null) { const p = Core.perchAt(Math.floor(cx), Math.floor(cy)); if (p) best = p.id; } return best; }
 /** Overview map (#ovw): the whole neighborhood, the target house, units and the current viewport rectangle. */
-function ovwGeom(c) { const W = c.width, Hh = c.height, k = Math.min(W / Core.MAP_W, Hh / Core.MAP_H); return { k, ox: (W - Core.MAP_W * k) / 2, oy: (Hh - Core.MAP_H * k) / 2 }; }
+function ovwGeom(c) { const W = c._lw || c.width, Hh = c._lh || c.height, k = Math.min(W / Core.MAP_W, Hh / Core.MAP_H); return { k, ox: (W - Core.MAP_W * k) / 2, oy: (Hh - Core.MAP_H * k) / 2 }; }
 /* MINIMAP / overview thumbnail (#ovw in the side panel, #ovw2 in the phone ▦ panel): whole neighborhood + viewport rectangle; tap/drag jumps the camera (see ovwJump). */
 function drawMini(c) {
-  const S = Core.state; if (!S || !c || !L.ground) return; const g = c.getContext('2d'); const W = c.width, Hh = c.height; const { k, ox, oy } = ovwGeom(c);
-  g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#05080d'; g.fillRect(0, 0, W, Hh);
+  const S = Core.state; if (!S || !c || !L.ground) return; const g = c.getContext('2d'); miniSize(c); const W = c._lw, Hh = c._lh; const { k, ox, oy } = ovwGeom(c);
+  g.setTransform(c._md, 0, 0, c._md, 0, 0); g.fillStyle = '#05080d'; g.fillRect(0, 0, W, Hh);
   g.globalAlpha = 0.85; g.drawImage(L.ground, ox, oy, Core.MAP_W * k, Core.MAP_H * k); g.globalAlpha = 1;
   const H = S.house; g.fillStyle = 'rgba(20,24,32,.95)'; for (const q of H.parts.concat(H.garage ? [H.garage] : [])) g.fillRect(ox + q.x * k, oy + q.y * k, q.w * k, q.h * k);
   for (const rm of S.rooms) if (rm.known) { g.fillStyle = rm.explored ? 'rgba(56,200,255,.45)' : 'rgba(56,200,255,.2)'; g.fillRect(ox + rm.x * k, oy + rm.y * k, rm.w * k, rm.h * k); }
   g.strokeStyle = 'rgba(255,90,100,.8)'; g.lineWidth = 1.2; g.strokeRect(ox + H.x0 * k - 1, oy + H.y0 * k - 1, (H.x1 - H.x0 + 1) * k + 2, (H.y1 - H.y0 + 1) * k + 2);
   if (gasAny) { g.globalAlpha = 0.8; g.drawImage(L.gas, ox, oy, Core.MAP_W * k, Core.MAP_H * k); g.globalAlpha = 1; }
-  const sp = S.suspect; const spot = sp.visible ? sp : sp.heat; if (spot) { g.fillStyle = sp.visible ? '#ff3b4e' : '#ff8a3a'; g.beginPath(); g.arc(ox + (spot.x + 0.5) * k, oy + (spot.y + 0.5) * k, 3.5, 0, 7); g.fill(); }
+  for (const sp of (Core.suspList ? Core.suspList() : [S.suspect])) { if (['detained', 'escaped'].includes(sp.mode)) continue; const spot = sp.visible ? sp : sp.heat; if (spot) { g.fillStyle = sp.visible ? '#ff3b4e' : '#ff8a3a'; g.beginPath(); g.arc(ox + (spot.x + 0.5) * k, oy + (spot.y + 0.5) * k, 3.5, 0, 7); g.fill(); } }
   for (const u of S.units) { if (u.status !== 'ok') continue; if (u.kind === 'patrol' && u.inCar) continue; const px = ox + (u.x + 0.5) * k, py = oy + (u.y + 0.5) * k;
     if (u.kind === 'cruiser') { const A = u.armored ? 1.25 : 1; g.fillStyle = u.armored ? '#3a5ca8' : '#e6e9ee'; g.save(); g.translate(px, py); g.rotate(u.dir || 0); g.fillRect(-1.5 * k * A, -0.7 * k * A, 3 * k * A, 1.4 * k * A); g.restore(); continue; }
     g.fillStyle = u.kind === 'team' ? (u.perch ? '#3ef0a0' : '#7fe3ff') : u.kind === 'patrol' ? '#c9d6e4' : '#b48cff'; g.beginPath(); g.arc(px, py, u.kind === 'team' ? 3 : 2.2, 0, 7); g.fill(); if (view.sel === u.uid) { g.strokeStyle = '#fff'; g.lineWidth = 1.2; g.beginPath(); g.arc(px, py, 5, 0, 7); g.stroke(); } }
@@ -4236,12 +4540,15 @@ function drawMini(c) {
   for (const c of S.contain) { const px = ox + (c.x + 0.5) * k, py = oy + (c.y + 0.5) * k; if (c.q === 'cruiser' && c.car && !c.screened) { g.strokeStyle = 'rgba(127,227,255,.8)'; g.lineWidth = 1; g.strokeRect(ox + (c.car.x - 1) * k, oy + c.car.y * k, 3 * k, 1.4 * k); } }
   const v = viewRect(); g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.strokeRect(ox + v.x * k, oy + v.y * k, v.w * k, v.h * k); g.fillStyle = 'rgba(255,255,255,.06)'; g.fillRect(ox + v.x * k, oy + v.y * k, v.w * k, v.h * k);
 }
+/** v11: the minimap backing store follows its CSS box (× dpr) so the neighborhood is never stretched; drawing is in CSS px. */
+function miniSize(c) { const r = c.getBoundingClientRect(), md = Math.min(2, window.devicePixelRatio || 1); if (!(r.width > 0 && r.height > 0)) { c._lw = c._lw || c.width; c._lh = c._lh || c.height; c._md = c._md || 1; return; }
+  const bw = Math.round(r.width * md), bh = Math.round(r.height * md); if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; } c._lw = r.width; c._lh = r.height; c._md = md; }
 /** Jump the camera so the overview point (canvas px) becomes the view centre. */
-function ovwJump(c, px, py) { const { k, ox, oy } = ovwGeom(c); centerOn((px - ox) / k, (py - oy) / k); }
+function ovwJump(c, px, py) { const m = c._md || 1; px /= m; py /= m; const { k, ox, oy } = ovwGeom(c); centerOn((px - ox) / k, (py - oy) / k); }
 
-function init(canvas) { cv = canvas; ctx = cv.getContext('2d'); resize(); }
+function init(canvas) { cv = canvas; ctx = cv.getContext('2d'); resize(true); }
 function invalidate() { compKey = ''; dynVer = -1; planVer = -1; L.expoVer = null; }
-return { init, resize, frame, fit, pan, zoomAt, toCell, toScreen, setSafe, snapshot, endAnim, pickUnit, pickCar, pickDoor, pickWindow, pickRoom, pickPerch, drawMini, ovwJump, centerOn, viewRect, view, cam, invalidate, CS, get animating() { return animating; } };
+return { init, resize, debugScale, viewportSize, frame, fit, pan, zoomAt, toCell, toScreen, setSafe, snapshot, endAnim, pickUnit, pickCar, pickDoor, pickWindow, pickRoom, pickPerch, drawMini, ovwJump, centerOn, viewRect, view, cam, invalidate, CS, get animating() { return animating; } };
 })();
 
 </script>
@@ -4585,12 +4892,17 @@ function casPill(c, o) { if (!c) return `<span class="pill red">${o.stable ? 'ST
 function casOf(o) { return (Core.state.cas || []).find(c => c.who === 'officer' && c.ref === o.id); }
 function renderInfo() { const S = Core.state, I = Core.intelInfo(), sp = S.suspect;
   const thrCol = /VISUAL|ARMED|LOCATED/.test(I.threat) ? 'var(--red)' : 'var(--dim)';
-  $('binfo').innerHTML = `<span>Layout</span><b style="font-size:11px">${esc(I.arch)}</b><span>Rooms known</span><b>${I.roomsKnown} / ${I.roomsTotal}</b><span>Rooms cleared/viewed</span><b>${I.explored}</b><span>Threat</span><b style="color:${thrCol};font-size:11px">${I.threat}</b><span>Weapon</span><b style="font-size:11px">${esc(I.weapon)}</b><span>Suspect</span><b>${I.suspect}</b>${S.suspect.armorKnown && S.suspect.armor !== 'none' ? `<span>Body armor</span><b style="color:var(--amber);font-size:11px">${S.suspect.armor === 'plate' ? 'Plate carrier — aim for uncovered areas / .308' : 'Soft vest — rifles penetrate'}</b>` : ''}`
+  $('binfo').innerHTML = `<span>Layout</span><b style="font-size:11px">${esc(I.arch)}</b><span>Rooms known</span><b>${I.roomsKnown} / ${I.roomsTotal}</b><span>Rooms cleared/viewed</span><b>${I.explored}</b><span>Threat</span><b style="color:${thrCol};font-size:11px">${I.threat}</b><span>Weapon</span><b style="font-size:11px">${esc(I.weapon)}</b><span>Suspect</span><b>${I.suspect}</b>${suspRows(I)}${S.suspect.armorKnown && S.suspect.armor !== 'none' ? `<span>Body armor</span><b style="color:var(--amber);font-size:11px">${S.suspect.armor === 'plate' ? 'Plate carrier — aim for uncovered areas / .308' : 'Soft vest — rifles penetrate'}</b>` : ''}`
     + (sp.maskSeen ? `<span>Gas mask</span><b style="color:var(--red)">WEARING ONE</b>` : '') + (sp.visible && sp.impair > 0.1 && !sp.maskOn ? `<span>Condition</span><b style="color:var(--amber)">COUGHING</b>` : '')
     + (I.containKnown ? `<span>Containment</span><b style="color:${I.contain === I.containTotal && !I.sides.gaps.length ? 'var(--green)' : 'var(--amber)'}">${I.contain} / ${I.containTotal} posts · ${I.sides.n}/${I.sides.of} sides${I.sides.gaps.length ? ' · GAP ' + I.sides.gaps.join(', ').toUpperCase() : ''}</b>` : `<span>Containment</span><b style="color:var(--dim);font-size:11px">? — run a Status Check</b>`) + `${negRow()}${I.cas ? `<span>Casualties</span><b style="color:var(--amber)">${I.cas} need help</b>` : ''}<span>Intel action</span><b style="color:var(--cyan2)">${S.cmd ? Core.COMMANDS[S.cmd].name : '—'}</b>`;
   $('intelpct').textContent = I.level + '%'; $('intelbar').style.width = I.level + '%'; }
+/** v11: multi-suspect calls — the count stays unknown until every suspect is seen and the house is cleared. */
+function suspCountTxt(I) { const C = I.count; if (!C) return ''; return C.confirmed ? `${C.total} confirmed` : `Unknown (${C.seen} seen)`; }
+function suspRows(I) { if (!I.multiType) return ''; const C = I.count; let h = `<span>Suspect count</span><b style="font-size:11px;color:${C.confirmed ? 'var(--green)' : 'var(--amber)'}">${suspCountTxt(I)}</b>`;
+  if (I.suspects.length > 1 || (C.total || 0) > 1) h += I.suspects.map(x => `<span style="padding-left:8px">· ${esc(x.name)}</span><b style="font-size:10.5px;font-weight:600;color:${/CUSTODY/.test(x.state) ? 'var(--green)' : /ARMED|ALERT|FIGHT|FLEE/.test(x.state) ? 'var(--red)' : 'var(--amber)'}">${esc(x.state)}${x.visible ? ' · in view' : ''}</b>`).join('');
+  return h; }
 function renderMini() { const S = Core.state, I = Core.intelInfo(), last = S.log[S.log.length - 1];
-  $('bmini').innerHTML = `<div class="mr"><span>Suspect</span><b>${esc(I.suspect)}</b></div><div class="mr"><span>Threat</span><b>${esc(I.threat)}</b></div><div class="mr"><span>Rooms</span><b>${I.roomsKnown}/${I.roomsTotal} · ${I.explored} seen</b></div><div class="mr"><span>Intel</span><b>${I.level}%</b></div>`
+  $('bmini').innerHTML = `<div class="mr"><span>Suspect</span><b>${esc(I.suspect)}</b></div><div class="mr"><span>Threat</span><b>${esc(I.threat)}</b></div>${I.multiType ? `<div class="mr"><span>Count</span><b>${esc(suspCountTxt(I))}</b></div>` : ''}<div class="mr"><span>Rooms</span><b>${I.roomsKnown}/${I.roomsTotal} · ${I.explored} seen</b></div><div class="mr"><span>Intel</span><b>${I.level}%</b></div>`
     + (last ? `<div class="ml"><i>T+${Core.elapsedAt(last.turn, last.tick)}</i>${esc(last.text)}</div>` : ''); }
 function renderLog(force) { const S = Core.state; if (!force && S.log.length === logLen) return; logLen = S.log.length; const L = S.log.slice(-60);
   $('log').innerHTML = L.map(e => `<div class="${e.kind}"><span class="t" title="${Core.clockAt(e.turn, e.tick)} time of day">T+${Core.elapsedAt(e.turn, e.tick)}</span>${esc(e.text)}</div>`).join(''); $('log').scrollTop = 1e6;
@@ -4779,11 +5091,14 @@ $('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><b
  ${HB('Officer loadout', 'every officer has <b>two hands</b>, a holstered handgun and a taser, and his long gun. Tap 🎒 on a member in the team dialog: the <b>hands slot</b> shows what is held. A rifle is held two-handed, slung, or fired one-handed (×0.6 accuracy). Shields always take one hand and cannot be slung. The ram is carried in one hand; on a ram breach the pistol is auto-holstered for both hands on the ram and redrawn after. Charges ride on the vest — drawing one takes time and hanging it needs a free hand. Flashbang and CS throws need both hands (sidearm auto-holstered, then redrawn). The medkit is packed; full first aid needs both hands. The 40mm launcher needs both hands, a Less-Lethal Specialist and has limited rounds. Holster, sling or switch costs no time, but that weapon is <b style="color:var(--amber)">NOT READY for one full turn</b> — no return fire or attacks with it. Gear is drawn only at the equipment vehicle, from a pool that grows with team level.')}
  ${HB('Body armor', `every officer — patrol and SWAT — wears <b>soft Level IIIA</b> torso armor: it stops handgun and shotgun rounds. About half of hits land on the torso; hits to arms, legs or head injure as before. A stopped round at very close range (≤${Core.ARMOR_CFG.bluntRange} cells) can still leave a <b>small blunt-impact injury</b> (mobile, low severity) — most often from a shotgun. <b>Plate Carriers</b> (rifle plates, worn slot) are issued individually from the pool: they unlock around career level 75 and every one of the 30 officers has one at level 100; they stop about ${Math.round(Core.ARMOR.plate.stops.rifle * 100)}% of rifle rounds to the torso. Draw / return plates in the loadout (🎒) at the equipment vehicle. The team card shows a 🦺 badge (PL = plates, IIIA = soft only).`)}
  ${HB('Ballistic shields', `one-hand items that <b>cannot be slung or packed</b>. The <b>IIIA shield</b> stops handgun and shotgun; the <b>Level III shield</b> (career ~70+) also stops ~${Math.round(Core.SHIELDS.shield3.stops.rifle * 100)}% of rifle rounds and fewer .308. Protection is only in the <b>frontal arc</b> and covers part of the body (${Math.round(Core.SHIELD_CFG.cover * 100)}%); teammates stacked behind the shield get a partial benefit (${Math.round(Core.SHIELD_CFG.stack * 100)}%). The team's default point carries the best shield available.`)}
+ ${HB('Several suspects (fleeing-suspect calls)', `a suspect who fled into a vacant house may not be alone: 1–4 suspects (one is most common — ${Math.round(Core.MULTI_CFG.countW[0] * 100)}% / ${Math.round(Core.MULTI_CFG.countW[1] * 100)}% / ${Math.round(Core.MULTI_CFG.countW[2] * 100)}% / ${Math.round(Core.MULTI_CFG.countW[3] * 100)}%). The patrol report can be uncertain or under-count. Each suspect has a separate position, weapon, armor, mask and behavior (hiding, fleeing, fighting, ready to give up, or injured). The intel panel shows the count as <b>Unknown (N seen)</b> until every suspect has been seen and every room cleared. Negotiation works on the group, but individuals can break away. The call is only resolved when <b>every</b> suspect is in custody; each escape costs points.`)}
+ ${HB('Rotating a phone', 'the map re-measures itself after a rotate (and again a moment later, since iOS reports stale sizes). It keeps the same spot centred and never stretches. If you had not moved the view, it re-frames the house.')}
  ${HB('Suspect body armor', `about ${Math.round(Core.ARMOR_CFG.suspect * 100)}% of suspects wear armor — mostly soft vests, occasionally rifle plates. You only learn it when he is seen wearing it or a hit is stopped (log: “The round appears to have been stopped by body armor”). Handgun rounds are stopped by a soft vest; rifles penetrate soft armor but plates stop most of them; the .308 precision rifle penetrates soft armor and has a reduced chance against plates. Hits outside the vest still count — in a window he shows mostly head and shoulders.`)}
  ${HB('Draco arm (BearCat)', `career level ~60 adds a <b>Draco Arm Kit</b> to the pool. Select a team of 2+ and tap <b>⚙ Install Draco</b>: they walk to the BearCat and mount it in ${Core.DRACO_CFG.installTurns} turns of work (progress bar on the vehicle). Installers are busy and more exposed and do not return fire; any other order interrupts the install (progress is kept). Once installed, select whoever is inside the BearCat and use <b>⚒ Draco Breach</b> on an exterior door or a window: the BearCat drives up and the claw rips it out — a door in one or two pulls (storm doors first, still faster than by hand), windows always. It is loud, takes the frame with it, and the crew stays under armor. The new opening is used for vision, gas and entry.`)}
  ${HB('Taser', `Taser order (team or patrol): an officer with a free(able) hand draws the taser one-handed — the suspect must be in view with a clear line within ~${Core.TASER_CFG.range} m. Odds are best up close (~${Math.round(Core.TASER_CFG.p * 100)}% at 1 m, lower with distance and against body armor) and it can fail. A hit incapacitates him for ~${Core.TASER_CFG.stunTurns} turns: move a team in to detain him.`)}
  ${HB('Less-lethal 40mm', `an LL-qualified officer with the launcher fires impact rounds: range ~${Core.LL_CFG.range} m, odds fall with range, about ${Math.round(Core.LL_CFG.noEffect * 100)}% of hits have no visible effect, a good hit stuns him ${Core.LL_CFG.stunTurns[0]}–${Core.LL_CFG.stunTurns[1]} turns. Each shot uses one round (shown in the loadout); out of rounds = order unavailable.`)}
  ${HB('Hand transitions', 'throwing a flashbang / CS needs <b>both hands</b>, the taser <b>one</b>, the 40mm launcher <b>both</b>. The officer automatically holsters or slings what he holds, uses the device, then re-draws his previous weapon — which is <b>not ready</b> until next turn (logged). A <b>ballistic shield cannot be slung or put down</b>: a shield holder keeps it and uses the taser in his free hand, but cannot fire the launcher (give the launcher to someone else in the loadout).')}
+ ${HB('The block behind the house', 'the map includes the <b>rear row</b>: the back neighbours\' houses, their yards and the rear street behind the suspect house (back fences have gates). Their house corners and sheds are hard cover for rear containment, a sniper can take a perch in a rear house (marked <i>rear row</i>), and cruisers can use the rear street to close the back of the block. Zoom out (⤢ / overview) to see it.')}
  ${HB('Sniper overwatch', 'a team with a Marksman can take Overwatch on a perch in a neighbor house (window or roof) or a yard vantage point; the cone shows his sight-lines. A spotter raises his hit chance — a qualified <b>◆ Sniper Spotter</b> most, any other officer moderately — and spots the suspect at windows sooner. Perched snipers are very hard to hit.')}
  ${HB('CS gas', 'gas spreads room to room through open doors and broken windows and vents outdoors as a plume; you only see it where you have vision or intel. Deploying gas calls “Gas! Masks on” — donning takes a tick. Unmasked officers in gas are heavily impaired; masks cost a little vision and aim. Patrol have no masks: they cough, may fall back or panic — pull them out. The suspect may flee or give up… unless he has a gas mask (you only learn that when you see him).')}
  ${HB('Negotiation', 'Two negotiators arrive staggered. Open contact by <b>Call</b> (needs his number — from a neighbor interview, the 911 record or family), <b>PA Contact</b> from a cruiser or a bullhorn team (he may yell from a window — or shoot), or a <b>Throw Phone</b> tossed through an open door/broken window or carried in by the robot (can be blocked, shot or ignored). He can refuse, not answer or hang up. Once talking, pick one dialogue move per turn in Intel: Build Rapport, Active Listening, Concession, Status Check, Ultimatum.')}
@@ -4796,7 +5111,7 @@ $('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><b
  ${HB('Work Corner (slice the pie)', 'at a hallway corner, door frame or house corner, <b>◩ Work Corner</b> (<kbd>N</kbd>) edges the unit out in <b>45° cuts</b> — one cut every two ticks, each revealing more of the hidden area through the fog. It <b>stops the moment it sees the suspect</b> (THREAT in the log) or reports “corner clear”. While slicing only a sliver of the unit is exposed, so the suspect is less likely to fire at it and less likely to hit. Queue it like any order (it chains after a Move) and press EXECUTE; moving off the spot ends the slice. Patrol officers can work outside house corners but never step inside.')}
  ${HB('Main menu', 'the game opens on the main menu. <b>Quick Mission</b> plays one scenario with the <b>team level</b> you pick on the slider or number box (1–100, default 100): level 1 is a small basic team (4 officers, shields, ram, Halligan, medkit, bullhorn); every level adds people and gear up to level 100 — 30 personnel and every item in large counts. Quick Missions are never saved to the career. <b>New seed</b> picks a different scenario; <b>Career / Roster</b> and <b>How to play</b> open those screens.')}
  ${HB('Career Mode', 'starts at <b>team level 1</b>. Team XP is earned per action — breaching, clearing rooms, working corners, finding the suspect, closing the perimeter, contact and dialogue, first aid, rescue and evacuation, overwatch, flashbangs, taking custody — plus the mission result; enough XP raises the team level (personnel, gear and team size grow with it). Between missions the <b>dispatch screen</b> offers random calls with an estimated risk. In a career mission the ☰ menu has <b>☎ Call State SWAT Team</b>: hand the scene over, keep only the per-action XP (shown in the debrief), no mission-completion XP and a score deduction. Results save automatically in this browser; team level and XP are stored separately from the roster, so a damaged roster is regenerated without losing them. Officers still gain XP and rank, injured officers sit out missions, officers killed go to the memorial. <b>Export</b> a code (it starts with your level and XP, e.g. <kbd>SWATC3.L12-X3400-…</kbd>) or a file to move the career; older SWATC1/SWATC2 codes and saves import and upgrade automatically.')}
- ${HB('Call types', `each seed picks a call type (Quick Mission: choose one under <b>Call type</b>, or Random). The type is shown at the top of the brief, on the 911 record and on career dispatch cards. <b>Barricaded subject</b> — the standard call. <b>Mental health crisis</b> — low aggression, open to talking; the legal factor (discharge, warrant or interview-only) is in the brief. Bonus for resolving without force (+${Core.SCEN_TYPES.mental.bonus.noForce}) and for arranging an <b>EMS Evaluation</b> (Intel, +${Core.SCEN_TYPES.mental.bonus.ems}); the debrief notes a neutral risk flag. <b>Domestic</b> (firearm or violent variant) — his partner is at the perimeter: the <b>Partner Interview</b> gives the full layout, weapons, history and usually his number. <b>Fleeing suspect — vacant house</b> — nobody else inside, no family, little interest in talking; he escapes through any side nobody watches, fast — run a Status Check and close gaps early. <b>Neighbor dispute</b> — known armed; most hostile toward the neighbor's side of the house (keep officers off that side); the neighbor can be interviewed.`)}
+ ${HB('Call types', `each seed picks a call type (Quick Mission: choose one under <b>Call type</b>, or Random). The type is shown at the top of the brief, on the 911 record and on career dispatch cards. <b>Barricaded subject</b> — the standard call. <b>Mental health crisis</b> — low aggression, open to talking; the legal factor (discharge, warrant or interview-only) is in the brief. Bonus for resolving without force (+${Core.SCEN_TYPES.mental.bonus.noForce}) and for arranging an <b>EMS Evaluation</b> (Intel, +${Core.SCEN_TYPES.mental.bonus.ems}); the debrief notes a neutral risk flag. <b>Domestic</b> (firearm or violent variant) — his partner is at the perimeter: the <b>Partner Interview</b> gives the full layout, weapons, history and usually his number. <b>Fleeing suspect — vacant house</b> — nobody else inside, no family, little interest in talking; he escapes through any side nobody watches, fast — run a Status Check and close gaps early. <b>Neighbor dispute</b> — known armed; most hostile toward the neighbor's side of the house (keep officers off that side); the neighbor can be interviewed. <b>Parole absconder</b> (about ${Math.round(Core.SCEN_TYPES.parole.xw * 100)}% of calls) — patrol came to pick him up on a parole-violation warrant; the brief says how they know he is inside (seen going in, seen at a window, or a caller). One suspect, armed or not (he may have no firearm at all). He often hides in an <b>attic</b> or <b>basement</b>: he cannot be seen there until an officer, the robot or K9 is right next to the hatch, so clear every room. <b>Eviction / civil papers standoff</b> (about ${Math.round(Core.SCEN_TYPES.sovcit.xw * 100)}%) — he rejects the court's authority and argues every point (his own negotiation lines; call-outs work poorly). Long guns, body armor, gas masks and braced/reinforced doors are each +${Math.round(Core.SOVCIT_CFG.boost * 100)} points more likely (capped at ${Math.round(Core.SOVCIT_CFG.cap * 100)}%).`)}
  ${HB('Scenarios', 'every scenario is generated from a seed: house layout, neighborhood, cruiser and suspect gear, patrol positions and the 911 call. The team level changes only your unit, never the map. <b>New Scenario</b> picks a new seed; add <kbd>#seed=12345</kbd> to the URL to jump straight into one as a Quick Mission at your last chosen level. Quick Missions and seed replays are <i>not</i> counted in your career.')}
  <div class="grid2"><div><b style="color:var(--cyan2)">Desktop</b><br>Click a unit / card or <kbd>1</kbd>–<kbd>9</kbd> to select · click map to order<br><kbd>M</kbd> move <kbd>N</kbd> work corner <kbd>B</kbd> breach <kbd>X</kbd> detonate <kbd>F</kbd> flash <kbd>G</kbd> gas <kbd>K</kbd> mask <kbd>C</kbd> clear <kbd>T</kbd> fire <kbd>U</kbd> suppress <kbd>O</kbd> overwatch <kbd>E</kbd> get in / exit <kbd>S</kbd> stance <kbd>H</kbd> hold <kbd>P</kbd> pole cam <kbd>I</kbd> intel<br><kbd>Backspace</kbd> undo · <kbd>Enter</kbd> execute · <kbd>Esc</kbd> deselect<br>Drag to pan · wheel to zoom · <kbd>0</kbd> fit · click the overview map to jump</div>
  <div><b style="color:var(--cyan2)">Touch</b><br>Tap a unit or chip to select · tap again for details<br>Tap the map to place orders (Fire: tap once to preview the hit chance, again to confirm)<br>One-finger drag to pan · pinch to zoom · ＋/－/⤢/▦ buttons<br>TEAMS / INTEL tabs open the panels; ▦ shows the overview map</div></div>
@@ -4829,8 +5144,8 @@ $('pop').addEventListener('click', e => { const b = e.target.closest('button[dat
 
 /* ---------------- aim preview (Fire / Suppress) ---------------- */
 function planEnd(u) { const P = Core.planFor(u); for (let i = P.length - 1; i >= 0; i--) if (P[i] && P[i].ok && P[i].end) return P[i].end; return [u.x, u.y]; }
-function aimTarget(cx, cy) { const sp = Core.state.suspect; let x = Math.floor(cx), y = Math.floor(cy);
-  if (sp.visible && Math.hypot(sp.x + 0.5 - cx, sp.y + 0.5 - cy) < 1.6) { x = sp.x; y = sp.y; } return [x, y]; }
+function aimTarget(cx, cy) { let x = Math.floor(cx), y = Math.floor(cy), bd = 1.6;
+  for (const sp of Core.suspList()) if (sp.visible && !['detained', 'escaped'].includes(sp.mode)) { const d = Math.hypot(sp.x + 0.5 - cx, sp.y + 0.5 - cy); if (d < bd) { bd = d; x = sp.x; y = sp.y; } } return [x, y]; }
 function aimInfo(u, x, y, mode) { const from = u.perch ? [u.x, u.y] : planEnd(u); const h = Core.hitChance(u, x, y, from); let p = h.p || 0; if (mode === 'suppress') p = p * 0.35;
   V.aim = { fx: from[0], fy: from[1], x, y, p, why: h.why }; return h; }
 function showAim(u, h, mode, confirm) { const b = $('aimbox'); if (!h) { b.className = ''; return; }
@@ -4979,8 +5294,14 @@ function layoutSafe() { const ph = isPhone(); if (ph !== lastPhone) { lastPhone 
   const z = $('zoom'); if (!ph && R) z.style.right = (window.innerWidth - R.left + 8) + 'px'; else z.style.right = ''; if (!ph && bot) z.style.bottom = (window.innerHeight - bot.top + 8) + 'px'; else z.style.bottom = '';
   const pb = r('bottom'); if (ph && pb) { $('ovwf').style.bottom = (window.innerHeight - pb.top + 34) + 'px'; }
 }
-function onResize() { Render.resize(); layoutSafe(); }
-window.addEventListener('resize', () => { onResize(); Render.fit('house'); });
+function onResize() { layoutSafe(); Render.resize(true); }
+/* v11 rotation fix: iOS Safari / home-screen apps report stale sizes during a rotate, so re-measure now and again a little later.
+   Every re-measure rebuilds the canvas at CSS × dpr with one uniform scale and keeps the camera centre (see Render.resize). */
+let rzT = []; function remeasure() { onResize(); rzT.forEach(clearTimeout); rzT = [120, 300, 650].map(ms => setTimeout(() => { layoutSafe(); Render.resize(); }, ms)); }
+window.addEventListener('resize', remeasure); window.addEventListener('orientationchange', remeasure);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', remeasure);
+document.addEventListener('fullscreenchange', remeasure); document.addEventListener('webkitfullscreenchange', remeasure);
+try { const mq = window.matchMedia('(orientation: portrait)'); (mq.addEventListener ? mq.addEventListener('change', remeasure) : mq.addListener(remeasure)); } catch (e) { }
 
 
 /* ---------------- mission brief / 911 call ---------------- */
@@ -4991,7 +5312,7 @@ function openBrief() { const S = Core.state, B = S.brief; if (!B) return;
   const sc = S.scene || {}, inj = S.cas.find(c => c.initial);
   $('brief-dlg').innerHTML = `<div class="ph">Mission Brief<span class="sp"></span><small>${esc(S.opName)}${S.opts && S.opts.career ? ` · CAREER · TEAM LV ${S.opts.level}` : S.opts && S.opts.mode === 'quick' ? ` · QUICK · TEAM LV ${S.opts.level}` : ''}</small><button class="ib" data-close="m-brief">✕</button></div><div class="body" style="font-size:12.5px;color:#bcd0e6">
    <div class="stypebox"><b>${esc((B.stypeName || 'Barricaded subject').toUpperCase())}</b>${B.legal ? ` <span class="pill amber">legal: ${esc(B.legal)}</span>` : ''}<div>${esc(B.typeDesc || '')}</div></div>
-   <div class="kv"><span>Call</span><b>${esc(B.callAt)} · 911 · ${esc(B.type)}</b><span>Address</span><b>${esc(B.addr)}</b><span>Caller</span><b style="font-size:11.5px">${esc(B.caller)}</b><span>Subject</span><b style="font-size:11.5px">${esc(B.suspect)}</b><span>Occupants</span><b style="font-size:11.5px;font-weight:500">${esc(B.occupants)}</b><span>Weapon</span><b style="font-size:11.5px;font-weight:500">${B.shots ? 'Shots reported' : 'No shots reported'}${B.sawGun ? ' · weapon seen' : ''}</b></div>
+   <div class="kv"><span>Call</span><b>${esc(B.callAt)} · ${B.channel === 'radio' ? 'patrol radio' : '911'} · ${esc(B.type)}</b><span>Address</span><b>${esc(B.addr)}</b><span>Caller</span><b style="font-size:11.5px">${esc(B.caller)}</b><span>Subject</span><b style="font-size:11.5px">${esc(B.suspect)}</b><span>Occupants</span><b style="font-size:11.5px;font-weight:500">${esc(B.occupants)}</b>${B.belief ? `<span>Count</span><b style="font-size:11.5px;color:var(--amber)">${esc(B.belief)}</b>` : ''}<span>Weapon</span><b style="font-size:11.5px;font-weight:500">${B.shots ? 'Shots reported' : 'No shots reported'}${B.sawGun ? ' · weapon seen' : ''}</b></div>
    ${B.officerDown ? `<div class="warnbox">⚠ <b>Officer down.</b> ${esc(B.officerDown === true ? 'A patrol officer was hit before SWAT arrived — condition unclear.' : B.officerDown)}</div>` : ''}
    ${B.arrival ? `<div class="${B.arrival.mode === 'all' ? 'note' : 'tl'}" style="margin-top:8px;font-size:12px">${B.arrival.mode === 'all' ? '★ <b>Full team on scene.</b> ' : '<b>SWAT on scene:</b> '}${esc(B.arrival.mode === 'all' ? B.arrival.why : `${B.arrival.count} of ${B.arrival.of} at staging — ${B.arrival.why}`)}</div>` : ''}
    <details class="brs" id="brs-pre" ${briefOpen()}><summary class="sh" style="margin-top:10px">Before SWAT</summary><div class="tl">${B.patrol.map(p => `<div>${esc(p).replace(/(\d\d:\d\d(:\d\d)?)/g, '<b>$1</b>')}</div>`).join('')}</div></details>

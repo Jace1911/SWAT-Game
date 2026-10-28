@@ -58,7 +58,7 @@ function planOrder(u, o, sx, sy, assume) {
       const p = path(o.x, o.y); if (!p) return { ok: false, reason: 'No route to that vantage point' };
       if (!overwatchSees(o.x, o.y)) return { ok: false, reason: 'No sight line to any window or door from there' };
       return { ok: true, path: p, end: [o.x, o.y] }; }
-    case 'taser': case 'llfire': { const q = deviceShotReq(u, o.type, sx, sy); if (q) return { ok: false, reason: q }; const sp = S.suspect; o.x = sp.x; o.y = sp.y; o.est = deviceChance(u, o.type, dist(sx, sy, sp.x, sp.y)); return { ok: true, path: [], end: [sx, sy] }; }
+    case 'taser': case 'llfire': { const sp = devTarget(sx, sy); const q = withSp(sp, () => deviceShotReq(u, o.type, sx, sy)); if (q) return { ok: false, reason: q }; o.x = sp.x; o.y = sp.y; o.tgt = sp.key; o.est = deviceChance(u, o.type, dist(sx, sy, sp.x, sp.y)); return { ok: true, path: [], end: [sx, sy] }; }
     case 'shoot': { const q = shotReq(u, sx, sy, o.x, o.y); if (q) return { ok: false, reason: q }; return { ok: true, path: [], end: [sx, sy] }; }
     case 'clear': { const tc = roomTargetCell(o.room); if (!tc) return { ok: false, reason: 'Room not reachable' }; const p = path(tc[0], tc[1]);
       if (!p) return { ok: false, reason: 'No entry route — breach a door first' }; o.x = tc[0]; o.y = tc[1]; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
@@ -186,7 +186,7 @@ function hitChance(u, tx, ty, from, opt) {
   let p = add('base', w.base, w.name);
   if (u.kind === 'team') { const tw = teamWeapon(u); if (tw && tw.oh) { p *= add('grip', ITEM_CFG.rifle.oneHandMul, 'rifle fired one-handed'); notes.push('one-handed'); } }
   p *= add('range', 1 - 0.55 * d / w.range, Math.round(d) + ' m of ' + w.range);
-  const sp = S.suspect, inside = roomAt(tx, ty) >= 0, atWin = winCellSet().has(idx(tx, ty));
+  const sp = suspectFor(tx, ty), inside = roomAt(tx, ty) >= 0, atWin = winCellSet().has(idx(tx, ty));
   let cm, ct; if (!inside) { cm = 1.4; ct = 'in the open'; } else if (atWin) { cm = wk === 'sniper' ? 1.25 : 1.0; ct = 'at window (frame + glass)'; } else if (l === 2) { cm = 0.45; ct = 'deep in room behind glass'; } else { cm = 0.6; ct = 'through doorway / walls'; }
   if (inside && S.doors.some(dd => dd.barricaded && dd.rooms.includes(roomAt(tx, ty)))) { cm *= 0.85; ct += ', barricade'; }
   p *= add('cover', cm, ct); notes.push(ct);
