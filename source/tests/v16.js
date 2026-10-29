@@ -34,7 +34,7 @@ for (let seed = 1; seed <= 40; seed++) { const { S, t } = prep(seed); if (!place
   for (const it of S.enc.items) { if (it.kind === 'result') { results++; ok(it.done && it.res.length > 0, 'result box has text'); continue; }
     if (it.kind !== 'contact') continue; contacts++; poses.add(it.pose); confs.add(it.read.conf); const M = Core.mindOf(S.suspect); if (M.read && M.read.looks === 'gun' && M.read.actual !== 'weapon') misreads++;
     ok(typeof it.text === 'string' && it.text.length > 30 && !/\d+\s*%/.test(it.text), 'description text');
-    for (const o of it.options) { optsSeen.add(o.key); if (!['Very likely', 'Likely', 'Possible', 'Unlikely', 'Very unlikely'].includes(o.word)) wordsOK = false; if (!o.who.length || o.who.some(id => !S.officers.find(q => q.id === id))) whoOK = false; } }
+    for (const o of it.options) { if (o.key === 'endturn') continue; optsSeen.add(o.key); if (!['Very likely', 'Likely', 'Possible', 'Unlikely', 'Very unlikely'].includes(o.word)) wordsOK = false; if (!o.who.length || o.who.some(id => !S.officers.find(q => q.id === id))) whoOK = false; } }
   settle('hold'); ok(S.phase === 'planning' || S.phase === 'over', 'turn ends after the decisions (' + S.phase + ')'); ok(S.phase === 'over' || S.turn === turn0 + 1, 'turn advanced once'); }
 ok(contacts >= 5, 'contact popups ' + contacts); ok(results >= 1, 'auto result boxes ' + results); ok(poses.size >= 4, 'pose variety ' + [...poses]);
 ok(wordsOK, 'every option has a likelihood word'); ok(whoOK, 'every option lists capable officers'); ok(optsSeen.has('hold') && optsSeen.has('shoot') && optsSeen.has('v_hands'), 'core options ' + [...optsSeen]);
@@ -94,9 +94,10 @@ ok(wordsOK, 'every option has a likelihood word'); ok(whoOK, 'every option lists
 // 11) blind fire at the threshold: mid-turn pause, 4 choices, orders change
 { const C = Core.ENC_CFG, b0 = C.blind; C.blind = 50; let got = 0;
   for (let s = 1; s <= 40 && got < 4; s++) { const { S, t } = prep(s); const sp = S.suspect; if (sp.weapon === 'none') continue; sp.mode = 'alert'; const r = sp.room;
+    const dd = S.doors.map(d => d.cells.map(([a, b]) => Core.roomAt(a[0], a[1]) === r ? b : Core.roomAt(b[0], b[1]) === r ? a : null).find(Boolean)).find(Boolean); if (!dd) continue; t.x = dd[0]; t.y = dd[1]; // v20: at a doorway (window throws get window options)
     S.phase = 'executing'; t.orders = [{ type: 'clear', room: r, fromAfter: true }, { type: 'move', x: sp.x, y: sp.y }];
     const key = ['cancel', 'continue', 'doorway', 'frame'][got]; const o = { type: 'bang', room: r };
-    const res = Core.encThreshold(t, o); if (!res || S.phase !== 'encounter') continue; const it = Core.encCur(); ok(it.kind === 'blind' && it.options.length === 4, 'blind prompt with 4 choices');
+    const res = Core.encThreshold(t, o); if (!res || S.phase !== 'encounter') continue; const it = Core.encCur(); ok(it.kind === 'blind' && !it.win && it.options.length === 5 && it.options[4].key === 'endturn', 'blind prompt with 4 choices + End turn');
     ok(!S.enc.atEnd, 'mid-turn pause'); const n0 = t.orders.length; Core.blindChoose(key); ok(it.done, 'blind choice resolves');
     if (key === 'cancel') ok(t.orders[0].type === 'hold' && !t.orders.some(q => q.fromAfter), 'cancel drops the entry');
     if (key === 'continue') ok(t.orders.some(q => q.fromAfter), 'continue keeps the entry');

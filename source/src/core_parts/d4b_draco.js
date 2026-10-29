@@ -1,12 +1,14 @@
 /* =====================================================================
    DRACO ARM (v9) — front-mounted breaching boom/claw for the BearCat.
    Kit comes from the equipment pool (career level ≥ 60). A team of ≥2 officers at the BearCat
-   installs it in 5 turns (busy, more exposed; leaving interrupts — progress is kept).
+   installs it (v20: 5 min alone … 1 min with 6+) (busy, more exposed; leaving interrupts — progress is kept).
    Installed: the BearCat's occupants order DRACO BREACH on an exterior door or window; the
    vehicle drives up to it and rips it out. Armored hull → minimal exposure for the crew.
    ===================================================================== */
 const DRACO_CFG = {
-  installTurns: 5, crew: 2,
+  installTurns: 10, crew: 1, // v20: 10 turns (5 min) = one officer; a bigger crew works faster (installMin)
+  tip: { bang: 2, gas: 4 },   // v20: devices carried in the claw tip, deployable into the room the arm is in contact with
+  installMin: [5, 5, 3, 2, 1.5, 1.25, 1], // minutes by crew size (index = officers; 6+ → 1 min, 7+ a little under)
   reach: 3.5,                 // v17: max cells from the BearCat's centre to the opening, straight ahead (bumper at 1.5, boom up to 2 cells past it)
   minReach: 2,                // the front end cannot be closer than the bumper + a short boom
   lateral: 0.55,              // the arm is fixed to the front (no left/right swing): the opening must be dead ahead
@@ -14,6 +16,9 @@ const DRACO_CFG = {
   door: { p: 0.9, barr: 0.75, garage: 0.85, storm: 0.85 }, // per-tick pull success (manual ram 0.5 / charge 0.97)
   noise: 16,
 };
+/** v20: install minutes for a crew of n (1 → 5 min, 6 → 1 min, 7+ → just under 1 min). */
+function dracoMinutes(n) { const M = DRACO_CFG.installMin; n = Math.max(1, n | 0); return n < M.length ? M[n] : Math.max(0.75, 1 - (n - 6) * 0.05); }
+function dracoRate(n) { return 5 / dracoMinutes(n); }
 function installTicks() { return DRACO_CFG.installTurns * TICKS; }
 function bearcat() { return S.units.find(u => u.kind === 'cruiser' && u.armored) || null; }
 function openingMid(o) { if (o.door !== undefined && o.door !== null) return doorMid(S.doors[o.door]); const w = S.windows[o.win];
@@ -44,17 +49,17 @@ function dracoContact(c, o) { const h = DIRS4.findIndex(([dx, dy]) => Math.abs(M
 function dracoInstallTick(u, o, speed) { const c = unit(o.car); if (!c || c.draco) { popOrder(u); return; }
   if (teamOk(u).length < DRACO_CFG.crew) { failOrders(u, `installing the Draco arm needs ${DRACO_CFG.crew} officers`); return; }
   const g = carAdjGoal(c); if (!g(u.x, u.y)) { u.installing = null; const r = stepAlong(u, o, g, speed); if (r === null) failOrders(u, 'cannot reach the BearCat'); if (!r) return; }
-  if (c.occ.length && c.orders.some(q => q.type === 'move' || q.type === 'draco')) { log(`${u.name}: BearCat is moving — install paused.`); return; }
+  if ((c.occ.length || c.bcDriver) && c.orders.some(q => q.type === 'move' || q.type === 'draco')) { log(`${u.name}: BearCat is moving — install paused.`); return; }
   if (!c.dracoKit) { if (!(S.armory.draco > 0)) { failOrders(u, 'no Draco arm kit at the equipment vehicle'); return; } S.armory.draco--; c.dracoKit = true; log(`${u.name}: Draco arm kit brought over — mounting it on the BearCat's front.`, 'radio'); }
-  u.installing = c.uid; faceTo(u, c.x, c.y); c.dracoProg = (c.dracoProg || 0) + 1;
-  if (c.dracoProg % TICKS === 0 && c.dracoProg < installTicks()) log(`${u.name}: Draco arm install ${Math.round(100 * c.dracoProg / installTicks())}%.`);
-  if (c.dracoProg >= installTicks()) { c.draco = true; u.installing = null; popOrder(u); fx('text', c.x, c.y, { text: 'DRACO ARM READY', color: '#7fe3ff' }); log(`${u.name}: Draco arm installed on the ${c.name}. Occupants can now order DRACO BREACH on a door or window.`, 'good'); } }
+  u.installing = c.uid; faceTo(u, c.x, c.y); const p0 = c.dracoProg || 0; c.dracoProg = p0 + dracoRate(teamOk(u).length);
+  if (Math.floor(c.dracoProg / TICKS) > Math.floor(p0 / TICKS) && c.dracoProg < installTicks()) log(`${u.name}: Draco arm install ${Math.round(100 * c.dracoProg / installTicks())}%.`);
+  if (c.dracoProg >= installTicks()) { c.draco = true; c.dracoTip = { bang: DRACO_CFG.tip.bang, gas: DRACO_CFG.tip.gas }; u.installing = null; popOrder(u); fx('text', c.x, c.y, { text: 'DRACO ARM READY', color: '#7fe3ff' }); log(`${u.name}: Draco arm installed on the ${c.name}. Occupants can now order DRACO BREACH on a door or window.`, 'good'); } }
 /** Called from unitAct for every team: leaving the install interrupts it (progress kept on the vehicle). */
 function dracoInterrupt(u) { if (!u.installing) return; const o = u.orders[0]; if (o && o.type === 'dracoInstall') return; const c = unit(u.installing); u.installing = null;
   if (c && !c.draco) log(`${u.name}: Draco install interrupted at ${Math.round(100 * (c.dracoProg || 0) / installTicks())}% — resume with Install Draco Arm.`, 'alert'); }
 /** Vehicle side: drive up to the opening, deploy the boom, pull. */
 function dracoTick(c, o) {
-  if (!c.occ.length) { failOrders(c, 'no driver'); return; }
+  if (!c.occ.length && !c.bcDriver) { failOrders(c, 'no driver'); return; }
   const [mx, my] = openingMid(o);
   if (!(c.x === o.x && c.y === o.y)) { for (let s = 0; s < 3; s++) { if (c.x === o.x && c.y === o.y) break;
       const p = findPath(c.x, c.y, (x, y) => x === o.x && y === o.y, { drive: true, self: c.uid }); if (!p) { failOrders(c, 'no drivable route to the opening'); return; } if (!p.length) break;
@@ -65,7 +70,7 @@ function dracoTick(c, o) {
   // v17: square the nose up to the opening (the arm is fixed — the whole vehicle points at the target)
   if (!dracoContact(c, o)) { const f = dracoSpotAt(o, c.x, c.y); if (!f) { failOrders(c, 'cannot point the front end at the opening from here'); return; }
     c.dir = f.dir; c.moved = S.tick; rebuildDyn(); syncCar(c); log(`${c.name}: lining the front end up square on the ${o.door != null ? S.doors[o.door].name : S.rooms[S.windows[o.win].room].name + ' window'}.`, 'radio'); return; }
-  const ct = dracoContact(c, o); c.dracoAim = c.dir; c.dracoLen = Math.max(0.3, ct.along - 1.5); c.dracoOut = S.turn;
+  const ct = dracoContact(c, o); c.dracoAt = { door: o.door, win: o.win }; c.dracoAim = c.dir; c.dracoLen = Math.max(0.3, ct.along - 1.5); c.dracoOut = S.turn;
   if (!o.contact) { o.contact = true; fx('text', mx, my, { text: 'ARM CONTACT', color: '#7fe3ff' }); }
   if ((o.prog = (o.prog || 0) + 1) <= DRACO_CFG.deployTicks) { log(`${c.name}: Draco arm deploying toward the ${o.door != null ? S.doors[o.door].name : S.rooms[S.windows[o.win].room].name + ' window'}…`, 'radio'); noise(mx, my, 6, 'engine'); return; }
   if (o.win !== undefined && o.win !== null) { const w = S.windows[o.win], wasBarred = !!w.barred; w.broken = true; w.cleared = true; w.barred = false; if (S.duplex) S.duplex.wallV++; S.stats.breaches++;

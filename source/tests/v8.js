@@ -1,6 +1,6 @@
 // v8 rules: move anywhere + exposure flags, suspect fire rates, vehicles via occupants, team order (point/defense),
 // two staging areas, per-officer inventories (hands, holster, sling, pack, vest, not-ready), saves.
-const Core = require('./load.js')(); let pass = 0, fail = 0;
+const Core = require('./load.js')(); Core.V20.bcDelay = false; /* v20: BearCat normally arrives mid-callout; these tests check it at once */ let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL', m); } };
 const runTurn = () => { Core.execute(); let g = 0; while (!Core.stepTick() && g++ < 50); };
 const allStaged = S => S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; o.eta = 0; });
@@ -24,7 +24,7 @@ const allStaged = S => S.officers.forEach(o => { o.status = 'staged'; o.stage = 
   const p = S.officers.filter(o => o.stage === 'primary'), s = S.officers.filter(o => o.stage === 'secondary');
   if (p.length && s.length) { ok(!Core.formTeam([p[0].id, s[0].id]).ok, 'cannot mix officers from different staging areas');
     const r = Core.formTeam(s.slice(0, 3).map(o => o.id)); ok(r.ok && Core.dist(r.team.x, r.team.y, S.ext.staging2.x, S.ext.staging2.y) < 4, 'secondary team forms at secondary staging');
-    ok(Object.entries(r.team.equip).every(([k, v]) => !(v > 0) || r.team.members.some(id => (Core.off(id).inv.home || []).includes(k))), 'secondary team has take-home gear only (v19)'); ok(Core.weaponOf(r.team), 'secondary team still armed');
+    ok(Object.entries(r.team.equip).every(([k, v]) => !(v > 0) || k === 'bang' || r.team.members.some(id => (Core.off(id).inv.home || []).includes(k))), 'secondary team has take-home gear only (v19; v21: + personal flashbang)'); ok(Core.weaponOf(r.team), 'secondary team still armed');
     const dr = Core.invAct(s[0].id, 'draw', 'shield'); ok(!dr.ok && /equipment vehicle/.test(dr.reason), 'gear drawn only at the equipment vehicle');
     const q = Core.queueOrder(r.team.uid, { type: 'move', x: S.ext.staging2.x + 3, y: S.ext.staging2.y }); ok(q.ok, 'secondary team can move'); } else ok(false, 'seed has both stages'); }
 // 4) team forming: point / defense / order
@@ -80,7 +80,7 @@ const allStaged = S => S.officers.forEach(o => { o.status = 'staged'; o.stage = 
   const d1 = Core.invAct(nq.id, 'draw', 'lesslethal'); const h1 = d1.ok ? Core.invAct(nq.id, 'hold', 'lesslethal') : d1; ok(!h1.ok, 'non-specialist cannot use the 40mm');
   ok(S.llRounds >= 1 && S.llRounds <= 8, `limited 40mm rounds (${S.llRounds})`); }
 // 8) vehicles through occupants
-{ const S = Core.newGame(77, { armored: true }); const bc = S.units.find(u => u.kind === 'cruiser' && u.armored); ok(bc && Core.carSeats(bc) === 10, 'BearCat has 10 seats');
+{ const S = Core.newGame(77, { armored: true }); const bc = S.units.find(u => u.kind === 'cruiser' && u.armored); ok(bc && Core.carSeats(bc) === 11, 'BearCat has 11 seats (v20)');
   const cr = S.units.find(u => u.kind === 'cruiser' && !u.armored); ok(cr && Core.carSeats(cr) === 2, 'cruiser has 2 seats');
   if (cr) { for (const id of cr.occ.slice()) { const pu = Core.unit(id); if (pu) pu.inCar = null; } cr.occ = []; const r = Core.queueOrder(cr.uid, { type: 'move', x: cr.x + 3, y: cr.y }); ok(!r.ok, 'empty vehicle cannot be ordered (static cover)'); } }
 console.log(`V8: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

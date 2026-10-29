@@ -115,7 +115,7 @@ function shoutReveal(u, mayFire) {
 }
 /** PA order: open contact or a formal call-out. */
 function paAct(u, o) {
-  const N = S.nego, sp = S.suspect, r = S.rng; if (!hostile()) return; if (!paInRange(u.x, u.y)) { log(`${u.name}: out of PA range.`, 'radio'); return; }
+  const N = S.nego, sp = S.suspect, r = S.rng; if (!hostile()) return; if (o.voice) { voiceCallout(u, o); return; } if (!paInRange(u.x, u.y)) { log(`${u.name}: out of PA range.`, 'radio'); return; }
   if (o.mode === 'callout') { const C = NEGO_CFG.callout; N.attempts++;
     let p = C.base * (stypeCfg().calloutMul || 1) + sp.talk / 100 * C.talk + (S.gasActive && S.gas[idx(sp.x, sp.y)] > 0.2 ? C.gas : 0) - (sp.agit > C.agitHigh ? C.agitPen : 0);
     if (S.contain.length && S.contain.some(c => !c.covered)) p *= C.contain; N.lastCallout = p;

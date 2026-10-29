@@ -48,6 +48,7 @@ function planOrder(u, o, sx, sy, assume) {
       if (u.kind === 'cruiser') { if (!S.drive[idx(o.x, o.y)]) return { ok: false, reason: 'Cruiser cannot park there (needs open road, driveway or lawn)' }; }
       const p = path(o.x, o.y); if (!p) return { ok: false, reason: u.kind === 'cruiser' ? 'No drivable route (fences, trees or cars in the way)' : 'No route (locked/barricaded door or obstacle)' }; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
     case 'dracoInstall': { const c = unit(o.car); if (!c) return { ok: false, reason: 'No vehicle' }; const g = carAdjGoal(c); const p = g(sx, sy) ? [] : pathAny(g); if (!p) return { ok: false, reason: 'Cannot reach the BearCat' }; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
+    case 'dracoTip': return { ok: true, path: [], end: [sx, sy] };
     case 'draco': { const g = dracoReach(o), gg = (x, y) => g(x, y) && !carClash(x, y, u.uid); const p = gg(sx, sy) ? [] : pathAny(gg); if (!p) return { ok: false, reason: 'No drivable spot where the BearCat can point its front end square at that opening (the Draco arm is fixed — it does not swing)' }; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
     case 'board': { const c = unit(o.car); if (!c) return { ok: false, reason: 'No cruiser' }; const g = carAdjGoal(c); const p = g(sx, sy) ? [] : pathAny(g); if (!p) return { ok: false, reason: 'Cannot reach that cruiser' }; return { ok: true, path: p, end: [c.x, c.y] }; }
     case 'exit': return { ok: true, path: [], end: [sx, sy] };
@@ -77,7 +78,7 @@ function planOrder(u, o, sx, sy, assume) {
     case 'hold': return { ok: true, path: [], end: [sx, sy] };
     case 'corner': { const c = cornerAt(sx, sy, u); if (!c) return { ok: false, reason: 'No corner here — stand at a hallway corner, door frame or house corner' }; return { ok: true, path: [], end: [sx, sy], corner: { px: c.px, py: c.py, n: c.hidden.length } }; }
     case 'aid': case 'rescue': case 'evac': return planCas(u, o, sx, sy, assume);
-    case 'pa': { if (!hostile()) return { ok: false, reason: 'Not needed' }; if (!paInRange(sx, sy)) return { ok: false, reason: `Out of loudspeaker range — move within ~${NEGO_CFG.pa.range} m of the house` };
+    case 'pa': { if (!hostile()) return { ok: false, reason: 'Not needed' }; if (o.voice) { if (u.kind !== 'team') return { ok: false, reason: 'Voice call-out is for a team on foot' }; if (houseRectDist(sx, sy) > V20.voiceRange) return { ok: false, reason: `Voice only carries ~${V20.voiceRange} m — move closer to the house` }; } else if (!paInRange(sx, sy)) return { ok: false, reason: `Out of loudspeaker range — move within ~${NEGO_CFG.pa.range} m of the house` };
       if (u.orders.some(q => q !== o && q.type === 'pa')) return { ok: false, reason: 'One PA broadcast per 30 s' };
       return { ok: true, path: [], end: [sx, sy], warn: u.kind !== 'cruiser' && expoAt(sx, sy) >= 0.3 ? 'Exposed position — he may fire at the voice' : null }; }
     case 'tphone': return planTPhone(u, o, sx, sy, assume, mo);
@@ -118,7 +119,7 @@ function orderReq(u, o) {
     if (o.type === 'dracoInstall') { const c = unit(o.car); if (!c || !c.armored) return 'Tap the BearCat'; if (c.draco) return 'The Draco arm is already installed'; if (c.disabled) return 'That vehicle is disabled';
       if (!c.dracoKit && !(S.armory.draco > 0)) return 'No Draco arm kit at the equipment vehicle (career level 60+)'; if (teamOk(u).length < DRACO_CFG.crew) return `Installing needs a team of ${DRACO_CFG.crew}+ officers`; }
     if (o.type === 'overwatch' && !hasSpec(u, 'marksman')) return 'Overwatch needs a Marksman / Sniper on the team';
-    if (o.type === 'pa' && !(e.bullhorn > 0)) return 'No bullhorn on this team (cruiser PA works too)';
+    if (o.type === 'pa' && !o.voice && !bullhornUsable(u)) return 'No bullhorn on this team (cruiser PA works too)';
     if (o.type === 'tphone') { if (!(e.tphone > 0) || pending('tphone') >= e.tphone) return 'No throw-phone on this team';
       if (o.via === 'robot' && (!(e.robot > 0) || !hasSpec(u, 'tech'))) return 'Robot delivery needs a robot and a Tech on the team'; }
     if (u.carrying && !['evac', 'rescue', 'hold'].includes(o.type) && !u.orders.some(q => q.cas === u.carrying)) return 'Carrying a casualty — Evac or Rescue first';
@@ -130,10 +131,11 @@ function orderReq(u, o) {
     if (o.type === 'shoot' && u.inCar) return 'Get out of the vehicle first (Exit)';
     if (o.type === 'board') { const c = unit(o.car); if (!c || c.kind !== 'cruiser') return 'Tap a cruiser'; if (u.inCar) return 'Already in a cruiser'; if (seatsUsed(c) + 1 > carSeats(c)) return `${c.name} is full (${carSeats(c)} seats)`; if (c.disabled) return 'That cruiser is disabled'; }
   } else if (u.kind === 'cruiser') {
-    if (!['move', 'exit', 'hold', 'pa', 'draco'].includes(o.type)) return 'Cruisers can Drive, Exit, Hold or use the PA';
-    if (o.type === 'draco') { if (!u.draco) return u.armored ? 'Install the Draco arm first (a team of 2+ at the BearCat)' : 'Only the BearCat can carry a Draco arm'; if (u.disabled) return 'Vehicle is disabled'; if (!u.occ.length) return `${u.name} is empty — get in to drive it`; const t = dracoTargetReq(o); if (t) return t; }
+    if (!['move', 'exit', 'hold', 'pa', 'draco', 'dracoTip'].includes(o.type)) return 'Cruisers can Drive, Exit, Hold or use the PA';
+    if (o.type === 'dracoTip') { const t = dracoTipInfo(u); if (!t.room && t.room !== 0) return t.reason; if (!((u.dracoTip || {})[o.what] > 0)) return `No ${o.what === 'bang' ? 'flashbangs' : 'CS canisters'} left in the Draco tip`; if (!u.occ.length && !u.bcDriver) return 'Nobody inside to work the arm'; }
+    if (o.type === 'draco') { if (!u.draco) return u.armored ? 'Install the Draco arm first (any team at the BearCat)' : 'Only the BearCat can carry a Draco arm'; if (u.disabled) return 'Vehicle is disabled'; if (!u.occ.length) return `${u.name} is empty — get in to drive it`; const t = dracoTargetReq(o); if (t) return t; }
     if (o.type === 'pa' && !u.occ.length) return 'Nobody in the cruiser to work the PA';
-    if (!u.occ.length) return `${u.name} is empty — an officer or team must get in to drive it`;
+    if (!u.occ.length && !u.bcDriver) return `${u.name} is empty — an officer or team must get in to drive it`;
     if (o.type === 'move' && u.disabled) return 'Cruiser is disabled';
     if (o.type === 'exit' && !u.occ.length && !u.orders.some(q => q.type === 'move')) return 'Cruiser is empty';
   }
@@ -148,7 +150,7 @@ function queueOrder(uid, o) {
   if (o.type === 'overwatch' && (o.perch === undefined || o.perch === null)) { const pc = perchAt(o.x, o.y); o.perch = pc ? pc.id : null; if (!pc && S.block[idx(o.x, o.y)]) return { ok: false, reason: 'No usable vantage point in that building' }; }
   if (o.type === 'drive') { if (!u.inCar) return { ok: false, reason: 'Not in a vehicle — Get In first' }; const c = unit(u.inCar); if (!c) return { ok: false, reason: 'No vehicle' }; // v8: drive through the occupant's own chip
     const r = queueOrder(c.uid, { type: 'move', x: o.x, y: o.y }); if (r.ok) { o.x = r.at[0]; o.y = r.at[1]; } return Object.assign({ car: c.uid }, r); }
-  if ((o.type === 'pa' || o.type === 'draco') && u.inCar) return queueOrder(u.inCar, o); // vehicle PA / Draco arm, worked by whoever is inside // vehicle PA, worked by whoever is inside
+  if ((o.type === 'pa' || o.type === 'draco' || o.type === 'dracoTip') && u.inCar) return queueOrder(u.inCar, o); // vehicle PA / Draco arm, worked by whoever is inside // vehicle PA, worked by whoever is inside
   const req = orderReq(u, o); if (req) return { ok: false, reason: req };
   if (o.type === 'move' && u.kind === 'cruiser') { const nd = nearestDrive(u, o.x, o.y); if (!nd) return { ok: false, reason: 'Cruiser cannot park there (needs open road, driveway or lawn)' }; o.x = nd[0]; o.y = nd[1]; }
   if (o.type === 'move' && (u.kind === 'patrol' || u.kind === 'team')) { o.req = [o.x, o.y]; o.snapped = false; // v8: move ANYWHERE — no snapping; just flag exposure

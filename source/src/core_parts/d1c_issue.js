@@ -1,23 +1,23 @@
 /* ===================== v19 SPECIALTIES · TAKE-HOME GEAR · EQUIPMENT ISSUE =====================
-   Everyone is a basic operator first. Take-home kit (always with the officer, also on foot at secondary staging):
+   Everyone is a basic operator first. Personal kit (always with the officer, also on foot at secondary staging):
    pistol, rifle, taser, the best body armor and helmet the team has, gas mask — plus the PRIMARY specialty's take-home items.
    Everything else lives on the equipment vehicle (primary staging) and is drawn on the issue screen.
    A secondary specialty gives 75% of the skill bonus; its equipment is never auto-issued (fetch it at the vehicle). */
 const SPEC2_MUL = 0.75;
 Object.assign(SPECS, {
-  ll:     { name: 'Less-Lethal Specialist', icon: '◍', desc: 'Takes home a single-shot 40mm (reload = a full turn). Draws the 4-shot 40mm + 40mm CS rounds at the equipment vehicle' },
+  ll:     { name: 'Less-Lethal Specialist', icon: '◍', desc: 'Carries a single-shot 40mm (reload = a full turn). Draws the 4-shot 40mm + 40mm CS rounds at the equipment vehicle' },
   gas:    { name: 'Gas Specialist', icon: '☁', desc: 'Standard gear; with a Gas Bag from the equipment vehicle, hand-thrown canisters land where intended far more often' },
   driver: { name: 'Driver', icon: '⛟', desc: 'Drives the BearCat or the equipment vehicle; standard gear' },
 });
-SPECS.marksman.desc += '. Takes home the precision rifle and a spotting scope';
-SPECS.point.desc += '. Takes home a IIIA ballistic shield (Level III shields are on the equipment vehicle)';
-SPECS.breacher.desc += '. Takes home ram + halligan; charges come from the equipment vehicle';
-SPECS.medic.desc += '. Takes home a medical bag';
-SPECS.tech.name = 'Robot / Drone / EOD Op'; SPECS.tech.desc = 'Operates drones and robots — all robotics live on the equipment vehicle (standard take-home gear)';
+SPECS.marksman.desc += '. Carries the precision rifle and a spotting scope';
+SPECS.point.desc += '. Carries a IIIA ballistic shield (Level III shields are on the equipment vehicle)';
+SPECS.breacher.desc += '. Carries ram + halligan; charges come from the equipment vehicle';
+SPECS.medic.desc += '. Carries a medical bag';
+SPECS.tech.name = 'Robot / Drone / EOD Op'; SPECS.tech.desc = 'Operates drones and robots — all robotics live on the equipment vehicle (standard personal gear)';
 Object.assign(EQUIP, {
   gasbag: { name: 'Gas Bag',          short: 'Gas Bag', pool: 1, desc: 'Bag of hand-thrown CS canisters (+3 canisters). A gas specialist throws them with better accuracy.' },
   cs40:   { name: '40mm CS Round',    short: '40mm CS', pool: 6, desc: 'CS round for the 4-shot 40mm: fired through a window, an open door or at the suspect. About 1/4 of the gas of a hand-thrown canister.' },
-  scope:  { name: 'Spotting Scope',   short: 'Scope',   pool: 0, desc: 'Sniper / overwatch take-home spotting scope.' },
+  scope:  { name: 'Spotting Scope',   short: 'Scope',   pool: 0, desc: 'Sniper / overwatch spotting scope.' },
 });
 Object.assign(ITEM_CFG, { gasbag: { where: 'packed' }, cs40: { where: 'vest' }, scope: { where: 'packed' } });
 const GAS19 = { bag: 3, miss: 0.12, specCut: 0.8, missAmt: 0.45 };
@@ -34,7 +34,7 @@ function bestArmor() { return gearHave('plate') ? 'plate' : 'soft'; }
 function bestHelmet() { return gearHave('plate') ? 'rifle' : 'std'; }
 function helmetOf(o) { return o && o.inv && o.inv.worn ? o.inv.worn.helmet || null : null; }
 function takeHomeList(o) { return (TAKE_HOME[o.spec] || []).filter(([k, g]) => gearHave(g)).map(([k]) => k); }
-function takeHome(o, inv) { inv.worn.armor = bestArmor(); inv.worn.helmet = bestHelmet(); inv.home = takeHomeList(o);
+function takeHomeBase(o, inv) { inv.worn.armor = bestArmor(); inv.worn.helmet = bestHelmet(); inv.home = takeHomeList(o);
   const toHand = k => { if (!inv.slung.includes(inv.prim)) inv.slung.push(inv.prim); inv.hands = [k, 'pistol']; inv.holster = inv.holster.filter(x => x !== 'pistol'); };
   for (const k of inv.home) {
     if (k === 'shield' || k === 'ram') { if (!inv.hands.includes('shield') && !inv.hands.includes('ram')) toHand(k); else inv.packed[k] = (inv.packed[k] || 0) + 1; }
@@ -50,13 +50,14 @@ function upgradeLL(o, fresh) { const inv = invOf(o); inv.llMag = LL19.multiMag; 
   let n = 0; while (n < CS40_CFG.issue && S.armory.cs40 > 0) { S.armory.cs40--; n++; } if (n) inv.vest.cs40 = (inv.vest.cs40 || 0) + n; }
 function llKind(o) { const inv = invOf(o); return carries(o, 'lesslethal') ? (llMagOf(inv) === 1 ? 'single' : 'multi') : null; }
 /* ---- loadout actions with the v19 rules, then the v8 base rules ---- */
-function invAct(offId, act, k) {
+function invAct19(offId, act, k) {
   const o = off(offId); if (!o || S.phase !== 'planning') return invActBase(offId, act, k);
   const inv = invOf(o), t = o.team ? unit(o.team) : null, done = () => { if (t) syncEquip(t); S.version++; return { ok: true }; };
   const atEq = () => { const [x, y] = offPos(o); return atEquipment(x, y); };
   if (act === 'return' && (inv.home || []).includes(k) && !(k === 'lesslethal' && llKind(o) === 'multi') && !(k === 'shield' && !carries(o, 'shield'))) {
     if (k !== 'lesslethal' && countOf(o, k) > ((inv.home || []).filter(x => x === k).length)) return invActBase(offId, act, k);
-    return { ok: false, reason: `${EQUIP[k] ? EQUIP[k].short : k}: take-home gear — it stays with the officer` }; }
+    if (atEq() && k !== 'lesslethal') { const i = inv.home.indexOf(k); inv.home.splice(i, 1); const r = invActBase(offId, act, k); if (!r.ok) inv.home.splice(i, 0, k); return r; } // v20: leave it at the vehicle (e.g. deploy a breacher with no ram)
+    return { ok: false, reason: `${EQUIP[k] ? EQUIP[k].short : k}: can only be left at the equipment vehicle (primary staging)` }; }
   if (act === 'draw' && k === 'cs40') { if (llKind(o) !== 'multi') return { ok: false, reason: '40mm CS rounds deploy with the 4-shot 40mm launcher — draw the launcher first' }; }
   if (act === 'draw' && k === 'lesslethal' && llKind(o) === 'single') { if (!atEq()) return invActBase(offId, act, k); if (!(S.armory.lesslethal > 0)) return { ok: false, reason: 'No 4-shot launcher left at the equipment vehicle' };
     S.armory.lesslethal--; upgradeLL(o); return done(); }
@@ -83,19 +84,19 @@ function issueView(uid) { const t = unit(uid); if (!t || t.kind !== 'team') retu
     ll: llKind(o), cs40: invOf(o).vest.cs40 || 0, kit2: (SPEC_KIT[o.spec2] || []).filter(k => (S.armory[k] || 0) > 0 && !carries(o, k)) })),
     pool: Object.keys(EQUIP).filter(k => k !== 'draco' && k !== 'scope' && (S.gearHave ? S.gearHave[k] || S.armory[k] > 0 : true)).map(k => ({ k, n: S.armory[k] })) }; }
 /* ---- dual specialties: secondary specialty + v19 primary specialties (own rng: the map and roster draw stay identical) ---- */
-const SPEC2_POOL = ['point', 'breacher', 'll', 'gas', 'medic', 'negotiator', 'tech', 'marksman', 'driver'];
+const SPEC2_POOL = ['point', 'breacher', 'll', 'gas', 'medic', 'negotiator', 'tech', 'marksman'];
 function setupSpecs19() { const q = makeRng((S.seed * 53 + S.officers.length * 11 + 19) >>> 0), O = S.opts || {};
   const roster = O.roster && O.roster.length ? O.roster : null;
   S.officers.forEach((o, i) => { const ro = roster ? roster[i] : null; if (ro && ro.spec2) o.spec2 = ro.spec2; });
   const nth = (sp, n) => S.officers.filter(o => o.spec === sp)[n];
   if (!roster || !roster.some(r => r.spec2)) {
     if (S.officers.length >= 10) { const b = nth('breacher', 1); if (b) { b.spec = 'll'; b.spec2 = 'breacher'; } const p = nth('point', 1) || nth('negotiator', 1); if (p) { p.spec2 = p.spec; p.spec = 'gas'; } }
-    if (S.officers.length >= 14) { const tt = nth('tech', 1) || nth('breacher', 2); if (tt) { tt.spec2 = tt.spec; tt.spec = 'driver'; } }
     for (const o of q.shuffle(S.officers.slice())) { if (o.spec2 || o.spec === 'leader' || o.spec === 'k9' || !q.chance(0.35)) continue; const c = SPEC2_POOL.filter(s => s !== o.spec); o.spec2 = q.pick(c); } }
+  S.officers.forEach(o => { if (o.spec === 'driver') { o.spec = o.spec2 && o.spec2 !== 'driver' ? o.spec2 : 'point'; o.spec2 = null; } if (o.spec2 === 'driver') o.spec2 = null; }); // v20: the BearCat has its own driver — never on the roster
   S.officers.forEach(o => { if ((o.spec === 'll' || o.spec2 === 'll') && !o.quals.includes('ll')) o.quals.push('ll'); });
   S.gearHave = {}; for (const k in S.armory) S.gearHave[k] = S.armory[k] > 0;
   S.gearHave.sniper = true; S.gearHave.scope = true;
-  S.officers.forEach(o => { o.inv = null; invOf(o); }); } // take-home kit is with every officer from the call-out
+  S.officers.forEach(o => { o.inv = null; invOf(o); }); } // personal kit is with every officer from the call-out
 /** Gas-canister throw accuracy (own rng stream). Returns the amount deployed into the room. */
 function gasThrowAmt(o) { if (!S.r19) S.r19 = makeRng((S.seed * 6113 + 3) >>> 0);
   const mul = o && carries(o, 'gasbag') ? specMul(o, 'gas') : 0, miss = GAS19.miss * (1 - GAS19.specCut * mul);

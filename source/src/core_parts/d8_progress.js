@@ -127,7 +127,7 @@ function doorStack(u, door, n, okPos) { const fwd = FORM_CFG.frame, lat = FORM_C
     pts.push([+p[0].toFixed(2), +p[1].toFixed(2)]); }
   return pts; }
 /** Inside a room: spots hugging the walls near the team (corners preferred), spread corner-to-corner; point on the wall nearest the entry. */
-function wallSpots(u, n) { const r = roomAt(u.x, u.y), rad = FORM_CFG.wallRad, W = 0.5 - FORM_CFG.wallIn, c = [];
+function wallSpotsBase(u, n) { const r = roomAt(u.x, u.y), rad = FORM_CFG.wallRad, W = 0.5 - FORM_CFG.wallIn, c = [];
   for (let y = u.y - 4; y <= u.y + 4; y++) for (let x = u.x - 4; x <= u.x + 4; x++) { if (!inb(x, y) || roomAt(x, y) !== r || S.block[idx(x, y)] || dist(x, y, u.x, u.y) > rad) continue;
     if (!(x === u.x && y === u.y) && los(u.x, u.y, x, y) !== 1) continue;
     let ox = 0, oy = 0, walls = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (!inb(nx, ny) || roomAt(nx, ny) !== r) { ox += dx * W; oy += dy * W; walls++; } }

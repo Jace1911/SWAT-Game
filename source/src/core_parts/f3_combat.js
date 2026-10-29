@@ -65,14 +65,14 @@ function suspectTick() {
   if (!S.rng.chance(clamp(tryP, 0, 0.95))) return;
   suspectFire(best);
 }
-function suspectFire(b) {
+function suspectFireBase(b) {
   const sp = S.suspect, T = b.u, sw = SUSPECT_WEAPONS[sp.weapon]; if (sp.mode === 'barricaded') sp.mode = 'alert';
   if (!primaryOf() && T.kind !== 'team' && T.kind !== 'patrol') sp.tgt = { uid: T.uid, off: null, turn: S.turn, spill: 0 };
-  sp.dir = Math.atan2(T.y - sp.y, T.x - sp.x); S.stats.shots++; sp.cd = 2 + S.rng.int(0, 1);
+  sp.dir = Math.atan2(T.y - sp.y, T.x - sp.x); S.stats.shots++; sp.firedAt = S.turn; sp.firedTick = S.turn * 100 + (S.tick || 0); sp.armedKnown = true; sp.cd = 2 + S.rng.int(0, 1);
   fx('muzzle', sp.x, sp.y, { suspect: true }); fx('shot', sp.x, sp.y, { tx: T.x, ty: T.y });
   sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn }; S.intel.located = true; S.intel.threat = 1;
   const where = sp.room >= 0 ? (sp.atWindow ? `${S.rooms[sp.room].name} window` : S.rooms[sp.room].name) : 'yard';
-  let p = sw.base * (1 - 0.6 * b.d / sw.range) * (b.l === 2 ? 0.85 : 1) * (sp.ambush ? 1.3 : 1) * accImpair() * (b.u.impair ? 1.15 : 1);
+  let p = sw.base * (1 - 0.6 * b.d / sw.range) * (b.l === 2 ? 0.85 : 1) * (sp.ambush ? 1.3 : 1) * accImpair() * (b.u.impair ? 1.15 : 1) * autoAcc(sp.weapon, b.d);
   if (T.kind === 'cruiser' && T.armored) { T.hits++; fx('impact', T.x, T.y, { car: T.uid }); log(`SHOTS FIRED from the ${where} — rounds stop against the armored ${T.name}. Crew unhurt.`, 'alert'); returnFire(); return; }
   if (T.kind === 'cruiser') { // through the car body — windshield is the weak spot
     const v = Math.atan2(sp.y - T.y, sp.x - T.x), c = Math.abs(Math.cos(v - T.dir)), glass = c > 0.7;
@@ -86,7 +86,7 @@ function suspectFire(b) {
     else log(`SHOTS FIRED from the ${where} — rounds strike ${T.name}${glass ? ' (windshield)' : ''}. Crew unhurt.`, 'alert');
     returnFire(); return;
   }
-  if (T.kind === 'drone' || T.kind === 'robot') { if (S.rng.chance(0.45)) { T.status = 'down'; T.orders = []; log(`Shots fired — ${T.name} disabled.`, 'bad'); } else log(`Shots fired at ${T.name} — missed.`, 'alert'); return; }
+  if (T.kind === 'drone' || T.kind === 'robot') { if (S.rng.chance(deviceHitP(T, p))) { T.status = 'down'; T.orders = []; log(`Shots fired — ${T.name} disabled.`, 'bad'); } else log(`Shots fired at ${T.name} — missed.`, 'alert'); return; }
   let tg = primaryOf(), victim = null, spillShot = false;
   if (!tg) { const off = T.kind === 'team' ? pickVictim(T, sp.x, sp.y) : null; tg = sp.tgt = { uid: T.uid, off: off ? off.id : null, turn: S.turn, spill: 0 };
     log(`Suspect opens fire at ${off ? off.name + ' (' + T.name + ')' : T.name}.`, 'alert'); }
@@ -120,7 +120,7 @@ function returnFire() {
   log(`Return fire: ${who.map(f => f.name).join(', ')} — ${res}.`, 'radio'); if (who.length >= 2 && hostile()) sp.suppressed = Math.max(sp.suppressed, 1);
 }
 /** One officer volley at a cell. Returns 'hit' | 'miss' | 'empty'. */
-function fireAt(u, tx, ty, mode, isReturn) { return withSp(suspectFor(tx, ty, u.x, u.y), () => fireAt1(u, tx, ty, mode, isReturn)); }
+function fireAtBase(u, tx, ty, mode, isReturn) { return withSp(suspectFor(tx, ty, u.x, u.y), () => fireAt1(u, tx, ty, mode, isReturn)); }
 function fireAt1(u, tx, ty, mode, isReturn) {
   const sp = S.suspect; fx('muzzle', u.x, u.y, { friendly: true }); fx('shot', u.x, u.y, { tx, ty, friendly: true }); S.stats.ofShots = (S.stats.ofShots || 0) + 1;
   faceTo(u, tx, ty); if (!isReturn) aggressive(mode === 'suppress' ? 3 : 5); noise(tx, ty, 8, 'shot');
@@ -139,9 +139,9 @@ function suspectHit(u) { const sp = S.suspect;
   const key = sp.key || 'S', prev = S.cas.find(c => c.who === 'suspect' && casActive(c) && (c.ref || 'S') === key);
   const c = prev ? (prev.state = 'immobile', prev.crit = Math.min(prev.crit, S.rng.int(2, 4)), prev) : addCasualty('suspect', key, spName(), sp.x, sp.y, { kia: CAS_CFG.suspectKia, mobile: CAS_CFG.suspectMobile, by: u.uid });
   c.x = sp.x; c.y = sp.y; c.seen = true; c.known = true;
-  if (c.state === 'mobile') { sp.impair = Math.max(sp.impair || 0, 0.45); sp.duck = 2; sp.injured = true; aggressive(6);
-    fx('text', sp.x, sp.y, { text: 'SUSPECT HIT', color: '#ffb020' }); log(`${u.name}: ${multiSp() ? spName().toLowerCase() : 'suspect'} HIT — still moving and still armed. Injured.`, 'alert'); return; }
-  sp.mode = 'incapacitated'; sp.walk = null; S.stats.method = 'Officer fire'; sp.method = sp.method || 'Officer fire'; sp.injured = true;
+  if (c.state === 'mobile') { sp.impair = Math.max(sp.impair || 0, 0.45); sp.duck = 2; sp.injured = true; sp.injuryText = injWhere(sp, 'mobile'); aggressive(6);
+    fx('text', sp.x, sp.y, { text: 'SUSPECT HIT', color: '#ffb020' }); log(`${u.name}: ${multiSp() ? spName().toLowerCase() : 'suspect'} HIT — still moving and still armed. Injured (${sp.injuryText}).`, 'alert'); return; }
+  sp.mode = 'incapacitated'; sp.walk = null; S.stats.method = 'Officer fire'; sp.method = sp.method || 'Officer fire'; sp.injured = true; sp.injuryText = injWhere(sp, c.state);
   if (c.state === 'kia') { sp.deceased = true; fx('text', sp.x, sp.y, { text: 'SUSPECT DOWN', color: '#c9ced6' }); log(`${u.name}: ${multiSp() ? spName().toLowerCase() : 'suspect'} hit — not moving. Move in and secure the scene.`, 'good'); return; }
   fx('text', sp.x, sp.y, { text: 'SUSPECT DOWN', color: '#ffb020' }); log(`${u.name}: ${multiSp() ? spName().toLowerCase() : 'suspect'} HIT — immobile, weapon out of reach. Move in, secure ${multiSp() ? 'the suspect' : 'him'}, get EMS.`, 'good'); }
 /** Stance 'free': fire at a visible suspect every 3rd tick. */
@@ -152,7 +152,7 @@ function officersFire() { if (S.tick % 3 !== 0) return; const done = new Set(); 
 }
 /** An officer is hit: becomes a casualty (KIA / injured-mobile / immobile). stats.down counts officers out of the fight unless a medic stabilised them on the spot. */
 function bluntMsg(nm, ctx, c, cal) { return `${nm} (${ctx}) hit in the vest at close range — the armor stopped the ${cal === 'shotgun' ? 'shotgun load' : 'round'}, but the impact causes a minor blunt-trauma injury. Mobile, leaving the line for EMS.`; }
-function officerDown(u, msg, ctx) {
+function officerDownBase(u, msg, ctx) {
   fx('down', u.x, u.y);
   const minor = !!(ctx && ctx.minor), mo = minor ? { minor: true } : {};
   if (u.kind === 'patrol') { u.status = 'down'; u.orders = []; u.carrying && dropCas(u, casById(u.carrying)); u.inCar = null; if (!minor) S.stats.down++;

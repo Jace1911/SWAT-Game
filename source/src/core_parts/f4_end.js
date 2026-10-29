@@ -71,7 +71,7 @@ function withdraw() { if (S.phase === 'over') return { ok: false, reason: 'Missi
   const sp = S.suspect; S.phase = 'over'; S.stats.withdrawn = true;
   S.result = { win: false, title: 'OPERATION WITHDRAWN', text: `Command ended the operation after ${tMin(S.turn)} without taking ${multiSp() ? 'every suspect' : 'the suspect'} into custody${multiSp() ? ` (${suspList().filter(s => s.mode === 'detained').length} of ${suspList().length} in custody)` : sp.mode === 'incapacitated' ? ' (suspect down but not secured)' : ''}. Scene handed over.` };
   log('Command: withdraw — all units pull back to the perimeter.', 'bad'); finishMission(); return { ok: true }; }
-function endTurn() {
+function endTurnBase() {
   sideTurn();
   S.turn++; S.phase = 'planning'; S.tick = 0; S.peek = []; syncAll(); // weapons become ready again
   for (const u of S.units) { u.orders = u.orders.filter(o => o.regroup === undefined && o.type !== 'hold' && o.type !== 'shoot' && !DEVICE_ORDERS.includes(o.type)); u.holding = false; u.waiting = false; u.exiting = null;}

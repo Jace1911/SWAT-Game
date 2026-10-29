@@ -81,7 +81,7 @@ function setupSuspects() {
       weapon: r.pick(mcfg('weapons')), atWindow: false, suppressed: 0, duck: 0, sid: k, key: 'S' + (k + 1), label: SUS_LETTERS[k], disp };
     if (disp === 'fighting') sp.agit = clamp(sp.agit + 15, 0, 100);
     if (disp === 'surrendering') { sp.talk = MULTI_CFG.surrTalk; sp.agit = clamp(sp.agit - 20, 0, 100); }
-    if (disp === 'injured') { sp.injured = true; sp.hurt = MULTI_CFG.injImpair; sp.impair = MULTI_CFG.injImpair; }
+    if (disp === 'injured') { sp.injured = true; sp.injuryText = 'injured before officers arrived — limping and holding his side'; sp.hurt = MULTI_CFG.injImpair; sp.impair = MULTI_CFG.injImpair; }
     S.suspects.push(sp);
   }
   S.susCount = S.suspects.length; S.suspects.forEach(s => { s.label = null; s.labelled = false; }); // letters are given in the order they are first seen

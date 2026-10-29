@@ -31,7 +31,7 @@ function setup(seed, sizes) { const S = Core.newGame(seed, {}); allStaged(S); S.
     const sp = S.suspect; const ch = S.rng.chance; S.rng.chance = () => true; Core.suspectTick(); S.rng.chance = ch; if (!sp.tgt || !sp.tgt.off) continue; done++;
     ok(sp.tgt.spill === 0, 'primary standing → no spillover shots');
     const prim = S.officers.find(o => o.id === sp.tgt.off); prim.status = 'down';
-    for (let i = 0; i < 6; i++) { sp.cd = 0; sp.duck = 0; sp.suppressed = 0; S.rng.chance = () => true; Core.suspectTick(); S.rng.chance = ch; }
+    for (let i = 0; i < 6; i++) { S.shotsT = null; /* v20: per-turn rate of fire would cap a pump/bolt gun at 1 */ sp.cd = 0; sp.duck = 0; sp.suppressed = 0; S.rng.chance = () => true; Core.suspectTick(); S.rng.chance = ch; }
     ok(sp.tgt.spill > 0 && sp.tgt.spill <= Core.SHOOT_CFG.spillMax, `primary down → spillover rounds, capped (${sp.tgt.spill}/${Core.SHOOT_CFG.spillMax})`); }
   ok(done >= 3, `spillover checks on ${done} seeds`); }
 // 4) indoor positioning: wall-hugging in rooms, door stack, doorway exposure

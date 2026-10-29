@@ -67,7 +67,7 @@ function exitCar(p, side) {
   return true;
 }
 function driveCar(c, o) {
-  if (!c.occ.length) { failOrders(c, 'no driver'); return; }
+  if (!c.occ.length && !c.bcDriver) { failOrders(c, 'no driver'); return; }
   for (let s = 0; s < 3; s++) {
     if (c.x === o.x && c.y === o.y) break;
     const p = findPath(c.x, c.y, (x, y) => x === o.x && y === o.y, { drive: true, self: c.uid }); if (!p) { failOrders(c, 'no drivable route'); return; } if (!p.length) break;
@@ -96,6 +96,7 @@ function unitAct(u) {
   if (u.kind === 'cruiser') {
     if (o.type === 'move') return driveCar(u, o);
     if (o.type === 'draco') return dracoTick(u, o);
+    if (o.type === 'dracoTip') { popOrder(u); dracoTipAct(u, o); return; }
     if (o.type === 'exit') { const hs = houseSideOf(u);
       if (o.side === 'safe' && hs === 'driver' && !o.slid && u.occ.length) { o.slid = true; log(`${u.name}: crew sliding across to the far-side doors…`); return; }
       for (const id of u.occ.slice()) exitCar(unit(id), o.side); popOrder(u); return; }
@@ -148,8 +149,8 @@ function unitAct(u) {
     if (!goal(u.x, u.y)) { const r = stepAlong(u, o, goal, speed); if (r === null) failOrders(u, 'cannot reach door'); return; }
     const other = (() => { for (const [a, b] of d.cells) { if (a[0] === u.x && a[1] === u.y) return b; if (b[0] === u.x && b[1] === u.y) return a; } return d.cells[0][1]; })();
     faceTo(u, other[0], other[1]);
-    if (o.type === 'polecam') { const rr = roomAt(other[0], other[1]); if (rr >= 0) { const rm = S.rooms[rr]; for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) S.peek.push(idx(x, y)); }
-      log(`${u.name}: pole cam under the door — ${rr >= 0 ? S.rooms[rr].name : 'outside'} ${spInRoom(rr) ? (suspList().filter(s => spActive(s) && s.room === rr).length > 1 ? `has ${suspList().filter(s => spActive(s) && s.room === rr).length} SUSPECTS` : 'has the SUSPECT') : 'looks empty'}.`, spInRoom(rr) ? 'alert' : 'intel'); popOrder(u); return; }
+    if (o.type === 'polecam') { const pc = polecamHands(u); if (!pc) { log(`${u.name}: nobody has two hands free to work the pole cam.`, 'radio'); popOrder(u); return; } const rr = roomAt(other[0], other[1]); if (rr >= 0) { const rm = S.rooms[rr]; for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) S.peek.push(idx(x, y)); }
+      log(`${u.name}: ${pc.name} works the pole cam (both hands) under the door — ${rr >= 0 ? S.rooms[rr].name : 'outside'} ${spInRoom(rr) ? (suspList().filter(s => spActive(s) && s.room === rr).length > 1 ? `has ${suspList().filter(s => spActive(s) && s.room === rr).length} SUSPECTS` : 'has the SUSPECT') : 'looks empty'}.`, spInRoom(rr) ? 'alert' : 'intel'); popOrder(u); return; }
     if (o.type === 'detonate') { if (!d.charge) { popOrder(u); return; } detonateCharge(u, d); popOrder(u); return; }
     if (d.state !== 'closed') { if (d.charge) d.charge = null; popOrder(u); return; }
     breachTick(u, o, d, other); return;

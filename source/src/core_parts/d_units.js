@@ -34,7 +34,7 @@ function setupUnits(r) {
   const llc = q8.shuffle(S.officers.filter(o => ['point', 'leader', 'breacher', 'medic'].includes(o.spec) && !o.quals.includes('ll'))); if (llc[0]) llc[0].quals.push('ll');
   const rest = q8.shuffle(S.officers.filter(o => o.spec !== 'leader')), nSec = Math.round(S.officers.length * STAGE_CFG.secondary);
   S.officers.forEach(o => { o.stage = 'primary'; }); rest.slice(0, nSec).forEach(o => { o.stage = 'secondary'; });
-  setupSpecs19(); // v19: dual specialties, ll/gas/driver specialists, take-home gear unlocks (own rng)
+  setupSpecs19(); // v19: dual specialties, ll/gas/driver specialists, personal gear unlocks (own rng)
   rebuildDyn(); setupRoadblocks(r); // three cruisers at the ends of the block, keeping traffic out
   const pn = r.shuffle(PATROL.slice()), rifle = r.int(0, 3);
   for (let i = 0; i < 4; i++) S.units.push({ uid: 'P' + (i + 1), kind: 'patrol', name: 'Ofc. ' + pn[i], num: i + 1, x: 0, y: 0, dir: -Math.PI / 2, skill: 0.35, panic: 0, status: 'ok', orders: [], vis: [],
@@ -49,7 +49,7 @@ function hasSpec(t, sp) { return teamOk(t).some(o => o.spec === sp || o.spec2 ==
 function isSpec(o, sp) { return !!o && (o.spec === sp || o.spec2 === sp); }
 function specMul(o, sp) { return !o ? 0 : o.spec === sp ? 1 : o.spec2 === sp ? SPEC2_MUL : 0; }
 function teamSpecMul(t, sp) { return Math.max(0, ...teamOk(t).map(o => specMul(o, sp))); }
-function teamSkill(t) { const m = teamOk(t); if (!m.length) return 0; let s = m.reduce((a, o) => a + o.skill, 0) / m.length; if (hasSpec(t, 'leader')) s += 0.05; return clamp(s, 0, 1); }
+function teamSkillBase(t) { const m = teamOk(t); if (!m.length) return 0; let s = m.reduce((a, o) => a + o.skill, 0) / m.length; if (hasSpec(t, 'leader')) s += 0.05; return clamp(s, 0, 1); }
 function unitAlive(u) { return u.status === 'ok'; }
 function suspectActive() { return S.suspect && !['detained', 'escaped'].includes(S.suspect.mode); }
 function hostile() { return S.suspect && ['barricaded', 'alert', 'fleeing'].includes(S.suspect.mode); }
@@ -84,7 +84,7 @@ function rebuildDyn() { if (!S.dyn) S.dyn = new Uint8Array(MAP_W * MAP_H); S.dyn
 function carClash(x, y, self) { for (const u of S.units) { if (u.kind !== 'cruiser' || u.uid === self) continue; for (const [fx_, fy] of footprint(u)) if (cheb(fx_, fy, x, y) <= 2) return true; } return false; }
 function carAt(x, y) { const n = inb(x, y) ? S.dyn[idx(x, y)] : 0; return n ? S.units.find(u => u.kind === 'cruiser' && u.num === n) : null; }
 /* v8 vehicles: a car is only driven through an occupant (patrol officer or team). Empty vehicles are static cover props. */
-const CAR_SEATS = { cruiser: 2, armored: 10 };
+const CAR_SEATS = { cruiser: 2, armored: 11 }; // v20: BearCat = its own designated driver + 11 in the back
 function carSeats(c) { return c.armored ? CAR_SEATS.armored : CAR_SEATS.cruiser; }
 function seatsUsed(c) { return c.occ.reduce((a, id) => { const q = unit(id); return a + (!q ? 0 : q.kind === 'team' ? Math.max(1, teamOk(q).length) : 1); }, 0); }
 function seatsNeeded(u) { return u.kind === 'team' ? Math.max(1, teamOk(u).length) : 1; }

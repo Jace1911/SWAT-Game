@@ -1,7 +1,7 @@
 // v17: (1) Draco arm is FIXED to the BearCat's front — the vehicle drives and points its nose at the opening;
 //      (2) encounter popup on FIRST visual contact every turn, mid-turn at the moment of sight (enter/clear, corner, doorway, breach).
 const fs = require('fs'), path = require('path');
-const Core = require('./load.js')(); let pass = 0, fail = 0;
+const Core = require('./load.js')(); Core.V20.bcDelay = false; /* v20: BearCat normally arrives mid-callout; these tests check it at once */ let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL', m); } };
 const W = Core.MAP_W;
 const prep = (seed, enc = true, extra = {}) => { const S = Core.newGame(seed, Object.assign({ encounters: enc }, extra)); S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; o.eta = 0; });

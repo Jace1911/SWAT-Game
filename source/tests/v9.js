@@ -1,6 +1,6 @@
 // v9 rules: officer body armor (IIIA soft / rifle plates), blunt-impact injuries, ballistic shield tiers,
 // suspect body armor (7%), Draco arm on the BearCat (install + breach), career unlocks, saves.
-const Core = require('./load.js')(); const Career = require('../src/career.js'); let pass = 0, fail = 0;
+const Core = require('./load.js')(); Core.V20.bcDelay = false; /* v20: BearCat normally arrives mid-callout; these tests check it at once */ const Career = require('../src/career.js'); let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL', m); } };
 const runTurn = () => { Core.execute(); let g = 0; while (!Core.stepTick() && g++ < 50); };
 const allStaged = S => S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; o.eta = 0; });
@@ -63,7 +63,7 @@ const tally = (n, f) => { const c = {}; for (let i = 0; i < n; i++) { const r = 
 // 7) Draco arm
 { const S = Core.newGame(4242, { armored: true }); allStaged(S); const t = Core.formTeam(S.officers.slice(0, 3).map(o => o.id)).team; const c = Core.bearcat();
   let r = Core.queueOrder(t.uid, { type: 'dracoInstall', car: c.uid }); ok(!r.ok && /kit/i.test(r.reason), 'install needs a kit in the pool');
-  const one = Core.newGame(4242, { armored: true, gear: { draco: 1 } }); allStaged(one); const t1 = Core.formTeam([one.officers[0].id]).team; r = Core.queueOrder(t1.uid, { type: 'dracoInstall', car: Core.bearcat().uid }); ok(!r.ok && /2\+/.test(r.reason), 'install needs a team of 2+'); }
+  const one = Core.newGame(4242, { armored: true, gear: { draco: 1 } }); allStaged(one); const t1 = Core.formTeam([one.officers[0].id]).team; r = Core.queueOrder(t1.uid, { type: 'dracoInstall', car: Core.bearcat().uid }); ok(r.ok, 'v20: one officer can install (5 min)'); }
 { const S = Core.newGame(4242, { armored: true, gear: { draco: 1 } }); allStaged(S); const t = Core.formTeam(S.officers.slice(0, 3).map(o => o.id)).team; const c = Core.bearcat();
   const fd = S.doors.find(d => d.name === 'Front Door'); ok(!Core.queueOrder(t.uid, { type: 'draco', door: fd.id }).ok, 'no Draco breach on foot / before install');
   ok(Core.queueOrder(t.uid, { type: 'dracoInstall', car: c.uid }).ok, 'install order accepted'); runTurn(); runTurn(); const p1 = c.dracoProg;

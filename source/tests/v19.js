@@ -1,7 +1,7 @@
 // v19: specialties (ll / gas / driver + dual specialties at 75%), take-home gear, helmets, equipment issue screen,
 //      single-shot vs 4-shot 40mm (reload = a full turn, one round per turn), 40mm CS (1/4 canister), gas-bag accuracy.
 const fs = require('fs'), path = require('path');
-const Core = require('./load.js')(); const Career = require('../src/career.js'); let pass = 0, fail = 0;
+const Core = require('./load.js')(); Core.V20.bcDelay = false; /* v20: BearCat normally arrives mid-callout; these tests check it at once */ const Career = require('../src/career.js'); let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL', m); } };
 const prep = (seed, extra = {}) => { const S = Core.newGame(seed, Object.assign({ encounters: false }, extra)); S.officers.forEach(o => { o.status = 'staged'; o.stage = 'primary'; o.eta = 0; }); return S; };
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
@@ -9,16 +9,16 @@ const run = () => { Core.execute(); let g = 0; while (Core.state.phase === 'exec
 const inv = o => Core.off(o.id || o).inv;
 
 // --- version + UI hooks ---
-ok(Core.GAME_VERSION === 'v19' && (html.match(/'v19'/g) || []).length === 1, 'GAME_VERSION v19 defined once');
+ok(/^v19$|^v[2-9]\d$/.test(Core.GAME_VERSION), 'GAME_VERSION >= v19');
 ok(/id="m-issue"/.test(html) && /function openIssue/.test(html) && /openIssue\(r\.team\.uid\)/.test(html), 'issue screen opens after forming a team');
-ok(/k: 'cs40'/.test(html) && /Specialties &amp; take-home|Specialties & take-home/.test(html) && /40mm launchers &/.test(html), 'cs40 button + help sections');
+ok(/k: 'cs40'/.test(html) && /Specialties (&amp;|&) (take-home|personal)/.test(html) && /40mm launchers &/.test(html), 'cs40 button + help sections');
 ok(/apple-touch-icon/.test(html) && /apple-mobile-web-app-capable/.test(html), 'iOS meta kept');
 ok(['ll', 'gas', 'driver'].every(k => Core.SPECS[k] && Core.SPECS[k].name), 'new specialties defined');
 
 // --- take-home: everyone ---
 { const S = prep(5); const all = S.officers.map(o => Core.invOf(o));
   ok(all.every(v => (v.hands.includes('pistol') || v.holster.includes('pistol')) && (v.hands.includes('taser') || v.holster.includes('taser'))), 'all take home pistol + taser');
-  ok(S.officers.every(o => o.spec === 'marksman' ? Core.carries(o, 'sniper') : Core.carries(o, 'rifle')), 'all take home a rifle (precision rifle for snipers)');
+  ok(S.officers.every(o => o.spec === 'marksman' ? Core.carries(o, 'sniper') : (Core.carries(o, 'rifle') || Core.rifleLeaver && Core.rifleLeaver(o))), 'all take home a rifle (precision rifle for snipers; v21: shield / 40mm officers leave it at the vehicle)');
   ok(S.officers.every(o => Core.armorOf(o) === 'soft' && Core.helmetOf(o) === 'std' && o.inv.mask), 'no plates unlocked → soft armor + IIIA helmet + gas mask');
   const pt = S.officers.find(o => o.spec === 'point'), br = S.officers.find(o => o.spec === 'breacher'), mk = S.officers.find(o => o.spec === 'marksman'), md = S.officers.find(o => o.spec === 'medic');
   ok(Core.holds(pt, 'shield') && Core.holds(pt, 'pistol') && pt.inv.home.includes('shield'), 'point takes home a IIIA shield (in hand with the pistol)');
@@ -38,7 +38,7 @@ ok(['ll', 'gas', 'driver'].every(k => Core.SPECS[k] && Core.SPECS[k].name), 'new
     s2 += S.officers.filter(o => o.spec2).length; tot += S.officers.length;
     if (S.officers.some(o => o.spec2 === o.spec || (o.spec2 && ['leader', 'k9'].includes(o.spec2)))) ok(false, 'bad spec2 seed ' + s); }
   ok(llN > 0 && gasN > 0, `ll / gas specialists appear (${llN} / ${gasN})`); ok(s2 / tot > 0.2 && s2 / tot < 0.7, `dual specialties common (${(100 * s2 / tot).toFixed(0)}%)`);
-  const T = Career.quickOpts(100), S = Core.newGame(9, T); drN += S.officers.filter(o => o.spec === 'driver').length; ok(drN > 0, 'drivers appear on big armored rosters'); }
+  const T = Career.quickOpts(100), S = Core.newGame(9, T); drN += S.officers.filter(o => o.spec === 'driver' || o.spec2 === 'driver').length; ok(drN === 0 && Core.bearcat() && Core.bearcat().bcDriver, 'v20: no driver specialty on the roster; the BearCat has its own driver'); }
 { const S = prep(5); const a = S.officers.find(o => o.spec2), sp2 = a.spec2;
   ok(Core.specMul(a, a.spec) === 1 && Core.specMul(a, sp2) === 0.75 && Core.specMul(a, 'k9') === 0 && Core.SPEC2_MUL === 0.75, 'primary 100% / secondary 75% / other 0');
   ok(Core.isSpec(a, sp2), 'isSpec counts the secondary specialty');
@@ -54,7 +54,7 @@ ok(['ll', 'gas', 'driver'].every(k => Core.SPECS[k] && Core.SPECS[k].name), 'new
   const sec = S.officers.filter(o => o.stage === 'secondary'); const r = Core.formTeam(sec.slice(0, 3).map(o => o.id)); const v = Core.issueView(r.team.uid);
   ok(v && v.stage === 'secondary' && !v.atEq, 'issue view: secondary staging (on foot)');
   ok(!Core.invAct(sec[0].id, 'draw', 'bang').ok, 'secondary: nothing drawn away from the vehicle');
-  ok(sec.slice(0, 3).every(o => !Core.carries(o, 'bang') && !Core.carries(o, 'charge')), 'secondary team has take-home only');
+  ok(sec.slice(0, 3).every(o => Core.countOf(o, 'bang') <= (o.inv.ownBang || 0) && !Core.carries(o, 'charge')), 'secondary team has take-home only');
   const pri = S.officers.filter(o => o.stage === 'primary' && !o.team); const r2 = Core.formTeam(pri.slice(0, 4).map(o => o.id)); const v2 = Core.issueView(r2.team.uid);
   ok(v2.stage === 'primary' && v2.atEq && v2.members.length === r2.team.members.length && v2.pool.length > 5, 'issue view: primary staging with vehicle pool');
   ok(r2.team.members.map(Core.off).some(o => Core.carries(o, 'bang')), 'primary team pre-issued vehicle kit'); }

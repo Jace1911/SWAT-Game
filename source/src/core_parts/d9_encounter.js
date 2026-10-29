@@ -101,7 +101,7 @@ function encPose(sp, u) { const M = mindOf(sp), r = S.rng, armed = spArmed(sp), 
   for (const k in w) { x -= w[k]; if (x <= 0) return k; } return 'down'; }
 const GUN_WORD = { handgun: 'a pistol', rifle: 'a rifle', shotgun: 'a shotgun', knife: 'a knife' };
 /** What is in his hands vs what the officers think it is, with their confidence. */
-function encRead(sp, u, pose) { const r = S.rng, armed = spArmed(sp), d = u ? dist(u.x, u.y, sp.x, sp.y) : 8, M = mindOf(sp);
+function encReadBase(sp, u, pose) { const r = S.rng, armed = spArmed(sp), d = u ? dist(u.x, u.y, sp.x, sp.y) : 8, M = mindOf(sp);
   let actual = 'none';
   if (pose === 'aim' || pose === 'down' || (pose === 'ignore' && armed)) actual = 'weapon';
   else if (pose === 'record' || pose === 'call') actual = 'phone';
@@ -127,14 +127,14 @@ function encDescribe(sp, u, pose, rd) { const P = ENC_POSES[pose] || ENC_POSES.d
   if (rm) { const nearX = sp.x - rm.x <= 0 || rm.x + rm.w - 1 - sp.x <= 0, nearY = sp.y - rm.y <= 0 || rm.y + rm.h - 1 - sp.y <= 0;
     where = (nearX && nearY ? 'in the corner of the ' : nearX || nearY ? 'against the wall of the ' : 'in the middle of the ') + roomWord(sp);
     if (sp.atWindow) where = 'by the window of the ' + roomWord(sp); }
-  const itemW = rd.looks === 'gun' && rd.conf !== 'unknown' ? (rd.conf === 'confident' ? GUN_WORD[sp.weapon] || 'a gun' : 'what looks like a gun') : rd.actual === 'phone' && rd.looks === 'phone' ? 'a phone' : 'something';
+  const itemW = rd.looks === 'gun' && rd.conf !== 'unknown' ? (rd.conf === 'confident' || rd.conf === 'known' ? GUN_WORD[sp.weapon] || 'a gun' : 'what looks like a gun') : rd.actual === 'phone' && rd.looks === 'phone' ? 'a phone' : 'something';
   const t = (P.armedText && rd.actual === 'weapon' ? P.armedText : P.text).replace('{item}', itemW).replace('{hands}', r.chance(0.5) ? 'one hand' : 'both hands').replace('{facing}', r.chance(0.5) ? 'is turned away' : 'is facing the officers')
     .replace('{cover}', rm ? r.pick(['a doorway edge', 'a piece of furniture', 'the door frame', 'a wall corner']) : 'a vehicle');
   const dist_ = u ? Math.max(1, Math.round(dist(u.x, u.y, sp.x, sp.y))) : null;
   const lead = pose === 'heard' ? `${multiSp() ? spName(sp) : 'The suspect'} ${t}${rm && rm.known ? ' (' + roomWord(sp) + ')' : ''}.` : `${multiSp() ? spName(sp) : 'He'} is ${where}${dist_ ? ` (~${dist_} m from ${u.name})` : ''} and ${t}.`;
   const extra = [];
   if (sp.daze > 0 || sp.impair > 0.3) extra.push(sp.daze > 0 ? 'He looks disoriented.' : 'He is coughing, eyes streaming.');
-  if (sp.injured) extra.push('He appears injured.');
+  if (sp.injured) extra.push(injText(sp)); if (rd.reassess) extra.push('Officers lost sight of him for a while — they must reassess what is in his hands.');
   const M = mindOf(sp); if (M.ignored >= 2 && pose !== 'heard') extra.push('He has ignored several commands.');
   return [lead, pose === 'heard' ? '' : confText(rd, sp)].concat(extra).filter(Boolean).join(' '); }
 /* ---------- equipment-based options and who can do them ---------- */
@@ -169,7 +169,7 @@ function encOdds(sp, u, key, pose) { const M = mindOf(sp), seen = encSeers(sp).l
     case 'withdraw': p = 1 - encFireRisk(sp, pose) * 0.6; break;
     default: p = base; }
   return clamp(p, 0.02, 0.97); }
-function encOptions(sp, u, pose, rd) { const keys = [];
+function encOptionsBase(sp, u, pose, rd) { const keys = [];
   if (pose === 'heard') keys.push('v_come', 'v_hands', 'hold', 'bang', 'gas', 'nego', 'withdraw');
   else { if (rd.looks === 'gun' || rd.actual === 'weapon' && !['behind', 'pockets', 'conceal', 'cover'].includes(pose)) keys.push('v_drop');
     keys.push('v_hands', 'v_ground', 'v_come'); if (pose === 'record' || pose === 'call') keys.push('v_phone');
@@ -253,7 +253,7 @@ function encRetreat(sp, u) { let best = null;
     if (!best || best.s <= dist(sp.x, sp.y, u.x, u.y)) break; sp.x = best.x; sp.y = best.y; sp.room = roomAt(sp.x, sp.y); }
   sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn }; }
 /** Suspect response to a non-force option (decision tree with hidden %). */
-function encRespond(sp, u, key, item) { const M = mindOf(sp), pose = item.pose, armed = spArmed(sp);
+function encRespondBase(sp, u, key, item) { const M = mindOf(sp), pose = item.pose, armed = spArmed(sp);
   const pc = key === 'hold' ? M.comply * 0.12 + M.stall * 0.08 : encOdds(sp, u, key, pose);
   const fire = armed && u ? encFireRisk(sp, pose) * (1 - pc) * (key === 'hold' ? 0.5 : 0.8) : 0, hostage = hostageAvail(sp) ? 0.1 * (1 - pc) : 0;
   const delay = M.stall * (1 - pc) * 0.45, retreat = M.flee * (1 - pc) * 0.35, x = S.rng();
@@ -267,7 +267,7 @@ function encRespond(sp, u, key, item) { const M = mindOf(sp), pose = item.pose, 
   if (y < delay) { M.delay = 1; log(`${nm}: "Give me a minute — I'm coming, I'm coming." He is stalling.`, 'radio'); return 'delay'; } y -= delay;
   if (y < retreat && u) { encRetreat(sp, u); log(`${nm} backs away deeper into the ${roomWord(sp)}.`, 'alert'); return 'retreat'; }
   M.ignored++; aggressive(2); log(`${nm} ignores the ${key === 'hold' ? 'officers' : 'command'}.`, 'radio'); return 'ignore'; }
-function encChoose(key, offId) { const it = encCur(); if (!it || it.done || S.phase !== 'encounter') return { ok: false, reason: 'No decision pending' };
+function encChooseBase(key, offId) { const it = encCur(); if (!it || it.done || S.phase !== 'encounter') return { ok: false, reason: 'No decision pending' };
   if (it.kind === 'blind') return blindChoose(key);
   const opt = (it.options || []).find(o => o.key === key); if (!opt) return { ok: false, reason: 'Option not available' };
   const sp = spAt(it.sp), u = unit(it.uid); if (!sp || !u) return { ok: false, reason: 'Contact lost' };
@@ -315,7 +315,7 @@ function encThreshold(u, o) { if (!encOn() || S.phase !== 'executing' || !u || u
     if (S.rng.chance(ENC_CFG.blindHit)) shotOfficer(u, SUSPECT_CAL[sp.weapon] || 'pistol', 2, sp.x, sp.y, where); else log('No hits — rounds strike the door frame.', 'alert');
     return encPause([{ kind: 'blind', sp: spIdx(sp), uid: u.uid, room: r, title: 'Shots at the threshold', text: `${u.name} is at the ${where} doorway. Blind fire from inside — he is not visible. What does the team do?`, res0: encLogFrom(n0),
       options: BLIND_OPTS.map(b => ({ key: b.key, label: b.label, hint: b.sub, who: [] })) }], false); }); }
-function blindChoose(key) { const it = encCur(), u = unit(it.uid), sp = spAt(it.sp); if (!BLIND_OPTS.some(b => b.key === key)) return { ok: false, reason: 'Unknown choice' };
+function blindChoose0(key) { const it = encCur(), u = unit(it.uid), sp = spAt(it.sp); if (!BLIND_OPTS.some(b => b.key === key)) return { ok: false, reason: 'Unknown choice' };
   const n0 = S.log.length, r = it.room, enter = q => q.fromAfter || ((q.type === 'clear' || q.type === 'move') && (q.room === r || roomAt(q.x, q.y) === r));
   if (u && unitAlive(u)) {
     if (key === 'cancel') { u.orders = u.orders.filter(q => !enter(q)); u.orders.unshift({ type: 'hold', fromEnc: true }); u.regroup = null; log(`${u.name}: entry cancelled — holding outside the room.`, 'radio'); }
@@ -323,9 +323,9 @@ function blindChoose(key) { const it = encCur(), u = unit(it.uid), sp = spAt(it.
     else if (key === 'doorway') { u.orders = u.orders.filter(q => !enter(q)); u.orders.unshift(...afterOrders(u, 'assess', r)); u.regroup = null; log(`${u.name}: working the doorway from outside.`, 'radio'); }
     else { u.orders = u.orders.filter(q => !enter(q)); u.orders.unshift({ type: 'hold', fromEnc: true }); u.regroup = null; log(`${u.name}: point and defense engage from the door frame.`, 'radio'); encDoorFire(u, sp, 2); } }
   it.done = true; it.chose = key; it.res = encLogFrom(n0); S.version++; return { ok: true, res: it.res }; }
-function encDoorFire(u, sp, n) { if (!sp) return; withSp(sp, () => { if (!hostile()) return; const vis = los(u.x, u.y, sp.x, sp.y);
+function encDoorFire(u, sp, n, win) { if (!sp) return; withSp(sp, () => { if (!hostile()) return; const vis = los(u.x, u.y, sp.x, sp.y);
   for (let k = 0; k < n && hostile(); k++) { const r = fireAt(u, sp.x, sp.y, vis ? 'fire' : 'suppress', true); if (r === 'hit') break; }
-  if (hostile()) { sp.suppressed = Math.max(sp.suppressed || 0, 2); log(vis ? 'He is pinned down.' : 'Rounds through the doorway — he stops firing for now.', 'radio'); } }); }
+  if (hostile()) { sp.suppressed = Math.max(sp.suppressed || 0, 2); log(vis ? 'He is pinned down.' : (win ? 'Rounds through the window' : 'Rounds through the doorway') + ' — he stops firing for now.', 'radio'); } }); }
 /** Close the current box and move on. Returns the phase after: 'encounter' (more) | 'executing' (mid-turn) | 'planning' | 'over'. */
 /** The mission ended mid-turn (e.g. the exchange of fire decided it): still show the result box(es) before the debrief. */
 function encFinal() { if (!encOn() || S.phase !== 'over' || !(S.encEv || []).length) return false; const items = encBuild().filter(i => i.kind === 'result'); S.encEv = [];

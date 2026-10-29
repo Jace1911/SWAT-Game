@@ -38,7 +38,7 @@ function setupCams(r) { const H = S.house, C = DRUG_CFG, out = [];
   const b = oc(bd); if (b) corners.splice(1, 0, [b[0], b[1], 0, -1, 'back door']);
   const n = r.int(C.cams[0], C.cams[1]); for (const c of corners) { if (out.length >= n) break; out.push({ x: c[0], y: c[1], dx: c[2], dy: c[3], name: c[4] }); }
   S.cams = out.map((c, i) => Object.assign(c, { id: i, range: C.camRange, fov: C.camFov, seen: false })); }
-function camSees(c, x, y) { if (S.power && S.power.cut) return false; const d = dist(c.x, c.y, x, y); if (d > c.range || d < 0.5) return false;
+function camSeesBase(c, x, y) { if (S.power && S.power.cut) return false; const d = dist(c.x, c.y, x, y); if (d > c.range || d < 0.5) return false;
   let a = Math.atan2(y - c.y, x - c.x) - Math.atan2(c.dy, c.dx); while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI;
   return Math.abs(a) <= c.fov / 2 && los(c.x, c.y, x, y) === 1; }
 function camTurn() { if (!S.cams || !S.cams.length || (S.power && S.power.cut)) return; let hit = null;

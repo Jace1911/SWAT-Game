@@ -83,6 +83,7 @@ button.on{background:linear-gradient(180deg,#1f6fd0,#124a8e);border-color:var(--
 #exec small{display:block;font-size:9.5px;letter-spacing:.1em;font-weight:700;opacity:.9}
 #exec:disabled{background:#3a2a20;box-shadow:none}
 #hint{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(98px + var(--sab));background:rgba(4,12,24,.85);border:1px solid var(--line);padding:6px 14px;border-radius:20px;font-size:12px;color:var(--cyan2);pointer-events:none;white-space:nowrap;max-width:calc(100vw - 20px);overflow:hidden;text-overflow:ellipsis}
+#hitban{position:fixed;left:50%;top:calc(104px + var(--sat));transform:translateX(-50%);z-index:41;display:flex;flex-direction:column;gap:4px;max-width:min(560px,92vw);pointer-events:auto}#hitban .hb{background:rgba(70,6,12,.95);border:1px solid #ff4a5a;color:#ffe0e3;padding:7px 30px 7px 12px;border-radius:8px;font:600 12.5px system-ui,sans-serif;position:relative;box-shadow:0 4px 18px rgba(0,0,0,.5)}#hitban .hb b{color:#fff}#hitban .hb button{position:absolute;right:4px;top:4px;background:none;border:0;color:#ffb0b8;font-size:15px;cursor:pointer}.enc-b.endt{border-style:dashed;opacity:.92}
 #toast{position:fixed;left:50%;top:calc(70px + var(--sat));transform:translateX(-50%);background:rgba(60,8,14,.92);border:1px solid var(--red);color:#ffd0d5;padding:8px 16px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:40;max-width:90vw;text-align:center}
 #toast.show{opacity:1}#toast.ok{background:rgba(6,40,30,.92);border-color:var(--green);color:#c8ffe6}
 #sidebox{width:40px;height:40px;align-self:center;background:rgba(4,12,24,.85);border:1px solid var(--line2);border-radius:7px;padding:0}#sidebox svg{display:block;width:100%;height:100%}
@@ -248,7 +249,7 @@ body.nogame .modal{background:transparent}
 <div id="aimbox" aria-live="polite"></div>
 <div id="ticker"></div>
 <div id="hint"></div>
-<div id="toast"></div>
+<div id="toast"></div><div id="hitban"></div>
 <div id="bottom" class="panel">
   <div id="acts"></div>
   <div id="mtabs"><button id="t-teams">TEAMS</button><button id="t-intel">INTEL</button></div>
@@ -272,6 +273,7 @@ body.nogame .modal{background:transparent}
   <button id="b-state" class="cmd" style="display:none"><b>☎ Call State SWAT Team</b><span>Hand over the scene · keep action XP only</span></button></div></div></div></div>
 <div class="modal" id="m-main"><div class="panel dlg" id="main-dlg"></div></div>
 <div class="modal" id="m-calls"><div class="panel dlg" id="calls-dlg"></div></div>
+<div class="modal" id="m-pick" role="dialog" aria-label="Choose an officer"><div class="panel dlg" id="pick-dlg"></div></div>
 <div class="modal" id="m-enc" role="dialog" aria-label="Encounter decision"><div class="panel dlg enc" id="enc-dlg"></div></div>
 <div class="modal" id="m-help"><div class="panel dlg" id="help-dlg"></div></div>
 <script>

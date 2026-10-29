@@ -216,7 +216,7 @@ function wallPass(g, box, color, wExt, wInt, glassCol) {
   const segs = [], wins = [], doors = [];
   edgeIter(box.x, box.y, box.x + box.w - 1, box.y + box.h - 1, (e, ax, ay, bx, by, x1, y1, x2, y2) => {
     const ra = Core.roomAt(ax, ay), rb = Core.roomAt(bx, by); if (ra < 0 && rb < 0) return; const ext = ra < 0 || rb < 0;
-    if (e.t === 'X') segs.push([x1, y1, x2, y2, ext]); else if (e.t === 'W') wins.push([x1, y1, x2, y2]); else if (e.t === 'D') doors.push([x1, y1, x2, y2, ext]);
+    if (e.t === 'X' || e.t === 'P') segs.push([x1, y1, x2, y2, ext]); else if (e.t === 'W') wins.push([x1, y1, x2, y2]); else if (e.t === 'D') doors.push([x1, y1, x2, y2, ext]);
   });
   g.lineCap = 'square';
   for (const pass of [0, 1]) for (const [x1, y1, x2, y2, ext] of segs) { g.strokeStyle = pass ? color : 'rgba(0,0,0,.85)'; g.lineWidth = (ext ? wExt : wInt) + (pass ? 0 : 3); g.beginPath(); g.moveTo(x1 * CS, y1 * CS); g.lineTo(x2 * CS, y2 * CS); g.stroke(); }
@@ -276,7 +276,7 @@ function buildComp() {
   L.comp = c; compKey = knowledgeKey();
 }
 function rebake() { bakeGround(); bakeInterior(); bakeBlueprint(); bakeRoof(); const MW = Core.MAP_W, MH = Core.MAP_H; L.fog = mk(MW, MH); L.tint = mk(MW, MH); L.gas = mk(MW, MH); L.expo = mk(MW, MH);
-  builtSeed = Core.state.seed; builtWV = (Core.state.duplex && Core.state.duplex.wallV) || 0; compKey = ''; dynVer = -1; planVer = -1; anims = []; seenFx = Core.state.fxSeq || 0; }
+  builtSeed = Core.state.seed; builtWV = ((Core.state.duplex && Core.state.duplex.wallV) || 0) + ((Core.state.wallLog || []).length * 1000); compKey = ''; dynVer = -1; planVer = -1; anims = []; seenFx = Core.state.fxSeq || 0; }
 let gasAny = false, peekAny = false;
 /** Line-of-sight reveal: indoor cells seen through open doors/doorways in rooms not yet explored. Lit while in view, dim once out of view. */
 function buildPeek() {
@@ -371,7 +371,7 @@ function drawAddrTags(g) { const S = Core.state; if (!S || !S.house || !Core.add
   g.restore(); }
 function frame(now) { if (cv) { const [w, h] = viewportSize(); if (w !== VW || h !== VH || cv.width !== Math.round(w * Math.min(2, window.devicePixelRatio || 1))) resize(); } // self-heal a missed or stale rotate event
   const S = Core.state; if (!S || !cv) return;
-  if (builtSeed !== S.seed || builtWV !== ((S.duplex && S.duplex.wallV) || 0)) { rebake(); }
+  if (builtSeed !== S.seed || builtWV !== ((S.duplex && S.duplex.wallV) || 0) + ((S.wallLog || []).length * 1000)) { rebake(); }
   if (knowledgeKey() !== compKey) buildComp();
   if (dynVer !== S.version) updateDyn();
   syncFx();
@@ -387,6 +387,7 @@ function frame(now) { if (cv) { const [w, h] = viewportSize(); if (w !== VW || h
   drawDoors(g, now); drawStruct(g, now);
   drawCruisers(g, now);
   drawCones(g, now);
+  drawDropped(g);
   g.globalCompositeOperation = 'lighter'; g.imageSmoothingEnabled = false; g.drawImage(L.tint, 0, 0, Core.MAP_W * CS, Core.MAP_H * CS); g.imageSmoothingEnabled = true; g.globalCompositeOperation = 'source-over';
   if (gasAny) drawGas(g, now);
   lights(g, now, 'over');
@@ -481,6 +482,12 @@ function drawDraco(g, c, Ln, Wd) { const S = Core.state, inst = !c.draco, act = 
   if (inst) { const f = Math.min(1, (c.dracoProg || 0) / Core.installTicks()); g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(-Ln * 0.4, -Wd / 2 - CS * 0.32, Ln * 0.8, CS * 0.18);
     g.fillStyle = '#e8b322'; g.fillRect(-Ln * 0.4, -Wd / 2 - CS * 0.32, Ln * 0.8 * f, CS * 0.18); } }
 /** Overwatch sight-line cones for perched marksmen. */
+/** v20: items set down on the ground (shield / ram) — pick up within 2 m. */
+function drawDropped(g) { const S = Core.state; if (!S || !S.dropped || !S.dropped.length) return;
+  for (const d of S.dropped) { const x = wpx(d.x), y = wpx(d.y), r = CS * 0.32; g.fillStyle = 'rgba(0,0,0,.55)'; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#ffd34d'; g.lineWidth = Math.max(1, CS * 0.06); g.stroke(); g.fillStyle = '#ffd34d'; g.font = `bold ${Math.round(CS * 0.32)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(/shield/.test(d.k) ? '⛨' : d.k === 'ram' ? '⚒' : '•', x, y + 1); }
+  for (const p of S.ports || []) { const [a, b] = [p.a, p.b], x = wpx((a[0] + b[0]) / 2), y = wpx((a[1] + b[1]) / 2); g.strokeStyle = '#3ef0a0'; g.lineWidth = Math.max(1.5, CS * 0.08); g.beginPath(); g.arc(x, y, CS * 0.22, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(x, y, CS * 0.06, 0, Math.PI * 2); g.fillStyle = '#3ef0a0'; g.fill(); } }
 function drawCones(g, now) { const S = Core.state;
   for (const u of S.units) { if (u.kind !== 'team' || u.status !== 'ok' || !u.perch) continue; const c = Core.owCone(u); if (!c) continue; const [ux, uy] = posOf(u.uid, c.x, c.y);
     const px = wpx(ux), py = wpx(uy), rad = c.range * CS, sel = view.sel === u.uid; const d = dirOf(u.uid, c.dir);
@@ -505,9 +512,9 @@ function drawStruct(g, now) { const S = Core.state, H = S.house;
   for (const w of S.windows) { if (!w.barred) continue; for (const [cx, cy, ox, oy] of w.edges) { const vert = cx !== ox, px = (Math.max(cx, ox) + (vert ? 0 : 0.5)) * CS, py = (Math.max(cy, oy) + (vert ? 0.5 : 0)) * CS, nx = (ox - cx) * 7, ny = (oy - cy) * 7;
     g.strokeStyle = '#2b2f36'; g.lineWidth = 3; g.beginPath(); for (let k = -2; k <= 2; k++) { const t = k * CS * 0.18; const bx = px + (vert ? 0 : t), by = py + (vert ? t : 0); g.moveTo(bx, by); g.lineTo(bx + nx, by + ny); } g.stroke();
     g.strokeStyle = '#8c939c'; g.lineWidth = 1.4; g.stroke(); } }
-  if (S.cams) { const dark = S.power && S.power.cut; for (const c of S.cams) { const x = (c.x + 0.5) * CS, y = (c.y + 0.5) * CS, a = Math.atan2(c.dy, c.dx);
+  if (S.cams) { const dark0 = S.power && S.power.cut; for (const c of S.cams) { const dark = dark0 || c.dead; const x = (c.x + 0.5) * CS, y = (c.y + 0.5) * CS, a = Math.atan2(c.dy, c.dx);
     if (!dark) { g.fillStyle = c.seen ? 'rgba(255,59,78,.13)' : 'rgba(255,59,78,.07)'; g.beginPath(); g.moveTo(x, y); g.arc(x, y, c.range * CS, a - c.fov / 2, a + c.fov / 2); g.closePath(); g.fill(); g.strokeStyle = 'rgba(255,59,78,.3)'; g.setLineDash([4, 6]); g.lineWidth = 1.2; g.stroke(); g.setLineDash([]); }
-    g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = '#1b1f26'; g.strokeStyle = dark ? '#6b7380' : '#ff3b4e'; g.lineWidth = 1.5; rr(g, -7, -5, 14, 10, 2); g.fill(); g.stroke(); g.fillStyle = dark ? '#3a3f47' : (Math.floor(now / 500) % 2 ? '#ff3b4e' : '#7a1520'); g.beginPath(); g.arc(4, 0, 2.5, 0, 7); g.fill(); g.restore(); } }
+    g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = '#1b1f26'; g.strokeStyle = dark ? '#6b7380' : '#ff3b4e'; g.lineWidth = 1.5; rr(g, -7, -5, 14, 10, 2); g.fill(); g.stroke(); g.fillStyle = dark ? '#3a3f47' : (Math.floor(now / 500) % 2 ? '#ff3b4e' : '#7a1520'); g.beginPath(); g.arc(4, 0, 2.5, 0, 7); g.fill(); if (c.dead) { g.strokeStyle = '#ffd34d'; g.lineWidth = 2; g.beginPath(); g.moveTo(-6, -6); g.lineTo(6, 6); g.moveTo(6, -6); g.lineTo(-6, 6); g.stroke(); } g.restore(); } }
   const D = S.duplex; if (H.duplex && D) { const B = S.rooms.filter(q => q.unitB); if (B.length) { const x0 = Math.min(...B.map(q => q.x)), x1 = Math.max(...B.map(q => q.x + q.w)), y0 = Math.min(...B.map(q => q.y));
       const t = 'UNIT B · ' + (D.evac === 'empty' ? 'EMPTY' : D.evac === 'done' ? 'EVACUATED' : D.evac === 'moving' ? 'EVACUATING…' : D.residents + ' RESIDENT' + (D.residents > 1 ? 'S' : '') + ' HOME');
       const cx = (x0 + x1) / 2 * CS, cy = (y0 + 1.3) * CS; g.font = `800 ${CS * 0.3}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; const tw = g.measureText(t).width + 14;
@@ -534,7 +541,8 @@ function drawDoors(g, now) {
     if (d.charge) safeRing(g, d, now, false);
     g.save(); g.translate(G.x, G.y); let oy = G.vert ? -G.ox : G.oy; if (G.vert) { g.rotate(Math.PI / 2); } // door along +x, len px; oy = outward normal in local coords
     const L2 = G.len;
-    if (d.kind === 'garage') { if (d.state === 'breached') { g.strokeStyle = '#ffb020'; g.setLineDash([6, 5]); g.lineWidth = 4; g.beginPath(); g.moveTo(0, 0); g.lineTo(L2, 0); g.stroke(); g.setLineDash([]); }
+    if (d.kind === 'hole') { g.strokeStyle = '#ffb020'; g.lineWidth = 3; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(1, -4); g.lineTo(L2 - 1, -4); g.moveTo(1, 4); g.lineTo(L2 - 1, 4); g.stroke(); g.setLineDash([]); }
+    else if (d.kind === 'garage') { if (d.state === 'breached') { g.strokeStyle = '#ffb020'; g.setLineDash([6, 5]); g.lineWidth = 4; g.beginPath(); g.moveTo(0, 0); g.lineTo(L2, 0); g.stroke(); g.setLineDash([]); }
       else { g.fillStyle = '#8b939e'; g.fillRect(0, -5, L2, 10); g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1; for (let x = 8; x < L2; x += 10) { g.beginPath(); g.moveTo(x, -5); g.lineTo(x, 5); g.stroke(); } } }
     else if (d.state === 'closed') { g.fillStyle = d.steel ? '#6f7882' : d.barricaded && d.known ? '#8a5a3a' : '#a37b55'; g.fillRect(1, -4, L2 - 2, 8); if (d.steel) { g.fillStyle = 'rgba(255,255,255,.25)'; for (let x = 5; x < L2 - 3; x += 7) g.fillRect(x, -3, 1.5, 1.5), g.fillRect(x, 1.5, 1.5, 1.5); } g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.5; g.strokeRect(1, -4, L2 - 2, 8);
       if (d.locked && d.known && (d.lockKnown || !d.exterior && !d.homeLock)) { g.fillStyle = '#ffd36b'; g.beginPath(); g.arc(L2 - 7, 0, 2.5, 0, 7); g.fill(); }
@@ -659,7 +667,7 @@ function drawSuspectMark(g, now, s, S, sp, multi) {
     g.fillStyle = col; g.font = `800 ${11 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('!', x, y + 0.5);
     if (sp.maskSeen) badge(g, x - r - 2, y - r - 2, 'M', '#ffb020', '#2a1a04', s);
     if ((sp.impair || 0) > 0.2 && !(sp.maskOn)) badge(g, x + r + 2, y - r - 2, '☁', '#cfe8b0', '#1a2a10', s);
-    const nm = multi && sp.label ? 'SUSPECT ' + sp.label : 'SUSPECT', tag0 = sp.injured && ['barricaded', 'alert'].includes(sp.mode) ? nm + ' · INJURED' : sp.walk && sp.mode === 'surrendered' ? (sp.walk.stage === 'kneel' ? 'KNEELING · HANDS UP' : 'WALKING OUT') : sp.deceased ? 'DECEASED' : { barricaded: nm + (sp.weapon === 'none' ? '' : ' · ARMED'), alert: nm + ' · ALERT', fleeing: nm + ' · FLEEING', surrendered: 'SURRENDERED', incapacitated: 'INCAPACITATED', detained: 'IN CUSTODY' }[sp.mode] || nm;
+    const nm = multi && sp.label ? 'SUSPECT ' + sp.label : 'SUSPECT', tag0 = sp.injured && ['barricaded', 'alert'].includes(sp.mode) ? nm + ' · INJURED' : sp.walk && sp.mode === 'surrendered' ? (sp.walk.stage === 'kneel' ? 'KNEELING · HANDS UP' : 'WALKING OUT') : sp.deceased ? 'DECEASED' : { barricaded: nm + (sp.weapon === 'none' ? '' : ' · ARMED'), alert: nm + ' · ALERT', fleeing: nm + ' · FLEEING', surrendered: 'SURRENDERING', incapacitated: 'INCAPACITATED', detained: 'IN CUSTODY' }[sp.mode] || nm;
     const tag = multi && sp.label && !tag0.startsWith('SUSPECT') ? sp.label + ' · ' + tag0 : tag0;
     g.font = `700 ${10 * s}px system-ui,sans-serif`; const tw = g.measureText(tag).width + 10; g.fillStyle = 'rgba(20,4,8,.85)'; rr(g, x - tw / 2, y + r + 4, tw, 16 * s, 4); g.fill(); g.fillStyle = col; g.fillText(tag, x, y + r + 4 + 8 * s); }
 }
