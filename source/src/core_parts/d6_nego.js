@@ -162,7 +162,7 @@ function robotPhoneGoal(room) {
 /** Team / robot execution of a throw-phone order (called from unitAct). */
 function tphoneAct(u, o, speed) {
   if (u.kind === 'team' && o.via === 'robot') { useItem(u, 'robot'); useItem(u, 'tphone'); const g = robotPhoneGoal(o.room);
-    const d = { uid: 'D' + (++S.devSeq), kind: 'robot', name: 'Robot ' + S.devSeq, num: S.devSeq, x: u.x, y: u.y, dir: u.dir, orders: [{ type: 'tphone', room: o.room, via: 'robot', doorway: g ? g.doorway : true }], battery: 10, owner: u.uid, status: 'ok', vis: [] };
+    const d = newDevice('robot', u.x, u.y, u.dir, { orders: [{ type: 'tphone', room: o.room, via: 'robot', doorway: g ? g.doorway : true }], owner: u.uid });
     S.units.push(d); log(`${u.name}: ${d.name} rolling out with a throw-phone.`, 'radio'); popOrder(u); return; }
   if (u.kind === 'robot') { const g = robotPhoneGoal(o.room); if (!g) { failOrders(u, 'no open way in'); return; }
     const r = stepAlong(u, o, g.fn, 1); if (r === null) { failOrders(u, 'no route to an opening'); return; } if (!r) return;

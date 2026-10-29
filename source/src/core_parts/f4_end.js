@@ -34,7 +34,7 @@ function teamResponses1() {
     }
     if (!sees || !hostile() || sp.stun > 0) continue;
     const outside = roomAt(u.x, u.y) < 0; if (outside && u.chTurn === S.turn) continue; // from outside: one shouted challenge per turn
-    if (u.challenged !== S.tick) { u.challenged = S.tick; if (outside) u.chTurn = S.turn;
+    if (u.challenged !== S.tick) { u.challenged = S.tick; S.stats.challenged = true; if (outside) u.chTurn = S.turn;
       const comply = ((outside ? NEGO_CFG.outsideChallenge : 1) * 0.05 + S.units.filter(q => q.kind === 'team' && q.vis && q.vis.includes(idx(sp.x, sp.y))).length * 0.05) * (outside ? 1 : 0.45) + sp.talk / 250 - sp.agit / 300;
       if (S.rng.chance(comply)) { if (outside) { log(`${u.name}: "POLICE! DROP IT AND COME OUT!" — he shouts that he is coming out.`, 'good'); walkout('callout'); break; }
         surrender(`${u.name}: "POLICE! DROP IT!" — ${multiSp() ? spName().toLowerCase() : 'suspect'} drops the weapon and gets on the ground.`); u.detain = myKey; continue; }
@@ -62,9 +62,9 @@ function checkEnd() {
       text: `Resolved after ${tMin(S.turn + 1)} (${elapsedAt(S.turn + 1)}). Method: ${multi ? L.map(s => spName(s) + ' — ' + (s.method || '?')).join('; ') : S.stats.method}. Officers hit: ${S.stats.down}.` }; }
   if (S.phase === 'over') finishMission();
 }
-function finishMission() { casualtyResolve(S.result.win); S.result.debrief = debrief(); log(S.result.title, S.result.win ? 'good' : 'bad'); S.version++; }
+function finishMission() { sideTurn(); casualtyResolve(S.result.win); S.result.debrief = debrief(); log(S.result.title, S.result.win ? 'good' : 'bad'); S.version++; }
 /** Units that can still act on scene (or are still coming). */
-function forceLeft() { const offs = S.officers.filter(o => o.status === 'enroute' || o.status === 'staged').length;
+function forceLeft() { const offs = S.officers.filter(o => o.status === 'enroute' || o.status === 'staged' || o.status === 'operator').length;
   const field = S.units.filter(u => unitAlive(u) && (u.kind === 'team' ? teamOk(u).length > 0 : u.kind === 'patrol')).length; return offs + field; }
 /** Player ends the operation without a resolution (e.g. no mobile officers left). */
 function withdraw() { if (S.phase === 'over') return { ok: false, reason: 'Mission already over' };
@@ -72,9 +72,10 @@ function withdraw() { if (S.phase === 'over') return { ok: false, reason: 'Missi
   S.result = { win: false, title: 'OPERATION WITHDRAWN', text: `Command ended the operation after ${tMin(S.turn)} without taking ${multiSp() ? 'every suspect' : 'the suspect'} into custody${multiSp() ? ` (${suspList().filter(s => s.mode === 'detained').length} of ${suspList().length} in custody)` : sp.mode === 'incapacitated' ? ' (suspect down but not secured)' : ''}. Scene handed over.` };
   log('Command: withdraw — all units pull back to the perimeter.', 'bad'); finishMission(); return { ok: true }; }
 function endTurn() {
+  sideTurn();
   S.turn++; S.phase = 'planning'; S.tick = 0; S.peek = []; syncAll(); // weapons become ready again
-  for (const u of S.units) { u.orders = u.orders.filter(o => o.regroup === undefined && o.type !== 'hold' && o.type !== 'shoot' && !DEVICE_ORDERS.includes(o.type)); u.holding = false; u.waiting = false; u.exiting = null;
-    if ((u.kind === 'drone' || u.kind === 'robot') && unitAlive(u)) { u.battery--; if (u.battery <= 0) { u.status = 'down'; log(`${u.name}: battery depleted.`); } } }
+  for (const u of S.units) { u.orders = u.orders.filter(o => o.regroup === undefined && o.type !== 'hold' && o.type !== 'shoot' && !DEVICE_ORDERS.includes(o.type)); u.holding = false; u.waiting = false; u.exiting = null;}
+  deviceTurn();
   gasTurn(); eachSp(suspectGasTurn); casualtyTurn(); negoTurn(); eachSp(sceneTurn); types3Turn();
   if (S.intel.blueprint && S.intel.blueprint === S.turn) { S.rooms.forEach(q => q.known = true); S.doors.forEach(d => d.known = true); S.intel.floors = true; log('Blueprints received — full floor plan on screen.', 'intel'); }
   for (const o of S.officers) { if (o.status === 'enroute') { if (o.eta <= S.turn) { o.status = 'staged'; log(`PAGER: ${o.name} (${SPECS[o.spec].name}) on scene at staging.`, 'pager'); S.events.push({ type: 'pager' }); } } }
@@ -91,7 +92,7 @@ function debrief() {
   if (S.result && S.result.win && sp.mode === 'detained' && !N.how && N.outcome !== 'Walk-out ambush') neg += ` — resolved tactically (${S.stats.method})`;
   out.push({ k: 'Negotiation', v: `${neg}. Attempts ${N.attempts}, refusals ${N.refusals}, dialogue rounds ${N.rounds}.` });
   if (N.protocol) { const P = N.protocol; out.push({ k: 'Walk-out protocol', v: `${P.score}/4 — ${['cover', 'shield', 'overwatch', 'commands'].map(k => (P[k] ? '✓ ' : '✗ ') + k).join(', ')}${N.ambush ? '. AMBUSH' + (N.ambush.hit ? ' — an officer was hit' : ' — no officer hit') : ''}.` }); }
-  out.push(...sceneDebrief());
+  out.push(...sceneDebrief()); out.push(...sideDebrief());
   const own = S.cas.filter(c => c.who !== 'suspect'), cnt = st => own.filter(c => c.state === st).length;
   out.push({ k: 'Casualties', v: own.length ? `${own.length} hit — evacuated ${cnt('evacuated')}, lost ${cnt('lost')}, killed in action ${cnt('kia')}.` : 'None.' });
   own.forEach(c => out.push({ k: '  ' + c.name, v: sevWord(c) + (c.initial ? ' (hit before SWAT arrived)' : '') }));
@@ -123,6 +124,7 @@ function missionScore() {
   const init = S.cas.find(c => c.initial && c.state !== 'kia'); if (init && (init.state === 'evacuated' || init.state === 'transport' || init.stable)) add('Rescued officer down on arrival', SCORE.rescued);
   typeScore(add); typeScore3(add);
   if (S.scene && S.scene.gap0.length && S.scene.gapClosed != null && !S.scene.slipTried) add('Closed perimeter gap', SCORE.gapClosed);
+  sideScore(add);
   if (encOn()) encScore(items, add);
   const sc = items.reduce((a, i) => a + i.pts, 0), sg = v => (v > 0 ? '+' : '−') + Math.abs(v);
   const grade = sc >= 1000 ? 'Medal of Valor' : sc >= 650 ? 'Unit Commendation' : sc >= 350 ? 'Satisfactory' : sc >= 0 ? 'Needs Review' : 'Board of Inquiry';

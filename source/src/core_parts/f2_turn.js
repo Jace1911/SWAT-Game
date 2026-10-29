@@ -49,7 +49,7 @@ function stepAlong(u, o, goalFn, speed = 1) {
       return null;
     }
     const [nx, ny] = p[0]; const e = edge(u.x, u.y, nx, ny);
-    if (e.t === 'D' && e.d.state === 'closed') { e.d.state = 'open'; e.d.known = true; faceTo(u, nx, ny); noise(nx, ny, 2, 'door'); log(`${u.name}: opening ${e.d.name || 'door'}.`); return false; }
+    if (e.t === 'D' && e.d.state === 'closed') { e.d.state = 'open'; e.d.known = true; e.d.lockKnown = true; faceTo(u, nx, ny); noise(nx, ny, 2, 'door'); log(`${u.name}: opening ${e.d.name || 'door'}.`); return false; }
     faceTo(u, nx, ny); u.x = nx; u.y = ny; u.waiting = false; u.moved = S.tick; if (u.slice) u.slice = null; // stepping off ends the pie slice
     if (roomAt(nx, ny) >= 0) break; // one cell per tick inside — careful movement
   }
@@ -103,6 +103,7 @@ function unitAct(u) {
     if (o.type === 'pa') { popOrder(u); paAct(u, o); return; }
     return;
   }
+  if (devAct(u, o)) return;
   if (u.kind === 'robot' && o.type === 'tphone') return tphoneAct(u, o, 1);
   if (u.perch && o.type !== 'shoot' && o.type !== 'hold' && o.type !== 'overwatch') { const pc = u.perch; u.perch = null; if (pc.entry) { u.x = pc.entry[0]; u.y = pc.entry[1]; log(`${u.name}: coming down from overwatch.`); return; } }
   if (o.type === 'overwatch') {
@@ -132,8 +133,7 @@ function unitAct(u) {
   if (o.type === 'tphone') return tphoneAct(u, o, speed);
   if (o.type === 'mask') { u.mask = o.on ? 'on' : 'off'; log(`${u.name}: masks ${o.on ? 'on' : 'off'}.`, 'radio'); popOrder(u); return; }
   if (o.type === 'hold') { if (o.x !== undefined) faceTo(u, o.x, o.y); u.holding = true; return; }
-  if (o.type === 'drone' || o.type === 'robot') { useItem(u, o.type); const d = { uid: 'D' + (++S.devSeq), kind: o.type, name: (o.type === 'drone' ? 'Drone ' : 'Robot ') + S.devSeq, num: S.devSeq,
-      x: u.x, y: u.y, dir: u.dir, orders: [{ type: 'move', x: o.x, y: o.y }], battery: o.type === 'drone' ? 6 : 10, owner: u.uid, status: 'ok', vis: [] };
+  if (o.type === 'drone' || o.type === 'robot') { useItem(u, o.type); const d = newDevice(o.type, u.x, u.y, u.dir, { orders: [{ type: 'move', x: o.x, y: o.y }], owner: u.uid });
     S.units.push(d); log(`${u.name}: ${d.name} deployed.`, 'radio'); popOrder(u); return; }
   if (o.type === 'detonate' && S.doors[o.door].charge) { detonateCharge(u, S.doors[o.door]); popOrder(u); return; }
   if (o.type === 'breach' && o.phase === 'standoff') { const d = S.doors[o.door];

@@ -8,6 +8,9 @@
    call the public API at the bottom. Port this module 1:1 to GDScript/C#.
    Coordinates: integer grid cells (1 cell ≈ 1 m). Cell (x,y) centre = (x,y).
    ===================================================================== */
+/** Build version shown on the main menu — bump this one constant each build. */
+const GAME_VERSION = 'v18';
+
 const Core = (function () {
 'use strict';
 /** Rear row behind the suspect house: rear street (road + sidewalk) and a row of back-neighbour lots whose yards meet the target's back yard. */
@@ -52,7 +55,7 @@ const EQUIP = {
   lesslethal: { name: 'Less-Lethal Launcher',  short: '40mm LL',  pool: 2,  desc: 'Can incapacitate a hostile suspect; launches gas through windows.' },
   polecam:    { name: 'Mirror / Pole Camera',  short: 'Pole Cam', pool: 2,  desc: 'Peek under a door into the next room without opening it.' },
   drone:      { name: 'Micro Drone',           short: 'Drone',    pool: 1,  desc: 'Fast flying scout. Needs a tech operator.' },
-  robot:      { name: 'Ground Robot',          short: 'Robot',    pool: 1,  desc: 'Tracked camera robot. Needs a tech operator.' },
+  robot:      { name: 'Throwbot 2',            short: 'Throwbot', pool: 1,  desc: 'Small two-wheeled throwable camera robot. Needs a tech operator.' },
   medkit:     { name: 'Medkit',                short: 'Medkit',   pool: 3,  desc: 'With a medic: stabilises a casualty (stops the critical countdown) or buys extra time for a severe one.' },
   tphone:     { name: 'Throw Phone',           short: 'T-Phone',  pool: 2,  desc: 'Hard-case phone thrown through an opening or delivered by robot — opens a line without his number.' },
   bullhorn:   { name: 'Bullhorn',              short: 'Bullhorn', pool: 2,  desc: 'Portable loudspeaker: PA contact, call-outs and walk-out commands (cruisers have a built-in PA).' },

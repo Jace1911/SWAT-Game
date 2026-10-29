@@ -64,8 +64,8 @@ function planOrder(u, o, sx, sy, assume) {
       if (!p) return { ok: false, reason: 'No entry route — breach a door first' }; o.x = tc[0]; o.y = tc[1]; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
     case 'detonate': { const d = S.doors[o.door]; if (!d.charge && !u.orders.some(q => q !== o && q.type === 'breach' && q.door === o.door && q.hangOnly)) return { ok: false, reason: 'No charge hung on that door' };
       const [mx, my] = doorMid(d); const warn = d.charge && dist(sx, sy, mx, my) < CHARGE_SAFE ? 'Inside the safety distance — team will be dazed' : null; return { ok: true, path: [], end: [sx, sy], warn }; }
-    case 'mask': return { ok: true, path: [], end: [sx, sy] };
-    case 'breach': case 'polecam': { const d = S.doors[o.door]; const sides = doorSides(d).filter(c => cellOk(c[0], c[1], { avoidSuspect: true }) && !S.block[idx(c[0], c[1])]);
+    case 'mask': case 'land': return { ok: true, path: [], end: [sx, sy] };
+    case 'breach': case 'polecam': case 'opendoor': { const d = S.doors[o.door]; const sides = doorSides(d).filter(c => cellOk(c[0], c[1], { avoidSuspect: true }) && !S.block[idx(c[0], c[1])]);
       const isGoal = (x, y) => sides.some(c => c[0] === x && c[1] === y);
       const a2 = new Set(assume); a2.delete(o.door);
       const p = isGoal(sx, sy) ? [] : findPath(sx, sy, isGoal, Object.assign({}, mo, { assume: a2 }));
@@ -136,7 +136,9 @@ function orderReq(u, o) {
     if (o.type === 'move' && u.disabled) return 'Cruiser is disabled';
     if (o.type === 'exit' && !u.occ.length && !u.orders.some(q => q.type === 'move')) return 'Cruiser is empty';
   }
-  else if (!['move', 'hold'].includes(o.type)) return 'Devices can only Move';
+  else if (o.type === 'land') { if (u.kind !== 'drone') return 'Only drones can land'; if (u.landed) return 'Already landed'; }
+  else if (o.type === 'opendoor') { if (!u.big) return 'Only the Large Robot has an arm to open doors'; const d = S.doors[o.door]; if (!d) return 'Tap a door'; if (d.state !== 'closed') return 'That door is already open'; }
+  else if (!['move', 'hold'].includes(o.type)) return 'Devices can only Move' + (u.kind === 'drone' ? ' or Land' : u.big ? ' or Open Door' : '');
   return null;
 }
 function queueOrder(uid, o) {

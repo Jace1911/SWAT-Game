@@ -11,6 +11,7 @@ const COMMANDS = {
   family:    { name: 'Family Interview', desc: 'His sister has reached the command post: likely his number and how he reacts under pressure.', not: ['drughouse', 'inmates'], avail: () => S.vacant ? 'No family — vacant house' : S.intel.family ? 'Already done' : S.turn < NEGO_CFG.familyTurn ? `Family arrive at ${elapsedAt(NEGO_CFG.familyTurn)}` : true },
   inmfamily: { name: 'Family Interview (homeowner)', desc: 'The family who fled is at the perimeter with patrol: full layout, the guns kept in the house, and the exact count.', only: 'inmates', avail: () => S.inmFamily && S.inmFamily.done ? 'Already done' : true },
   power:     { name: 'Cut Power', desc: 'Utility crew cuts power to the house: the security cameras go dark. They will notice (agitation up).', only: 'drughouse', avail: () => !S.power ? 'No cameras' : S.power.cut ? 'Power already cut' : S.turn < DRUG_CFG.powerFrom ? `Utility crew arrives at ${elapsedAt(DRUG_CFG.powerFrom)}` : true },
+  lrobot:    { name: 'Deploy Large Robot', desc: 'EOD-style tracked robot with an arm, driven from primary staging by a free SWAT officer (Tech preferred). The operator is tied up while driving. It can try door handles: unlocked doors open, locked or barricaded doors do not. Instant.', instant: true, avail: () => bigRobotWhyNot() || true },
   evacB:     { name: 'Evacuate Unit B', desc: 'Patrol walks the residents of the other unit of the duplex out through the far door (about 1 min). Do it before a long standoff.', when: () => !!S.duplex, avail: () => !S.duplex ? 'Not a duplex' : S.duplex.evac === 'empty' ? 'Unit B is empty' : S.duplex.evac === 'moving' ? 'Evacuation under way' : S.duplex.evac === 'done' ? 'Already evacuated' : true },
 };
 /** Is a command offered on this call (call type / structure)? */
@@ -22,6 +23,7 @@ function runCommand(key) {
   const sp = S.suspect, r = S.rng;
   switch (key) {
     case 'inmfamily': case 'power': case 'evacB': runCommand3(key); break;
+    case 'lrobot': deployBigRobot(); break;
     case 'interview': { S.intel.interview = true; S.intel.floors = true; S.intel.threat = 1; S.intel.weapon = true;
       S.rooms.filter(q => ['living', 'kitchen', 'dining', 'garage'].includes(q.type)).forEach(q => q.known = true);
       const srm = S.rooms[sp.room]; const side = (srm.y + srm.h / 2 < S.house.oy + S.house.H / 2 ? 'back' : 'front') + (srm.x + srm.w / 2 < (S.house.x0 + S.house.x1) / 2 ? '-left' : '-right');

@@ -85,6 +85,8 @@ button.on{background:linear-gradient(180deg,#1f6fd0,#124a8e);border-color:var(--
 #hint{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(98px + var(--sab));background:rgba(4,12,24,.85);border:1px solid var(--line);padding:6px 14px;border-radius:20px;font-size:12px;color:var(--cyan2);pointer-events:none;white-space:nowrap;max-width:calc(100vw - 20px);overflow:hidden;text-overflow:ellipsis}
 #toast{position:fixed;left:50%;top:calc(70px + var(--sat));transform:translateX(-50%);background:rgba(60,8,14,.92);border:1px solid var(--red);color:#ffd0d5;padding:8px 16px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:40;max-width:90vw;text-align:center}
 #toast.show{opacity:1}#toast.ok{background:rgba(6,40,30,.92);border-color:var(--green);color:#c8ffe6}
+#sidebox{width:40px;height:40px;align-self:center;background:rgba(4,12,24,.85);border:1px solid var(--line2);border-radius:7px;padding:0}#sidebox svg{display:block;width:100%;height:100%}
+#menu-dlg,#main-dlg{position:relative}.verlab{position:absolute;right:8px;bottom:5px;font-size:10px;color:var(--dim);opacity:.75;letter-spacing:.06em;pointer-events:none;z-index:2}
 #zoom{position:fixed;right:290px;bottom:104px;display:flex;flex-direction:column;gap:5px}
 /* collapsible side panels */
 .ptog{width:24px;height:24px;font-size:15px;font-weight:800;flex:none;color:var(--cyan2)}
@@ -235,7 +237,7 @@ body.nogame .modal{background:transparent}
   <div class="ph logh" style="border-top:1px solid var(--line)">Radio / Pager Log<span class="sp"></span><small id="log-clock" title="Mission time (information only — no time limit). Each EXECUTE = 30 s">T+0:00</small></div>
   <div id="log"></div>
 </div>
-<div id="zoom"><button class="ib" id="z-in" title="Zoom in">＋</button><button class="ib" id="z-out" title="Zoom out">－</button><button class="ib" id="z-fit" title="Fit house (0)">⤢</button><button class="ib" id="z-all" title="Whole neighborhood / overview map">▦</button></div>
+<div id="zoom"><div id="sidebox" title="Sides of the residence in view right now (any officer, vehicle, sniper, drone or robot). Green = seen, red = unseen, grey = no openings on that side." aria-label="Side visibility"></div><button class="ib" id="z-in" title="Zoom in">＋</button><button class="ib" id="z-out" title="Zoom out">－</button><button class="ib" id="z-fit" title="Fit house (0)">⤢</button><button class="ib" id="z-all" title="Whole neighborhood / overview map">▦</button></div>
 <div id="ovwf" class="panel"><canvas id="ovw2" aria-label="Minimap" title="Minimap — tap or drag to jump" width="492" height="316"></canvas></div>
 <div id="pop" role="dialog" aria-label="Breach method"></div>
 <div id="aimbox" aria-live="polite"></div>
@@ -256,7 +258,7 @@ body.nogame .modal{background:transparent}
 <div class="modal" id="m-911"><div class="panel dlg" id="c911-dlg"></div></div>
 <div class="modal" id="m-career"><div class="panel dlg wide" id="career-dlg"></div></div>
 <div class="modal" id="m-wd"><div class="panel dlg" id="wd-dlg"></div></div>
-<div class="modal" id="m-menu"><div class="panel dlg" id="menu-dlg"><div class="ph">Menu<span class="sp"></span><button class="ib" data-close="m-menu">✕</button></div><div class="body">
+<div class="modal" id="m-menu"><div class="panel dlg" id="menu-dlg"><span class="verlab" id="mn-ver"></span><div class="ph">Menu<span class="sp"></span><button class="ib" data-close="m-menu">✕</button></div><div class="body">
   <div class="kv" style="padding:0 0 8px"><span>Operation</span><b id="mn-op">—</b><span>Seed</span><b id="st-seed">—</b><span>Mission time</span><b id="mn-time">0:00</b></div>
   <div class="grid2"><button id="b-new" class="cmd"><b>⟳ New Scenario</b><span>New random Quick Mission (not counted in the career)</span></button>
   <button id="b-career" class="cmd"><b>🎖 Career</b><span id="mn-car">Roster, record, team level</span></button>
@@ -277,6 +279,9 @@ body.nogame .modal{background:transparent}
    call the public API at the bottom. Port this module 1:1 to GDScript/C#.
    Coordinates: integer grid cells (1 cell ≈ 1 m). Cell (x,y) centre = (x,y).
    ===================================================================== */
+/** Build version shown on the main menu — bump this one constant each build. */
+const GAME_VERSION = 'v18';
+
 const Core = (function () {
 'use strict';
 /** Rear row behind the suspect house: rear street (road + sidewalk) and a row of back-neighbour lots whose yards meet the target's back yard. */
@@ -321,7 +326,7 @@ const EQUIP = {
   lesslethal: { name: 'Less-Lethal Launcher',  short: '40mm LL',  pool: 2,  desc: 'Can incapacitate a hostile suspect; launches gas through windows.' },
   polecam:    { name: 'Mirror / Pole Camera',  short: 'Pole Cam', pool: 2,  desc: 'Peek under a door into the next room without opening it.' },
   drone:      { name: 'Micro Drone',           short: 'Drone',    pool: 1,  desc: 'Fast flying scout. Needs a tech operator.' },
-  robot:      { name: 'Ground Robot',          short: 'Robot',    pool: 1,  desc: 'Tracked camera robot. Needs a tech operator.' },
+  robot:      { name: 'Throwbot 2',            short: 'Throwbot', pool: 1,  desc: 'Small two-wheeled throwable camera robot. Needs a tech operator.' },
   medkit:     { name: 'Medkit',                short: 'Medkit',   pool: 3,  desc: 'With a medic: stabilises a casualty (stops the critical countdown) or buys extra time for a severe one.' },
   tphone:     { name: 'Throw Phone',           short: 'T-Phone',  pool: 2,  desc: 'Hard-case phone thrown through an opening or delivered by robot — opens a line without his number.' },
   bullhorn:   { name: 'Bullhorn',              short: 'Bullhorn', pool: 2,  desc: 'Portable loudspeaker: PA contact, call-outs and walk-out commands (cruisers have a built-in PA).' },
@@ -1321,8 +1326,8 @@ function visParams(u) {
       return { range: inside ? 9 : (hasSpec(u, 'marksman') ? 22 : 15), half: inside ? 1.4 : 1.25, near: 2.5 };
     case 'patrol': return { range: 13, half: 1.4, near: 1.5 };
     case 'cruiser': return { range: 13, half: 1.5, near: 2 };
-    case 'drone': return { range: 7, half: Math.PI, near: 7 };
-    case 'robot': return { range: 6, half: 1.6, near: 2 };
+    case 'drone': return u.landed ? { range: 4, half: 1.3, near: 1.5 } : { range: 7, half: Math.PI, near: 7 };
+    case 'robot': return u.big ? { range: 7, half: 1.6, near: 2 } : { range: 6, half: 1.6, near: 2 };
   }
   return { range: 8, half: 1.2, near: 1.5 };
 }
@@ -1888,6 +1893,101 @@ function dracoTick(c, o) {
   else { if (d.barricaded) d.barrKnown = true; log(`${c.name}: Draco arm pulling on ${d.name} — still holding${d.barricaded ? ' (barricaded)' : ''}.`); noise(mx, my, 12, 'ram'); fx('thud', mx, my); }
 }
 
+/* ---------- v18: device batteries (%), drone LAND, Throwbots, Large Robot, door locks,
+   side-visibility tracking (which sides of the house are seen) + its after-action scoring ---------- */
+const DEV_CFG = {
+  drone: { move: 8, hover: 5, land: 3 },   // % per turn: moved / hovering in place / landed and only observing
+  robot: { move: 5, still: 3 },            // Throwbot 2
+  big:   { move: 4, still: 2 },            // Large Robot (bigger battery pack)
+  lockExt: 0.95,                           // exterior doors locked
+  lockHome: 0.05,                          // unoccupied interior door with the homeowners' simple lock engaged
+};
+const SIDE_CFG = { unseenPer: 4, unseenCap: 150, containMax: 150, noEffort: -100 };
+function devLabel(u) { return u.kind === 'drone' ? 'Drone' : u.big ? 'Large Robot' : 'Throwbot'; }
+/** What a device did this turn and what it costs (battery %). */
+function devDrain(u) {
+  const moved = !!u.turnPos && (u.turnPos[0] !== u.x || u.turnPos[1] !== u.y);
+  if (u.kind === 'drone') return moved ? { c: DEV_CFG.drone.move, what: 'flying' } : u.landed ? { c: DEV_CFG.drone.land, what: 'landed' } : { c: DEV_CFG.drone.hover, what: 'hovering' };
+  const C = u.big ? DEV_CFG.big : DEV_CFG.robot; return moved ? { c: C.move, what: 'moving' } : { c: C.still, what: 'stationary' };
+}
+function newDevice(kind, x, y, dir, extra) {
+  const n = ++S.devSeq, d = Object.assign({ uid: 'D' + n, kind, name: (kind === 'drone' ? 'Drone ' : 'Throwbot ') + n, num: n, x, y, dir, orders: [], battery: 100, owner: null, status: 'ok', vis: [], turnPos: [x, y], landed: false }, extra || {});
+  if (d.big) d.name = 'Large Robot'; return d;
+}
+/** End-of-turn battery drain; frees the Large Robot operator when it stops. */
+function deviceTurn() {
+  for (const u of S.units) { if (u.kind !== 'drone' && u.kind !== 'robot') continue;
+    if (unitAlive(u)) { if (u.battery > 100 || u.battery === undefined) u.battery = 100;
+      const d = devDrain(u); u.battery = Math.max(0, u.battery - d.c); u.lastDrain = d; u.turnPos = [u.x, u.y];
+      if (u.battery <= 0) { u.status = 'down'; u.orders = []; log(`${u.name}: battery depleted.`); } }
+    if (u.big && !unitAlive(u) && u.op) releaseOperator(u); }
+}
+function releaseOperator(u) { const o = S.officers.find(q => q.id === u.op); if (o && o.status === 'operator') { o.status = 'staged'; o.opOf = null; log(`${o.name} is free again at primary staging.`, 'radio'); } u.op = null; }
+/* ---- Large Robot: driven from primary staging by a dedicated operator ---- */
+function bigRobotOperator() { const free = S.officers.filter(o => o.status === 'staged' && !o.team && (o.stage || 'primary') === 'primary');
+  return free.find(o => o.spec === 'tech') || free[0] || null; }
+function bigRobotWhyNot() {
+  if (S.phase !== 'planning') return 'Wait for the orders to resolve';
+  if (S.bigAvail === false) return 'No Large Robot in this unit\'s equipment';
+  if (S.units.some(u => u.big && unitAlive(u))) return 'The Large Robot is already deployed';
+  if (S.units.some(u => u.big && u.status === 'down')) return 'The Large Robot is out of action';
+  if (!bigRobotOperator()) return 'Needs a SWAT officer free at primary staging (not in a team) to drive it';
+  return null; }
+function deployBigRobot() {
+  const w = bigRobotWhyNot(); if (w) return { ok: false, reason: w };
+  const o = bigRobotOperator(), st = S.ext.staging; let at = [st.x, st.y];
+  if (S.block[idx(at[0], at[1])] || S.dyn[idx(at[0], at[1])]) { let best = null, bd = 1e9; for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const x = st.x + dx, y = st.y + dy;
+    if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H || S.block[idx(x, y)] || S.dyn[idx(x, y)] || roomAt(x, y) >= 0) continue; const d = Math.abs(dx) + Math.abs(dy); if (d < bd) { bd = d; best = [x, y]; } } if (best) at = best; }
+  const u = newDevice('robot', at[0], at[1], -Math.PI / 2, { big: true, op: o.id }); S.units.push(u);
+  o.status = 'operator'; o.opOf = u.uid; S.stats.bigRobot = true;
+  log(`Large Robot rolled off the truck at primary staging — ${o.name} (${SPECS[o.spec].name}) is driving it from the staging area and is tied up while he does.`, 'radio'); S.version++;
+  return { ok: true, uid: u.uid }; }
+function parkBigRobot(uid) { const u = unit(uid); if (!u || !u.big || !unitAlive(u)) return { ok: false, reason: 'No Large Robot' }; if (S.phase !== 'planning') return { ok: false, reason: 'Wait for the orders to resolve' };
+  u.status = 'parked'; u.orders = []; log(`${u.name}: parked — operator stands down.`, 'radio'); releaseOperator(u); S.version++; return { ok: true }; }
+/** Large Robot tries a door handle. Unlocked → opens. Locked or barricaded → fails (and now we know). */
+function openDoorTick(u, o) {
+  const d = S.doors[o.door]; if (!d || d.state !== 'closed') { popOrder(u); return; }
+  const sides = doorSides(d).filter(c => !S.block[idx(c[0], c[1])]), goal = (x, y) => sides.some(c => c[0] === x && c[1] === y);
+  if (!goal(u.x, u.y)) { const r = stepAlong(u, o, goal, 1); if (r === null) failOrders(u, 'cannot reach that door'); if (!r) return; }
+  const [mx, my] = doorMid(d); faceTo(u, Math.round(mx), Math.round(my));
+  if (!o.grip) { o.grip = 1; log(`${u.name}: arm on the handle of the ${d.name || 'door'}…`); fx('text', u.x, u.y, { text: 'TRYING HANDLE', color: '#c9b8ff' }); return; }
+  popOrder(u); d.lockKnown = true; S.stats.robotTries = (S.stats.robotTries || 0) + 1;
+  if (d.barricaded) { d.barrKnown = true; log(`${u.name}: the ${d.name || 'door'} will not move — it is BARRICADED from inside.`, 'alert'); noise(u.x, u.y, 4, 'door'); return; }
+  if (d.locked) { log(`${u.name}: the ${d.name || 'door'} is LOCKED — the arm cannot open it. Breach needed.`, 'alert'); noise(u.x, u.y, 3, 'door'); return; }
+  d.state = 'open'; d.known = true; noise(u.x, u.y, 3, 'door'); fx('text', u.x, u.y, { text: 'DOOR OPEN', color: '#3ef0a0' }); log(`${u.name}: ${d.name || 'door'} was unlocked — door OPEN.`, 'good');
+}
+/** Device-specific orders inside unitAct. Returns true when the tick is used. */
+function devAct(u, o) {
+  if (u.kind === 'drone' && o.type === 'land') { popOrder(u); if (!u.landed) { u.landed = true; log(`${u.name}: landed — camera only, saving battery.`, 'radio'); } return true; }
+  if (u.kind === 'drone' && o.type === 'move' && u.landed) { u.landed = false; log(`${u.name}: taking off.`); }
+  if (u.kind === 'robot' && o.type === 'opendoor') { openDoorTick(u, o); return true; }
+  return false; }
+/* ---- door locks (separate random stream: the map and the rest of the scenario stay identical) ---- */
+function setupLocks() { const r = makeRng(S.seed * 7907 + 29), sus = new Set(suspList().map(s => s.room));
+  for (const d of S.doors) {
+    if (d.exterior) { if (d.kind === 'garage' || d.barricaded || d.fortified) continue; d.locked = r.chance(DEV_CFG.lockExt); continue; }
+    const home = r.chance(DEV_CFG.lockHome); if (d.locked || d.barricaded || d.state !== 'closed' || d.rooms.some(q => sus.has(q))) continue;
+    if (home) { d.locked = true; d.homeLock = true; } } }
+/* ---- which sides of the house are seen (any officer, vehicle, sniper, drone or robot) ---- */
+const SIDE_KEYS = ['front', 'right', 'rear', 'left'];
+function houseSideAt(x, y) { const H = S.house; return y < H.y0 ? 'rear' : y > H.y1 ? 'front' : x < H.x0 ? 'left' : x > H.x1 ? 'right' : (y - H.y0 < H.y1 - y ? 'rear' : 'front'); }
+function sideSeen() { const sw = sideWatch(), seen = new Set(sw.watched), by = {};
+  for (const p of watchPts()) if (S.vis[idx(p.x, p.y)]) seen.add(p.side);
+  const all = sw.all; return { all, seen: all.filter(s => seen.has(s)), gaps: all.filter(s => !seen.has(s)), sides: SIDE_KEYS.map(k => ({ k, open: all.includes(k), seen: seen.has(k) })), full: all.length > 0 && all.every(s => seen.has(s)), by }; }
+function sideTurn() { const H = S.sideHist || (S.sideHist = { turns: 0, full: 0, miss: {}, last: -1 }); if (H.last === S.turn) return; H.last = S.turn; const v = sideSeen();
+  H.turns++; if (v.full) H.full++; v.gaps.forEach(g => H.miss[g] = (H.miss[g] || 0) + 1);
+  eachSp(sp => { if (sp.mode === 'barricaded') S.stats.barrEver = true; }); }
+function contactEffort() { const N = S.nego; return !!(N.attempts || N.everContact || N.contact || S.stats.challenged); }
+function sideScore(add) { const H = S.sideHist; if (!H || !H.turns) return;
+  const miss = Object.values(H.miss).reduce((a, b) => a + b, 0); if (miss) add(`Side of the house unseen (${miss} side-turn${miss > 1 ? 's' : ''})`, -Math.min(SIDE_CFG.unseenCap, miss * SIDE_CFG.unseenPer));
+  const share = H.full / H.turns; if (share > 0) add(`Visual containment ${Math.round(share * 100)}% of the mission`, Math.round(SIDE_CFG.containMax * share));
+  if (S.stats.barrEver && !contactEffort()) add('Barricade: no attempt to contact or call him out', SIDE_CFG.noEffort); }
+function sideDebrief() { const H = S.sideHist; if (!H || !H.turns) return [];
+  const m = SIDE_KEYS.filter(k => H.miss[k]).map(k => `${k} ${H.miss[k]}`).join(', ');
+  const out = [{ k: 'Side visibility', v: `All sides with openings in view ${Math.round(100 * H.full / H.turns)}% of the mission (${H.full}/${H.turns} turns). Turns a side went unseen: ${m || 'none'}.` }];
+  if (S.stats.barrEver) out.push({ k: 'Contact effort', v: contactEffort() ? 'Contact / call-out attempted.' : 'NONE — no phone, PA, throw-phone, call-out or verbal challenge on a barricaded subject.' });
+  return out; }
+
 /* =====================================================================
    CASUALTIES — injury severity, critical countdown, aid / rescue / evacuation.
    Rules only (no drawing). Neutral wording: critical, immobile, evacuated.
@@ -2210,7 +2310,7 @@ function robotPhoneGoal(room) {
 /** Team / robot execution of a throw-phone order (called from unitAct). */
 function tphoneAct(u, o, speed) {
   if (u.kind === 'team' && o.via === 'robot') { useItem(u, 'robot'); useItem(u, 'tphone'); const g = robotPhoneGoal(o.room);
-    const d = { uid: 'D' + (++S.devSeq), kind: 'robot', name: 'Robot ' + S.devSeq, num: S.devSeq, x: u.x, y: u.y, dir: u.dir, orders: [{ type: 'tphone', room: o.room, via: 'robot', doorway: g ? g.doorway : true }], battery: 10, owner: u.uid, status: 'ok', vis: [] };
+    const d = newDevice('robot', u.x, u.y, u.dir, { orders: [{ type: 'tphone', room: o.room, via: 'robot', doorway: g ? g.doorway : true }], owner: u.uid });
     S.units.push(d); log(`${u.name}: ${d.name} rolling out with a throw-phone.`, 'radio'); popOrder(u); return; }
   if (u.kind === 'robot') { const g = robotPhoneGoal(o.room); if (!g) { failOrders(u, 'no open way in'); return; }
     const r = stepAlong(u, o, g.fn, 1); if (r === null) { failOrders(u, 'no route to an opening'); return; } if (!r) return;
@@ -3546,7 +3646,7 @@ function encChoose(key, offId) { const it = encCur(); if (!it || it.done || S.ph
   const o = off(oid) || S.officers.find(q => q.id === oid), nm = o ? o.name : u.name, n0 = S.log.length;
   withSp(sp, () => { const M = mindOf(sp);
     if (!hostile()) { log('He is no longer a threat.', 'good'); return; }
-    if (ENC_OPTS[key].voice) { M.cmd[key] = (M.cmd[key] || 0) + 1; log(`${nm}: ${ENC_OPTS[key].label.replace(/^Voice: /, '')}`, 'radio'); encRespond(sp, u, key, it); return; }
+    if (ENC_OPTS[key].voice) { M.cmd[key] = (M.cmd[key] || 0) + 1; S.stats.challenged = true; log(`${nm}: ${ENC_OPTS[key].label.replace(/^Voice: /, '')}`, 'radio'); encRespond(sp, u, key, it); return; }
     switch (key) {
       case 'nego': sp.talk = clamp((sp.talk || 0) + 30, 0, 100); log(`${nm} (negotiator) talks to him from cover.`, 'radio'); encRespond(sp, u, 'nego', it); return;
       case 'hold': log(`${u.name} holds and observes.`, 'radio'); encRespond(sp, u, 'hold', it); return;
@@ -3684,8 +3784,8 @@ function planOrder(u, o, sx, sy, assume) {
       if (!p) return { ok: false, reason: 'No entry route — breach a door first' }; o.x = tc[0]; o.y = tc[1]; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
     case 'detonate': { const d = S.doors[o.door]; if (!d.charge && !u.orders.some(q => q !== o && q.type === 'breach' && q.door === o.door && q.hangOnly)) return { ok: false, reason: 'No charge hung on that door' };
       const [mx, my] = doorMid(d); const warn = d.charge && dist(sx, sy, mx, my) < CHARGE_SAFE ? 'Inside the safety distance — team will be dazed' : null; return { ok: true, path: [], end: [sx, sy], warn }; }
-    case 'mask': return { ok: true, path: [], end: [sx, sy] };
-    case 'breach': case 'polecam': { const d = S.doors[o.door]; const sides = doorSides(d).filter(c => cellOk(c[0], c[1], { avoidSuspect: true }) && !S.block[idx(c[0], c[1])]);
+    case 'mask': case 'land': return { ok: true, path: [], end: [sx, sy] };
+    case 'breach': case 'polecam': case 'opendoor': { const d = S.doors[o.door]; const sides = doorSides(d).filter(c => cellOk(c[0], c[1], { avoidSuspect: true }) && !S.block[idx(c[0], c[1])]);
       const isGoal = (x, y) => sides.some(c => c[0] === x && c[1] === y);
       const a2 = new Set(assume); a2.delete(o.door);
       const p = isGoal(sx, sy) ? [] : findPath(sx, sy, isGoal, Object.assign({}, mo, { assume: a2 }));
@@ -3756,7 +3856,9 @@ function orderReq(u, o) {
     if (o.type === 'move' && u.disabled) return 'Cruiser is disabled';
     if (o.type === 'exit' && !u.occ.length && !u.orders.some(q => q.type === 'move')) return 'Cruiser is empty';
   }
-  else if (!['move', 'hold'].includes(o.type)) return 'Devices can only Move';
+  else if (o.type === 'land') { if (u.kind !== 'drone') return 'Only drones can land'; if (u.landed) return 'Already landed'; }
+  else if (o.type === 'opendoor') { if (!u.big) return 'Only the Large Robot has an arm to open doors'; const d = S.doors[o.door]; if (!d) return 'Tap a door'; if (d.state !== 'closed') return 'That door is already open'; }
+  else if (!['move', 'hold'].includes(o.type)) return 'Devices can only Move' + (u.kind === 'drone' ? ' or Land' : u.big ? ' or Open Door' : '');
   return null;
 }
 function queueOrder(uid, o) {
@@ -3832,6 +3934,7 @@ const COMMANDS = {
   family:    { name: 'Family Interview', desc: 'His sister has reached the command post: likely his number and how he reacts under pressure.', not: ['drughouse', 'inmates'], avail: () => S.vacant ? 'No family — vacant house' : S.intel.family ? 'Already done' : S.turn < NEGO_CFG.familyTurn ? `Family arrive at ${elapsedAt(NEGO_CFG.familyTurn)}` : true },
   inmfamily: { name: 'Family Interview (homeowner)', desc: 'The family who fled is at the perimeter with patrol: full layout, the guns kept in the house, and the exact count.', only: 'inmates', avail: () => S.inmFamily && S.inmFamily.done ? 'Already done' : true },
   power:     { name: 'Cut Power', desc: 'Utility crew cuts power to the house: the security cameras go dark. They will notice (agitation up).', only: 'drughouse', avail: () => !S.power ? 'No cameras' : S.power.cut ? 'Power already cut' : S.turn < DRUG_CFG.powerFrom ? `Utility crew arrives at ${elapsedAt(DRUG_CFG.powerFrom)}` : true },
+  lrobot:    { name: 'Deploy Large Robot', desc: 'EOD-style tracked robot with an arm, driven from primary staging by a free SWAT officer (Tech preferred). The operator is tied up while driving. It can try door handles: unlocked doors open, locked or barricaded doors do not. Instant.', instant: true, avail: () => bigRobotWhyNot() || true },
   evacB:     { name: 'Evacuate Unit B', desc: 'Patrol walks the residents of the other unit of the duplex out through the far door (about 1 min). Do it before a long standoff.', when: () => !!S.duplex, avail: () => !S.duplex ? 'Not a duplex' : S.duplex.evac === 'empty' ? 'Unit B is empty' : S.duplex.evac === 'moving' ? 'Evacuation under way' : S.duplex.evac === 'done' ? 'Already evacuated' : true },
 };
 /** Is a command offered on this call (call type / structure)? */
@@ -3843,6 +3946,7 @@ function runCommand(key) {
   const sp = S.suspect, r = S.rng;
   switch (key) {
     case 'inmfamily': case 'power': case 'evacB': runCommand3(key); break;
+    case 'lrobot': deployBigRobot(); break;
     case 'interview': { S.intel.interview = true; S.intel.floors = true; S.intel.threat = 1; S.intel.weapon = true;
       S.rooms.filter(q => ['living', 'kitchen', 'dining', 'garage'].includes(q.type)).forEach(q => q.known = true);
       const srm = S.rooms[sp.room]; const side = (srm.y + srm.h / 2 < S.house.oy + S.house.H / 2 ? 'back' : 'front') + (srm.x + srm.w / 2 < (S.house.x0 + S.house.x1) / 2 ? '-left' : '-right');
@@ -3924,7 +4028,7 @@ function stepAlong(u, o, goalFn, speed = 1) {
       return null;
     }
     const [nx, ny] = p[0]; const e = edge(u.x, u.y, nx, ny);
-    if (e.t === 'D' && e.d.state === 'closed') { e.d.state = 'open'; e.d.known = true; faceTo(u, nx, ny); noise(nx, ny, 2, 'door'); log(`${u.name}: opening ${e.d.name || 'door'}.`); return false; }
+    if (e.t === 'D' && e.d.state === 'closed') { e.d.state = 'open'; e.d.known = true; e.d.lockKnown = true; faceTo(u, nx, ny); noise(nx, ny, 2, 'door'); log(`${u.name}: opening ${e.d.name || 'door'}.`); return false; }
     faceTo(u, nx, ny); u.x = nx; u.y = ny; u.waiting = false; u.moved = S.tick; if (u.slice) u.slice = null; // stepping off ends the pie slice
     if (roomAt(nx, ny) >= 0) break; // one cell per tick inside — careful movement
   }
@@ -3978,6 +4082,7 @@ function unitAct(u) {
     if (o.type === 'pa') { popOrder(u); paAct(u, o); return; }
     return;
   }
+  if (devAct(u, o)) return;
   if (u.kind === 'robot' && o.type === 'tphone') return tphoneAct(u, o, 1);
   if (u.perch && o.type !== 'shoot' && o.type !== 'hold' && o.type !== 'overwatch') { const pc = u.perch; u.perch = null; if (pc.entry) { u.x = pc.entry[0]; u.y = pc.entry[1]; log(`${u.name}: coming down from overwatch.`); return; } }
   if (o.type === 'overwatch') {
@@ -4007,8 +4112,7 @@ function unitAct(u) {
   if (o.type === 'tphone') return tphoneAct(u, o, speed);
   if (o.type === 'mask') { u.mask = o.on ? 'on' : 'off'; log(`${u.name}: masks ${o.on ? 'on' : 'off'}.`, 'radio'); popOrder(u); return; }
   if (o.type === 'hold') { if (o.x !== undefined) faceTo(u, o.x, o.y); u.holding = true; return; }
-  if (o.type === 'drone' || o.type === 'robot') { useItem(u, o.type); const d = { uid: 'D' + (++S.devSeq), kind: o.type, name: (o.type === 'drone' ? 'Drone ' : 'Robot ') + S.devSeq, num: S.devSeq,
-      x: u.x, y: u.y, dir: u.dir, orders: [{ type: 'move', x: o.x, y: o.y }], battery: o.type === 'drone' ? 6 : 10, owner: u.uid, status: 'ok', vis: [] };
+  if (o.type === 'drone' || o.type === 'robot') { useItem(u, o.type); const d = newDevice(o.type, u.x, u.y, u.dir, { orders: [{ type: 'move', x: o.x, y: o.y }], owner: u.uid });
     S.units.push(d); log(`${u.name}: ${d.name} deployed.`, 'radio'); popOrder(u); return; }
   if (o.type === 'detonate' && S.doors[o.door].charge) { detonateCharge(u, S.doors[o.door]); popOrder(u); return; }
   if (o.type === 'breach' && o.phase === 'standoff') { const d = S.doors[o.door];
@@ -4352,7 +4456,7 @@ function teamResponses1() {
     }
     if (!sees || !hostile() || sp.stun > 0) continue;
     const outside = roomAt(u.x, u.y) < 0; if (outside && u.chTurn === S.turn) continue; // from outside: one shouted challenge per turn
-    if (u.challenged !== S.tick) { u.challenged = S.tick; if (outside) u.chTurn = S.turn;
+    if (u.challenged !== S.tick) { u.challenged = S.tick; S.stats.challenged = true; if (outside) u.chTurn = S.turn;
       const comply = ((outside ? NEGO_CFG.outsideChallenge : 1) * 0.05 + S.units.filter(q => q.kind === 'team' && q.vis && q.vis.includes(idx(sp.x, sp.y))).length * 0.05) * (outside ? 1 : 0.45) + sp.talk / 250 - sp.agit / 300;
       if (S.rng.chance(comply)) { if (outside) { log(`${u.name}: "POLICE! DROP IT AND COME OUT!" — he shouts that he is coming out.`, 'good'); walkout('callout'); break; }
         surrender(`${u.name}: "POLICE! DROP IT!" — ${multiSp() ? spName().toLowerCase() : 'suspect'} drops the weapon and gets on the ground.`); u.detain = myKey; continue; }
@@ -4380,9 +4484,9 @@ function checkEnd() {
       text: `Resolved after ${tMin(S.turn + 1)} (${elapsedAt(S.turn + 1)}). Method: ${multi ? L.map(s => spName(s) + ' — ' + (s.method || '?')).join('; ') : S.stats.method}. Officers hit: ${S.stats.down}.` }; }
   if (S.phase === 'over') finishMission();
 }
-function finishMission() { casualtyResolve(S.result.win); S.result.debrief = debrief(); log(S.result.title, S.result.win ? 'good' : 'bad'); S.version++; }
+function finishMission() { sideTurn(); casualtyResolve(S.result.win); S.result.debrief = debrief(); log(S.result.title, S.result.win ? 'good' : 'bad'); S.version++; }
 /** Units that can still act on scene (or are still coming). */
-function forceLeft() { const offs = S.officers.filter(o => o.status === 'enroute' || o.status === 'staged').length;
+function forceLeft() { const offs = S.officers.filter(o => o.status === 'enroute' || o.status === 'staged' || o.status === 'operator').length;
   const field = S.units.filter(u => unitAlive(u) && (u.kind === 'team' ? teamOk(u).length > 0 : u.kind === 'patrol')).length; return offs + field; }
 /** Player ends the operation without a resolution (e.g. no mobile officers left). */
 function withdraw() { if (S.phase === 'over') return { ok: false, reason: 'Mission already over' };
@@ -4390,9 +4494,10 @@ function withdraw() { if (S.phase === 'over') return { ok: false, reason: 'Missi
   S.result = { win: false, title: 'OPERATION WITHDRAWN', text: `Command ended the operation after ${tMin(S.turn)} without taking ${multiSp() ? 'every suspect' : 'the suspect'} into custody${multiSp() ? ` (${suspList().filter(s => s.mode === 'detained').length} of ${suspList().length} in custody)` : sp.mode === 'incapacitated' ? ' (suspect down but not secured)' : ''}. Scene handed over.` };
   log('Command: withdraw — all units pull back to the perimeter.', 'bad'); finishMission(); return { ok: true }; }
 function endTurn() {
+  sideTurn();
   S.turn++; S.phase = 'planning'; S.tick = 0; S.peek = []; syncAll(); // weapons become ready again
-  for (const u of S.units) { u.orders = u.orders.filter(o => o.regroup === undefined && o.type !== 'hold' && o.type !== 'shoot' && !DEVICE_ORDERS.includes(o.type)); u.holding = false; u.waiting = false; u.exiting = null;
-    if ((u.kind === 'drone' || u.kind === 'robot') && unitAlive(u)) { u.battery--; if (u.battery <= 0) { u.status = 'down'; log(`${u.name}: battery depleted.`); } } }
+  for (const u of S.units) { u.orders = u.orders.filter(o => o.regroup === undefined && o.type !== 'hold' && o.type !== 'shoot' && !DEVICE_ORDERS.includes(o.type)); u.holding = false; u.waiting = false; u.exiting = null;}
+  deviceTurn();
   gasTurn(); eachSp(suspectGasTurn); casualtyTurn(); negoTurn(); eachSp(sceneTurn); types3Turn();
   if (S.intel.blueprint && S.intel.blueprint === S.turn) { S.rooms.forEach(q => q.known = true); S.doors.forEach(d => d.known = true); S.intel.floors = true; log('Blueprints received — full floor plan on screen.', 'intel'); }
   for (const o of S.officers) { if (o.status === 'enroute') { if (o.eta <= S.turn) { o.status = 'staged'; log(`PAGER: ${o.name} (${SPECS[o.spec].name}) on scene at staging.`, 'pager'); S.events.push({ type: 'pager' }); } } }
@@ -4409,7 +4514,7 @@ function debrief() {
   if (S.result && S.result.win && sp.mode === 'detained' && !N.how && N.outcome !== 'Walk-out ambush') neg += ` — resolved tactically (${S.stats.method})`;
   out.push({ k: 'Negotiation', v: `${neg}. Attempts ${N.attempts}, refusals ${N.refusals}, dialogue rounds ${N.rounds}.` });
   if (N.protocol) { const P = N.protocol; out.push({ k: 'Walk-out protocol', v: `${P.score}/4 — ${['cover', 'shield', 'overwatch', 'commands'].map(k => (P[k] ? '✓ ' : '✗ ') + k).join(', ')}${N.ambush ? '. AMBUSH' + (N.ambush.hit ? ' — an officer was hit' : ' — no officer hit') : ''}.` }); }
-  out.push(...sceneDebrief());
+  out.push(...sceneDebrief()); out.push(...sideDebrief());
   const own = S.cas.filter(c => c.who !== 'suspect'), cnt = st => own.filter(c => c.state === st).length;
   out.push({ k: 'Casualties', v: own.length ? `${own.length} hit — evacuated ${cnt('evacuated')}, lost ${cnt('lost')}, killed in action ${cnt('kia')}.` : 'None.' });
   own.forEach(c => out.push({ k: '  ' + c.name, v: sevWord(c) + (c.initial ? ' (hit before SWAT arrived)' : '') }));
@@ -4441,6 +4546,7 @@ function missionScore() {
   const init = S.cas.find(c => c.initial && c.state !== 'kia'); if (init && (init.state === 'evacuated' || init.state === 'transport' || init.stable)) add('Rescued officer down on arrival', SCORE.rescued);
   typeScore(add); typeScore3(add);
   if (S.scene && S.scene.gap0.length && S.scene.gapClosed != null && !S.scene.slipTried) add('Closed perimeter gap', SCORE.gapClosed);
+  sideScore(add);
   if (encOn()) encScore(items, add);
   const sc = items.reduce((a, i) => a + i.pts, 0), sg = v => (v > 0 ? '+' : '−') + Math.abs(v);
   const grade = sc >= 1000 ? 'Medal of Valor' : sc >= 650 ? 'Unit Commendation' : sc >= 350 ? 'Satisfactory' : sc >= 0 ? 'Needs Review' : 'Board of Inquiry';
@@ -4553,7 +4659,8 @@ function newGame(seed, opts) {
     const X = S.ext; let best = null; for (let d = 7; d < 22 && !best; d++) for (const dx of [-d, d]) { const x = X.staging.x + dx, y = S.geo.ST + 4; if (S.drive[idx(x, y)] && !carClash(x, y, null)) { best = [x, y]; break; } }
     if (best) { S.units.push({ uid: 'C4', kind: 'cruiser', name: 'BearCat', num: 4, x: best[0], y: best[1], dir: 0, occ: [], orders: [], status: 'ok', hits: 0, marks: [], vis: [], disabled: false, armored: true }); rebuildDyn(); } }
   S.stype = typeForSeed(seed, S.opts.stype); applyScenType();
-  setupSuspects(); applyTypeExtras(); // tags the suspect; 'flee' calls may add more (1-4); armor per suspect
+  setupSuspects(); applyTypeExtras(); setupLocks();
+  S.bigAvail = !(S.opts && S.opts.gear && S.opts.gear.robot === 0); // v18: no Large Robot before the unit has robots. setupSuspects tags the suspect; 'flee' calls may add more (1-4); armor per suspect
   setupStaging2(); S.ems = defaultEMS(); initNego(seed); makeBrief();
   updateVision();
   log(`${S.opName} — seed ${seed}. ${S.house.archName}, ${S.geo.name}.`, 'system');
@@ -4567,7 +4674,7 @@ function newGame(seed, opts) {
   return S;
 }
 
-return { cornerAt, encSliceSees, doorSides, spHostile, dracoSpots, dracoContact, dracoFit, dracoSpotAt, openingNormal, ENC_CFG, ENC_TRAITS, ENC_POSES, ENC_OPTS, BLIND_OPTS, encOn, encWord, mindOf, encSeers, encPose, encRead, encDescribe, encWho, encOdds, encOptions, encBuild, encPause, encEndTurn, encCur, encChoose, encNext, encFinal, encExchange, encFirstP, encMarkDev, encJustified, encThreshold, blindChoose, encScore, encDebrief, encWithdraw, spAt, DRUG_CFG, INMATE_CFG, DUPLEX_CFG, TRAILER_CFG, DOOR_MUL, doorMul, exitWin, roomInPlay, camSees, camTurn, duplexTurn, partyBreach, thinWallTurn, types3Turn, cmdShown, structFor, STRUCT_CFG, STRUCT_KEYS, ownRooms, isOwnRoom, MULTI_TYPES, multiType, PAROLE_CFG, SOVCIT_CFG, BASE_KEYS, hiddenNow, applyTypeExtras, NEGO_FLAVOR, SCEN_TYPES, SCEN_KEYS, typeForSeed, stypeCfg, resolvedNoForce, onNeighborSide, typeFireMul, LEGAL_TXT, typeDebrief, SHOOT_CFG, MAX_RETURN_FIRE, returnFirers, returnFire, memberWeapon, primaryOf, suspectTick, suspectFire, TASER_CFG, doorExposed, FORM_CFG, wallSpots, doorStack, pickVictim, LL_CFG, DEVICE_ORDERS, deviceUser, deviceWhyNot, deviceShotReq, deviceChance, ARMOR, ARMOR_CFG, SHIELDS, SHIELD_CFG, SUSPECT_CAL, armorOf, shieldOf, armorHit, shotOfficer, suspectArmorStops, hasShield, teamArmor, revealSuspectArmor, officerDown, suspectHit, fireAt, DRACO_CFG, bearcat, installTicks, dracoTick, passE, edge, dracoTargetReq, openingMid,
+return { watchPts, GAME_VERSION, DEV_CFG, SIDE_CFG, SIDE_KEYS, devLabel, devDrain, sideSeen, houseSideAt, bigRobotWhyNot, bigRobotOperator, deployBigRobot, parkBigRobot, contactEffort, setupLocks, cornerAt, encSliceSees, doorSides, spHostile, dracoSpots, dracoContact, dracoFit, dracoSpotAt, openingNormal, ENC_CFG, ENC_TRAITS, ENC_POSES, ENC_OPTS, BLIND_OPTS, encOn, encWord, mindOf, encSeers, encPose, encRead, encDescribe, encWho, encOdds, encOptions, encBuild, encPause, encEndTurn, encCur, encChoose, encNext, encFinal, encExchange, encFirstP, encMarkDev, encJustified, encThreshold, blindChoose, encScore, encDebrief, encWithdraw, spAt, DRUG_CFG, INMATE_CFG, DUPLEX_CFG, TRAILER_CFG, DOOR_MUL, doorMul, exitWin, roomInPlay, camSees, camTurn, duplexTurn, partyBreach, thinWallTurn, types3Turn, cmdShown, structFor, STRUCT_CFG, STRUCT_KEYS, ownRooms, isOwnRoom, MULTI_TYPES, multiType, PAROLE_CFG, SOVCIT_CFG, BASE_KEYS, hiddenNow, applyTypeExtras, NEGO_FLAVOR, SCEN_TYPES, SCEN_KEYS, typeForSeed, stypeCfg, resolvedNoForce, onNeighborSide, typeFireMul, LEGAL_TXT, typeDebrief, SHOOT_CFG, MAX_RETURN_FIRE, returnFirers, returnFire, memberWeapon, primaryOf, suspectTick, suspectFire, TASER_CFG, doorExposed, FORM_CFG, wallSpots, doorStack, pickVictim, LL_CFG, DEVICE_ORDERS, deviceUser, deviceWhyNot, deviceShotReq, deviceChance, ARMOR, ARMOR_CFG, SHIELDS, SHIELD_CFG, SUSPECT_CAL, armorOf, shieldOf, armorHit, shotOfficer, suspectArmorStops, hasShield, teamArmor, revealSuspectArmor, officerDown, suspectHit, fireAt, DRACO_CFG, bearcat, installTicks, dracoTick, passE, edge, dracoTargetReq, openingMid,
   REAR_CFG, REAR_OFF, reach, newGame, get state() { return S; }, MULTI_CFG, suspList, multiSp, spName, spState, suspectCountInfo, fleeCount, patrolReport, suspById, withSp, eachSp, spHostile, spActive, setLead, MAP_W, MAP_H, TICKS, LOSE_DOWN, SCORE, withdraw, forceLeft, updateVision, computeVis, checkEnd, EQUIP, SPECS, QUALS, WEAPONS, SUSPECT_WEAPONS, STANCES, COVER_NAMES, COMMANDS, idx, roomAt, edge, los, losEx, findPath, planFor, queueOrder, undoOrder, clearOrders, AFTER_CFG, AFTER_ORDERS, setAfter, afterOrders, afterRoom, regroupSpot, regroupForm, startRegroup, roomDoorCells, addrLabels, ADDR_CFG, neighbourAddr,
   setCommand, execute, stepTick, formTeam, assign, equip, renameTeam, intelInfo, unit, off, teamOk, hasSpec, teamSkill, nearStaging, orderReq, setStance, BREACH, CHARGE_SAFE, breachEst, breachMethods, breachCan, defaultMethod, doorMid, gasAt, gasTurn, gasDeploy, gasCond, gasExpose, suspectGas, suspectGasTurn, masked, impairAcc, impairVis, donMasks, detonateCharge, dist, hitChance, coverInfo, expoAt, computeExpo,
   validateHouse, patrolStartOk, patrolCoverKind, suspSees, houseRectDist, onProperty, suspEyePts, vehId, vehDist, vehNear, VEH_CFG, PATROL_CFG, GEO_CFG, downedSpot, losEx, sceneTurn, validateWorld, footprint, carAxis, houseSideOf, exitCell, spotterOf, perchAt, owCone, weaponOf, onFoot, skillOf, houseCenter, carAt, snapCover, shieldAt, validateContain, COVER_CFG, exposedOrders, ITEM_CFG, INV_CFG, invAct, invView, invOf, isReady, teamWeapon, syncEquip, setTeamOrder, atEquipment, stagePos, CAR_SEATS, carSeats, seatsUsed, TURN_SEC, missionScore, careerSummary, ACT_XP, xpAct, xpSummary, callState, preview, cornerAt, cornerAvail, CORNER_CFG, FIRE_CFG, fireImpair, formationFor, FORM_CFG, initialArrivals, ARRIVE_CFG, mmss, tDur, tMin, clockAt, elapsedAt, sideWatch, watchAt, houseSides, statusCheck, review911, roadblockHeld, withVirtualCar, SCENE_CFG, VARIANT_TXT, setupScene, sceneDebrief, T_HIT, T_TRY,
@@ -5096,6 +5203,15 @@ function drawStruct(g, now) { const S = Core.state, H = S.house;
       const t = 'PARTY WALL BREACHED'; g.font = `800 ${CS * 0.26}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; const tw = g.measureText(t).width + 12, ty = ya - CS * 0.45;
       g.fillStyle = 'rgba(60,20,10,.88)'; rr(g, hx - tw / 2, ty - 10, tw, 20, 5); g.fill(); g.fillStyle = '#ffb020'; g.fillText(t, hx, ty + 1); } }
 }
+/** v18: coloured strip along each outside wall of the residence — green = that side is seen now, red = unseen, grey = no openings. */
+let sideEdgeCache = null;
+function drawSideEdges(g) { const S = Core.state; if (!S || !S.house) return; const key = S.seed + ':' + S.rooms.length;
+  if (!sideEdgeCache || sideEdgeCache.key !== key) { const E = []; for (const rm of S.rooms) for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++)
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (Core.roomAt(nx, ny) >= 0) continue; E.push({ x, y, dx, dy, side: Core.houseSideAt(nx, ny) }); }
+    sideEdgeCache = { key, E }; }
+  const v = Core.sideSeen(), st = {}; v.sides.forEach(q => st[q.k] = q); const col = { g: 'rgba(62,240,160,.85)', r: 'rgba(255,59,78,.85)', n: 'rgba(120,132,146,.55)' };
+  for (const e of sideEdgeCache.E) { const q = st[e.side]; g.fillStyle = !q || !q.open ? col.n : q.seen ? col.g : col.r; const off = 9, T = 5;
+    if (e.dx) { const ex = (e.dx > 0 ? e.x + 1 : e.x) * CS + e.dx * off; g.fillRect(ex - T / 2, e.y * CS, T, CS); } else { const ey = (e.dy > 0 ? e.y + 1 : e.y) * CS + e.dy * off; g.fillRect(e.x * CS, ey - T / 2, CS, T); } } }
 function drawDoors(g, now) {
   const S = Core.state;
   const cand = view.sel && (view.mode === 'breach' || view.mode === 'polecam' || view.mode === 'charge' || view.mode === 'detonate');
@@ -5106,7 +5222,7 @@ function drawDoors(g, now) {
     if (d.kind === 'garage') { if (d.state === 'breached') { g.strokeStyle = '#ffb020'; g.setLineDash([6, 5]); g.lineWidth = 4; g.beginPath(); g.moveTo(0, 0); g.lineTo(L2, 0); g.stroke(); g.setLineDash([]); }
       else { g.fillStyle = '#8b939e'; g.fillRect(0, -5, L2, 10); g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1; for (let x = 8; x < L2; x += 10) { g.beginPath(); g.moveTo(x, -5); g.lineTo(x, 5); g.stroke(); } } }
     else if (d.state === 'closed') { g.fillStyle = d.steel ? '#6f7882' : d.barricaded && d.known ? '#8a5a3a' : '#a37b55'; g.fillRect(1, -4, L2 - 2, 8); if (d.steel) { g.fillStyle = 'rgba(255,255,255,.25)'; for (let x = 5; x < L2 - 3; x += 7) g.fillRect(x, -3, 1.5, 1.5), g.fillRect(x, 1.5, 1.5, 1.5); } g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.5; g.strokeRect(1, -4, L2 - 2, 8);
-      if (d.locked && d.known) { g.fillStyle = '#ffd36b'; g.beginPath(); g.arc(L2 - 7, 0, 2.5, 0, 7); g.fill(); }
+      if (d.locked && d.known && (d.lockKnown || !d.exterior && !d.homeLock)) { g.fillStyle = '#ffd36b'; g.beginPath(); g.arc(L2 - 7, 0, 2.5, 0, 7); g.fill(); }
       if (d.barricaded && d.known) { g.strokeStyle = '#5a3a22'; g.lineWidth = 3; g.beginPath(); g.moveTo(4, -oy * 8 - 3); g.lineTo(L2 - 4, -oy * 8 + 3); g.moveTo(4, -oy * 8 + 3); g.lineTo(L2 - 4, -oy * 8 - 3); g.stroke(); } }
     else if (d.state === 'open') { g.strokeStyle = 'rgba(190,160,120,.35)'; g.lineWidth = 1; g.setLineDash([3, 3]); g.beginPath(); g.arc(0, 0, L2 - 2, 0, Math.PI / 2); g.stroke(); g.setLineDash([]);
       g.fillStyle = '#a37b55'; g.fillRect(-3, 0, 6, L2 - 2); }
@@ -5120,6 +5236,11 @@ function drawDoors(g, now) {
     if (cand && d.state === 'closed') { const p = 0.5 + 0.5 * Math.sin(now / 220); g.strokeStyle = `rgba(255,176,32,${0.4 + 0.5 * p})`; g.lineWidth = 2.5; g.beginPath(); g.arc(L2 / 2, 0, CS * (0.55 + 0.15 * p), 0, 7); g.stroke(); }
     if (view.hoverDoor === d.id) { g.strokeStyle = '#ffffff'; g.lineWidth = 2; g.beginPath(); g.arc(L2 / 2, 0, CS * 0.7, 0, 7); g.stroke(); }
     g.restore(); }
+  // v18: every intact window in light grey (doors stay brown) so openings read on the roof view and on phones
+  for (const w of S.windows) { if (w.broken) continue; for (const [cx, cy, ox, oy] of w.edges) { const vert = cx !== ox, px = (Math.max(cx, ox) + (vert ? 0 : 0.5)) * CS, py = (Math.max(cy, oy) + (vert ? 0.5 : 0)) * CS, L = CS - 8, T = 6;
+    g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(px - (vert ? T / 2 + 1 : L / 2 + 1), py - (vert ? L / 2 + 1 : T / 2 + 1), vert ? T + 2 : L + 2, vert ? L + 2 : T + 2);
+    g.fillStyle = '#c9ced6'; g.fillRect(px - (vert ? T / 2 : L / 2), py - (vert ? L / 2 : T / 2), vert ? T : L, vert ? L : T); } }
+  drawSideEdges(g);
   for (const w of S.windows) { if (!w.broken) continue; for (const [cx, cy, ox, oy] of w.edges) { const px = (Math.max(cx, ox) + (cx === ox ? 0.5 : 0)) * CS, py = (Math.max(cy, oy) + (cy === oy ? 0.5 : 0)) * CS;
     if (w.cleared) { const vert = cx !== ox; g.fillStyle = 'rgba(20,14,8,.95)'; g.fillRect(px - (vert ? 3 : CS / 2), py - (vert ? CS / 2 : 3), vert ? 6 : CS, vert ? CS : 6); g.strokeStyle = '#ffb020'; g.lineWidth = 1.5; g.strokeRect(px - (vert ? 3 : CS / 2), py - (vert ? CS / 2 : 3), vert ? 6 : CS, vert ? CS : 6); } // torn-out opening (Draco)
     g.fillStyle = 'rgba(180,230,255,.7)'; for (let k = 0; k < 6; k++) g.fillRect(px + Math.cos(k * 1.7) * (4 + k * 2), py + Math.sin(k * 1.7) * (4 + k * 2), 3, 2); } }
@@ -5264,6 +5385,24 @@ function teamShield(u) { const s = sz(); let [ux, uy] = posOf(u.uid, u.x, u.y); 
 function inCarPos(u) { const c = Core.unit(u.inCar); if (!c) return null; const i = Math.max(0, c.occ.indexOf(u.uid)), n = c.occ.length; const [cx, cy] = posOf(c.uid, c.x, c.y);
   return [cx + (i - (n - 1) / 2) * 1.1, cy - (u.kind === 'team' ? 0.2 : 0)]; }
 function onFootVisible(u) { return !(u.kind === 'patrol' && u.inCar) && !(u.kind === 'team' && !u.deployed && false); }
+/** v18 device icons (top-down): quadcopter drone, Throwbot 2 (two-wheeled dumbbell), Large Robot (tracked EOD robot with an arm). */
+function devIcon(g, u, x, y, r, now) { const d = dirOf(u.uid, u.dir || 0);
+  g.save(); g.translate(x, y); g.lineJoin = 'round';
+  if (u.kind === 'drone') { const R = r * 1.15, spin = u.landed ? 0 : now / 60;
+    g.lineWidth = 2.4; g.beginPath(); for (const a of [0.785, 2.356]) { g.moveTo(Math.cos(a) * R, Math.sin(a) * R); g.lineTo(-Math.cos(a) * R, -Math.sin(a) * R); } g.stroke();
+    for (const a of [0.785, 2.356, 3.927, 5.498]) { const px = Math.cos(a) * R, py = Math.sin(a) * R; g.fillStyle = u.landed ? 'rgba(30,22,54,.9)' : 'rgba(167,139,250,.28)'; g.beginPath(); g.arc(px, py, r * 0.55, 0, 7); g.fill(); g.lineWidth = 1.6; g.stroke();
+      if (!u.landed) { g.beginPath(); g.moveTo(px + Math.cos(spin + a) * r * 0.5, py + Math.sin(spin + a) * r * 0.5); g.lineTo(px - Math.cos(spin + a) * r * 0.5, py - Math.sin(spin + a) * r * 0.5); g.stroke(); } }
+    g.rotate(d); g.fillStyle = '#1e1636'; rr(g, -r * 0.42, -r * 0.32, r * 0.84, r * 0.64, 3); g.fill(); g.lineWidth = 2; g.stroke(); g.fillStyle = '#e8dcff'; g.beginPath(); g.arc(r * 0.36, 0, r * 0.14, 0, 7); g.fill(); }
+  else if (!u.big) { g.rotate(d); const W = r * 0.55, Hh = r * 0.95; // Throwbot 2: two big wheels joined by a narrow body, tail behind
+    g.fillStyle = '#1e1636'; g.lineWidth = 2; for (const sy of [-1, 1]) { rr(g, -W, sy * Hh - (sy > 0 ? r * 0.55 : 0) - (sy < 0 ? 0 : 0), W * 2, r * 0.55, r * 0.25); g.fill(); g.stroke(); }
+    g.fillRect(-r * 0.28, -Hh + r * 0.5, r * 0.56, (Hh - r * 0.5) * 2); g.strokeRect(-r * 0.28, -Hh + r * 0.5, r * 0.56, (Hh - r * 0.5) * 2);
+    g.beginPath(); g.moveTo(-r * 0.28, 0); g.lineTo(-r * 1.1, 0); g.lineWidth = 1.6; g.stroke(); g.fillStyle = '#e8dcff'; g.beginPath(); g.arc(r * 0.18, 0, r * 0.12, 0, 7); g.fill(); }
+  else { g.rotate(d); const L = r * 1.3, T = r * 0.38; // Large Robot: two tracks, body, arm forward with a gripper
+    g.fillStyle = '#1e1636'; g.lineWidth = 2; for (const sy of [-1, 1]) { rr(g, -L, sy * (r * 0.62) - T / 2, L * 2, T, T / 2); g.fill(); g.stroke(); g.lineWidth = 1; for (let k = -3; k <= 3; k++) { g.beginPath(); g.moveTo(k * L / 3.6, sy * r * 0.62 - T / 2); g.lineTo(k * L / 3.6, sy * r * 0.62 + T / 2); g.stroke(); } g.lineWidth = 2; }
+    rr(g, -L * 0.7, -r * 0.42, L * 1.3, r * 0.84, 3); g.fill(); g.stroke();
+    g.lineWidth = 2.6; g.beginPath(); g.moveTo(-L * 0.25, 0); g.lineTo(L * 0.55, -r * 0.15); g.lineTo(L * 1.15, 0); g.stroke(); g.fillStyle = '#e8dcff'; g.beginPath(); g.arc(-L * 0.25, 0, r * 0.2, 0, 7); g.fill();
+    g.lineWidth = 2; g.beginPath(); g.moveTo(L * 1.15, -r * 0.3); g.lineTo(L * 1.4, -r * 0.3); g.moveTo(L * 1.15, r * 0.3); g.lineTo(L * 1.4, r * 0.3); g.moveTo(L * 1.15, -r * 0.3); g.lineTo(L * 1.15, r * 0.3); g.stroke(); }
+  g.restore(); }
 function drawUnits(g, now) {
   const S = Core.state, s = sz(), plan = S.phase === 'planning';
   for (const u of S.units) { if (u.kind === 'team' || u.kind === 'cruiser') continue; if (u.kind === 'patrol' && u.inCar && !inCarPos(u)) continue;
@@ -5277,10 +5416,9 @@ function drawUnits(g, now) {
       if (!down && !u.inCar) { coverBadge(g, x + r + 2, y + r - 2, Core.coverInfo(u.x, u.y), s); if ((u.impair || 0) > 0.05) badge(g, x - r - 2, y - r, '☁', '#cfe8b0', '#1a2a10', s); }
       if (!down && cam.z > 0.3) { const tag = u.panic > 0 ? 'PANIC' : (u.impair || 0) > 0.3 ? 'COUGHING' : u.retreating ? 'FALLING BACK' : ''; if (tag) { g.fillStyle = u.panic > 0 ? '#ffb020' : '#cfe8b0'; g.font = `700 ${9 * s}px system-ui,sans-serif`; g.fillText(tag, x, y - r - 9 * s); } } }
     else { if (down) continue; const r = 9 * s; g.save(); g.shadowColor = COL.violet; g.shadowBlur = 12; g.fillStyle = '#1e1636'; g.strokeStyle = COL.violet; g.lineWidth = 2;
-      if (u.kind === 'drone') { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); for (const a of [0.785, 2.356, 3.927, 5.498]) { g.beginPath(); g.arc(x + Math.cos(a) * r * 1.2, y + Math.sin(a) * r * 1.2, r * 0.45, 0, 7); g.stroke(); } }
-      else { rr(g, x - r, y - r * 0.8, r * 2, r * 1.6, 3); g.fill(); g.stroke(); }
-      g.restore(); g.fillStyle = '#e8dcff'; g.font = `700 ${9 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(u.kind === 'drone' ? 'D' : 'R', x, y + 0.5);
-      g.fillStyle = 'rgba(232,220,255,.8)'; g.font = `600 ${8 * s}px system-ui,sans-serif`; g.fillText('⚡' + u.battery, x, y + r + 9 * s);
+      devIcon(g, u, x, y, r, now); g.restore();
+      const bc = u.battery <= 20 ? '#ff6b7a' : u.battery <= 45 ? '#ffb020' : '#c9f5dd', bt = (u.big ? 'LR ' : '') + u.battery + '%' + (u.landed ? ' ⏬' : '');
+      g.font = `700 ${8.5 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; const tw = g.measureText(bt).width + 8; g.fillStyle = 'rgba(4,12,24,.8)'; rr(g, x - tw / 2, y + r * 1.45 + 2 * s, tw, 11 * s, 4); g.fill(); g.fillStyle = bc; g.fillText(bt, x, y + r * 1.45 + 7.5 * s);
       if (sel) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r + 7, 0, 7); g.stroke(); } } }
   // cruiser occupant badges
   for (const c of S.units) { if (c.kind !== 'cruiser') continue; const [ux, uy] = posOf(c.uid, c.x, c.y); const [x, y] = toScreen(ux + 0.5, uy + 0.5); const n = (c.occ || []).length;
@@ -5639,19 +5777,22 @@ const ACTS = [
   { k: 'exit-house', ic: '⇱', name: 'Exit · House', key: 'E', kinds: 'incar', tip: 'Occupants get out on the house side (fast, but exposed)', instant: true },
   { k: 'exit-safe', ic: '⇲', name: 'Exit · Safe', key: 'Q', kinds: 'incar', tip: 'Occupants get out on the far side, behind the car body (a driver sliding across takes +1 tick)', instant: true },
   { k: 'hold', ic: '■', name: 'Hold', key: 'H', kinds: 'team patrol incar drone robot', tip: 'Hold position for the rest of this 30 s', instant: true },
+  { k: 'land', ic: '⏬', name: 'Land', key: 'K', kinds: 'drone', tip: 'Set the drone down where it is: it only watches (short, narrow camera view) and drains 3%/turn instead of 5% hovering or 8% flying. Any Move takes off again', instant: true },
+  { k: 'opendoor', ic: '⚿', name: 'Open Door', key: 'O', kinds: 'robot', tip: 'Large Robot only: tap a closed door — it drives there and tries the handle with its arm. Unlocked doors open; locked or barricaded doors do not (and now you know)' },
+  { k: 'park', ic: '⏏', name: 'Park', key: 'Q', kinds: 'robot', tip: 'Large Robot only: park it and free its operator back at primary staging', instant: true },
   { k: 'polecam', ic: '◉', name: 'Pole Cam', key: 'P', kinds: 'team', tip: 'Tap a door to look under it', eq: 'polecam' },
   { k: 'drone', ic: '✈', name: 'Drone', key: 'D', kinds: 'team', tip: 'Tap a spot to fly the micro-drone there', eq: 'drone' },
-  { k: 'robot', ic: '⛭', name: 'Robot', key: 'R', kinds: 'team', tip: 'Tap a spot to drive the robot there', eq: 'robot' },
+  { k: 'robot', ic: '⛭', name: 'Throwbot', key: 'R', kinds: 'team', tip: 'Tap a spot: the team throws a Throwbot 2 there (small two-wheeled camera robot). Battery 100%: −5%/turn moving, −3%/turn stationary', eq: 'robot' },
   { k: 'pa', ic: '📢', name: 'PA Contact', key: 'L', kinds: 'team incar', tip: 'Loudspeaker: ask him to pick up / talk (in range of the house). He may yell from a window or door — or fire at the voice', instant: true, sep: true },
   { k: 'callout', ic: '📣', name: 'Call Out', key: 'Y', kinds: 'team incar', tip: 'Contain & call out: order him out with hands up over the PA. Low odds; better with full containment, gas or rapport', instant: true },
   { k: 'tphone', ic: '☎', name: 'Throw Phone', key: 'J', kinds: 'team', tip: 'Tap a room: the team approaches an opening (open door / broken window) and throws the phone in. Can be blocked, shot or ignored', eq: 'tphone' },
-  { k: 'rphone', ic: '⛭', name: 'Robot Phone', key: 'V', kinds: 'team', tip: 'Tap a room: the robot carries the throw-phone in through an open door (needs robot + Tech). Safer, slower', eq: 'tphone' },
+  { k: 'rphone', ic: '⛭', name: 'Throwbot Phone', key: 'V', kinds: 'team', tip: 'Tap a room: a Throwbot carries the throw-phone in through an open door (needs robot + Tech). Safer, slower', eq: 'tphone' },
   { k: 'aid', ic: '✚', name: 'First Aid', key: 'A', kinds: 'team patrol', tip: 'Tap a casualty: go to them and render aid (a Medic with a medkit stabilises; others buy a little time)', sep: true },
   { k: 'rescue', ic: '⇆', name: 'Rescue', key: 'W', kinds: 'team patrol', tip: 'Tap a casualty: reach them and drag them to the nearest casualty collection point in cover' },
   { k: 'evac', ic: '🚑', name: 'Evacuate', key: 'Z', kinds: 'team patrol', tip: 'Tap a casualty: carry them all the way to the EMS ambulance point (then transport to hospital)' },
 ];
 const STANCE_ORDER = ['return', 'free', 'hold'], STANCE_IC = { return: '↺', free: '✱', hold: '⊘' };
-function dracoActOk(u, k) { const S = Core.state; if (!S) return false; if (k === 'draco') { const c = u && u.inCar && Core.unit(u.inCar); return !!(c && c.draco); }
+function dracoActOk(u, k) { const S = Core.state; if (!S) return false; if (k === 'opendoor' || k === 'park') return !!(u && u.big); if (k === 'land') return !!(u && !u.landed); if (k === 'draco') { const c = u && u.inCar && Core.unit(u.inCar); return !!(c && c.draco); }
   if (k === 'dracoinst') { const c = Core.bearcat(); return !!(c && !c.draco && (c.dracoKit || S.armory.draco > 0)); }
   if (k === 'llfire') return !!(u && u.kind === 'team' && Core.teamOk(u).some(o => { const i = Core.invOf(o); return [].concat(i.hands, i.slung, i.packed || [], i.holster || []).includes('lesslethal'); }));
   if (k === 'taser') return !!(u && (u.kind === 'patrol' || (u.kind === 'team' && Core.teamOk(u).some(o => [].concat(Core.invOf(o).holster || [], Core.invOf(o).hands).includes('taser'))))); return true; }
@@ -5667,7 +5808,7 @@ const coverCol = u => { if (u.inCar) return 'var(--cyan2)'; const l = Core.cover
 function careerAllowed() { const S = Core.state; return !S || S.phase === 'over' || (S.phase === 'planning' && S.turn === 0); }
 function renderTop() { const S = Core.state, I = Core.intelInfo(); $('opname').textContent = S.opName; const tt = S.phase === 'over' && !S.stats.withdrawn ? S.turn + 1 : S.turn, el = Core.elapsedAt(tt, S.phase === 'executing' ? S.tick : 0);
   // mission time lives in the radio log header (and the menu), not the top bar — information only, there is no time limit
-  $('log-clock').textContent = `T+${el} · ${Core.clockAt(tt, S.phase === 'executing' ? S.tick : 0).slice(0, 5)}`; $('mn-time').textContent = el; $('mn-op').textContent = S.opName; $('st-seed').textContent = S.seed + (S.opts && S.opts.career ? ' · career' : '');
+  $('log-clock').textContent = `T+${el} · ${Core.clockAt(tt, S.phase === 'executing' ? S.tick : 0).slice(0, 5)}`; $('mn-time').textContent = el; $('mn-op').textContent = S.opName; $('mn-ver').textContent = Core.GAME_VERSION; $('st-seed').textContent = S.seed + (S.opts && S.opts.career ? ' · career' : '');
   const between = careerAllowed(), car = !!(S.opts && S.opts.career); $('b-state').style.display = car && S.phase !== 'over' ? '' : 'none'; $('b-main').disabled = car && !between; $('b-career').disabled = !between; $('mn-car').textContent = between ? 'Roster, record, unlocks' : 'Available between scenarios (debrief or before the first EXECUTE)';
   $('opsub').textContent = `BARRICADED SUBJECT · ${I.arch === 'UNKNOWN' ? 'RESIDENTIAL' : I.arch.toUpperCase()}`;
   const m = S.suspect.mode; const cls = S.phase === 'over' ? (S.result && S.result.win ? 'green' : 'red') : m === 'barricaded' ? 'red' : m === 'alert' || m === 'fleeing' ? 'amber' : 'green';
@@ -5706,7 +5847,8 @@ function renderTeams() { const S = Core.state; const teams = S.units.filter(u =>
   h += `<div class="sec">Patrol (Perimeter)</div>`; h += S.units.filter(q => q.kind === 'patrol').map(patrolCard).join('');
   const cars = S.units.filter(q => q.kind === 'cruiser'); if (cars.length) { h += `<div class="sec">Vehicles</div>`; h += cars.map(cruiserCard).join(''); }
   const devs = S.units.filter(q => (q.kind === 'drone' || q.kind === 'robot') && q.status === 'ok');
-  if (devs.length) { h += `<div class="sec">Devices</div>`; h += devs.map(u => `<div class="card ${V.sel === u.uid ? 'sel' : ''}" data-sel="${u.uid}"><div class="pbadge" style="border-color:var(--violet)">${u.kind === 'drone' ? 'D' : 'R'}</div><div><div class="nm" style="font-size:12px">${esc(u.name)}</div><div class="meta">Battery ${Core.tMin(u.battery)}</div></div></div>`).join(''); }
+  if (devs.length) { h += `<div class="sec">Devices</div>`; h += devs.map(u => `<div class="card ${V.sel === u.uid ? 'sel' : ''}" data-sel="${u.uid}"><div class="pbadge" style="border-color:var(--violet)">${u.kind === 'drone' ? 'D' : u.big ? 'LR' : 'T'}</div><div><div class="nm" style="font-size:12px">${esc(u.name)}</div><div class="meta">${Core.devLabel(u)}${u.landed ? ' · LANDED' : ''} · <b class="batt" style="color:${u.battery <= 20 ? 'var(--red)' : u.battery <= 45 ? 'var(--amber)' : 'var(--green)'}">🔋 ${u.battery}%</b>${u.big && u.op ? ' · op ' + esc((Core.off(u.op) || {}).name || '') : ''}</div></div></div>`).join(''); }
+  const ops = S.officers.filter(o => o.status === 'operator'); if (ops.length) h += ops.map(o => `<div class="row"><span style="color:var(--violet)">⛭</span>${esc(o.name)}<span class="r">driving Large Robot</span></div>`).join('');
   $('teams').innerHTML = h; $('l-count').textContent = `${S.officers.filter(o => o.status === 'ok').length} DEPLOYED`;
   // phone chips
   let c = ''; for (const u of teams) c += `<div class="tchip ${V.sel === u.uid ? 'sel' : ''}" data-sel="${u.uid}">${shieldSVG(u.num, Core.teamOk(u).length, u.status !== 'ok')}${esc(u.name)}${u.mask === 'on' ? ' Ⓜ' : ''}</div>`;
@@ -5721,11 +5863,17 @@ function negRow() { const N = Core.negoSummary(); if (N.outcome) return `<span>N
 function casPill(c, o) { if (!c) return `<span class="pill red">${o.stable ? 'STABLE' : 'HIT'}</span>`; const col = c.state === 'kia' || c.state === 'lost' ? '' : c.state === 'evacuated' || c.state === 'transport' || c.stable ? 'green' : c.state === 'mobile' ? 'amber' : 'red';
   return `<span class="pill ${col}" title="${esc(Core.sevWord(c))}">${esc(Core.casLabel(c).toUpperCase())}${Core.casActive(c) && !c.stable ? ' · ' + Core.tDur(c.crit) : ''}</span>`; }
 function casOf(o) { return (Core.state.cas || []).find(c => c.who === 'officer' && c.ref === o.id); }
+/** v18 HUD compass box: the four sides of the residence (top = rear, bottom = front, as on the map). */
+function renderSideBox() { const el = $('sidebox'); if (!el || !Core.state || !Core.state.house) return; const v = Core.sideSeen(), col = s => !s.open ? '#5a6470' : s.seen ? '#3ef0a0' : '#ff3b4e', by = {}; v.sides.forEach(s => by[s.k] = s);
+  const key = v.sides.map(s => s.k + +s.open + +s.seen).join(); if (el.dataset.k === key) return; el.dataset.k = key;
+  el.innerHTML = `<svg viewBox="0 0 40 40"><rect x="11" y="11" width="18" height="18" rx="2" fill="#24303d" stroke="#3a4a5c"/><rect x="9" y="4" width="22" height="5" rx="2" fill="${col(by.rear)}"/><rect x="9" y="31" width="22" height="5" rx="2" fill="${col(by.front)}"/><rect x="4" y="9" width="5" height="22" rx="2" fill="${col(by.left)}"/><rect x="31" y="9" width="5" height="22" rx="2" fill="${col(by.right)}"/><text x="20" y="24" text-anchor="middle" font-size="9" font-weight="700" fill="${v.full ? '#3ef0a0' : '#ffb020'}">${v.seen.length}/${v.all.length}</text></svg>`;
+  el.title = `Sides in view: ${v.seen.join(', ') || 'none'}${v.gaps.length ? ' · UNSEEN: ' + v.gaps.join(', ') : ' · full visual containment'}. Green = seen, red = unseen, grey = no openings.`; }
 function renderInfo() { const S = Core.state, I = Core.intelInfo(), sp = S.suspect;
   const thrCol = /VISUAL|ARMED|LOCATED/.test(I.threat) ? 'var(--red)' : 'var(--dim)';
   $('binfo').innerHTML = `<span>Layout</span><b style="font-size:11px">${esc(I.arch)}</b><span>Rooms known</span><b>${I.roomsKnown} / ${I.roomsTotal}</b><span>Rooms cleared/viewed</span><b>${I.explored}</b><span>Threat</span><b style="color:${thrCol};font-size:11px">${I.threat}</b><span>Weapon</span><b style="font-size:11px">${esc(I.weapon)}</b><span>Suspect</span><b>${I.suspect}</b>${suspRows(I)}${S.suspect.armorKnown && S.suspect.armor !== 'none' ? `<span>Body armor</span><b style="color:var(--amber);font-size:11px">${S.suspect.armor === 'plate' ? 'Plate carrier — aim for uncovered areas / .308' : 'Soft vest — rifles penetrate'}</b>` : ''}`
     + (sp.maskSeen ? `<span>Gas mask</span><b style="color:var(--red)">WEARING ONE</b>` : '') + (sp.visible && sp.impair > 0.1 && !sp.maskOn ? `<span>Condition</span><b style="color:var(--amber)">COUGHING</b>` : '')
     + (I.containKnown ? `<span>Containment</span><b style="color:${I.contain === I.containTotal && !I.sides.gaps.length ? 'var(--green)' : 'var(--amber)'}">${I.contain} / ${I.containTotal} posts · ${I.sides.n}/${I.sides.of} sides${I.sides.gaps.length ? ' · GAP ' + I.sides.gaps.join(', ').toUpperCase() : ''}</b>` : `<span>Containment</span><b style="color:var(--dim);font-size:11px">? — run a Status Check</b>`) + `${negRow()}${I.cas ? `<span>Casualties</span><b style="color:var(--amber)">${I.cas} need help</b>` : ''}<span>Intel action</span><b style="color:var(--cyan2)">${S.cmd ? Core.COMMANDS[S.cmd].name : '—'}</b>`;
+  renderSideBox();
   $('intelpct').textContent = I.level + '%'; $('intelbar').style.width = I.level + '%'; }
 /** v11: multi-suspect calls — the count stays unknown until every suspect is seen and the house is cleared. */
 function suspCountTxt(I) { const C = I.count; if (!C) return ''; return C.confirmed ? `${C.total} confirmed` : `Unknown (${C.seen} seen)`; }
@@ -5934,6 +6082,12 @@ ${HB('Patrol start positions', `patrol officers always start <b>off the suspect\
  ${HB('Several suspects (fleeing-suspect calls)', `a suspect who fled into a vacant house may not be alone: 1–4 suspects (one is most common — ${Math.round(Core.MULTI_CFG.countW[0] * 100)}% / ${Math.round(Core.MULTI_CFG.countW[1] * 100)}% / ${Math.round(Core.MULTI_CFG.countW[2] * 100)}% / ${Math.round(Core.MULTI_CFG.countW[3] * 100)}%). The patrol report can be uncertain or under-count. Each suspect has a separate position, weapon, armor, mask and behavior (hiding, fleeing, fighting, ready to give up, or injured). The intel panel shows the count as <b>Unknown (N seen)</b> until every suspect has been seen and every room cleared. Negotiation works on the group, but individuals can break away. The call is only resolved when <b>every</b> suspect is in custody; each escape costs points.`)}
  ${HB('Rotating a phone', 'the map re-measures itself after a rotate (and again a moment later, since iOS reports stale sizes). It keeps the same spot centred and never stretches. If you had not moved the view, it re-frames the house.')}
  ${HB('Suspect body armor', `about ${Math.round(Core.ARMOR_CFG.suspect * 100)}% of suspects wear armor — mostly soft vests, occasionally rifle plates. You only learn it when he is seen wearing it or a hit is stopped (log: “The round appears to have been stopped by body armor”). Handgun rounds are stopped by a soft vest; rifles penetrate soft armor but plates stop most of them; the .308 precision rifle penetrates soft armor and has a reduced chance against plates. Hits outside the vest still count — in a window he shows mostly head and shoulders.`)}
+ ${HB('Drones (quadcopter)', `start at <b>100% battery</b>. Each turn the drone <b>moves −${Core.DEV_CFG.drone.move}%</b>, <b>hovers −${Core.DEV_CFG.drone.hover}%</b>, or is <b>landed −${Core.DEV_CFG.drone.land}%</b> (⏬ <b>Land</b>: it sets down where it is and only watches — a short, narrow camera view; any Move takes off again). At 0% it is out of action. Battery % is on the device card and under the icon.`)}
+ ${HB('Throwbots', `the small two-wheeled <b>Throwbot 2</b> (needs a Tech). Battery 100%: <b>−${Core.DEV_CFG.robot.move}% per turn moving, −${Core.DEV_CFG.robot.still}% stationary</b>. It cannot open doors. A Throwbot can also carry the throw-phone (<b>Throwbot Phone</b>).`)}
+ ${HB('Large Robot', `a tracked EOD-type robot with an arm. Commands → <b>Deploy Large Robot</b> (instant, one per call, from career level with robots): it rolls off the truck at <b>primary staging</b> and a free SWAT officer there (Tech first) <b>drives it from staging — he is tied up</b> and cannot join a team until you <b>⏏ Park</b> it or it stops. Battery 100%: −${Core.DEV_CFG.big.move}% per turn moving, −${Core.DEV_CFG.big.still}% stationary (bigger pack). It has its own camera feed (wider than a Throwbot). <b>⚿ Open Door</b>: tap a closed door — it drives there and tries the handle: <b>unlocked doors open</b>; <b>locked or barricaded doors do not</b> (and the lock state is now known).`)}
+ ${HB('Door locks', `exterior doors are locked about ${Math.round(Core.DEV_CFG.lockExt * 100)}% of the time — you do not know which until someone tries the handle (a team walking through, the Large Robot, or a breach). Interior doors are normally unlocked, except a room the suspect locked himself into, and about ${Math.round(Core.DEV_CFG.lockHome * 100)}% of empty rooms where the homeowners left a simple lock engaged. Locked doors (gold dot) need a breach.`)}
+ ${HB('Side visibility', `the wall strips around the target house show which sides are <b>seen right now</b> by anyone — officers, vehicles, snipers, drones or robots: <b style="color:#3ef0a0">green</b> seen, <b style="color:#ff3b4e">red</b> unseen, grey = no openings on that side. The small box by the zoom buttons is the same compass (top = rear, bottom = front) with the count. Windows are drawn <b>light grey</b>, doors brown.`)}
+ ${HB('Side scoring', `each turn a side with openings goes unseen costs ${Core.SIDE_CFG.unseenPer} points (max −${Core.SIDE_CFG.unseenCap}). <b>Visual containment</b> — every side seen at once — earns up to +${Core.SIDE_CFG.containMax} by the share of the mission you held it. On a barricade, making <b>no effort at all</b> to contact or call him out (phone, negotiator, PA, call-out, throw-phone or a verbal challenge) costs ${Core.SIDE_CFG.noEffort}. All of it is listed in the debrief.`)}
  ${HB('Draco arm (BearCat)', `career level ~60 adds a <b>Draco Arm Kit</b> to the pool. Select a team of 2+ and tap <b>⚙ Install Draco</b>: they walk to the BearCat and mount it in ${Core.DRACO_CFG.installTurns} turns of work (progress bar on the vehicle). Installers are busy and more exposed and do not return fire; any other order interrupts the install (progress is kept). Once installed, select whoever is inside the BearCat and use <b>⚒ Draco Breach</b> on an exterior door or a window: the BearCat drives up and <b>points its front end</b> square at the opening — the arm is <b>fixed to the front</b> of the vehicle and does not swing left or right, so the whole vehicle lines up nose-on (it straightens up first if it arrives at an angle). A cyan contact ring shows the claw touching the door or window, then it rips it out — a door in one or two pulls (storm doors first, still faster than by hand), windows always. It is loud, takes the frame with it, and the crew stays under armor. The new opening is used for vision, gas and entry.`)}
  ${HB('Taser', `Taser order (team or patrol): an officer with a free(able) hand draws the taser one-handed — the suspect must be in view with a clear line within ~${Core.TASER_CFG.range} m. Odds are best up close (~${Math.round(Core.TASER_CFG.p * 100)}% at 1 m, lower with distance and against body armor) and it can fail. A hit incapacitates him for ~${Core.TASER_CFG.stunTurns} turns: move a team in to detain him.`)}
  ${HB('Less-lethal 40mm', `an LL-qualified officer with the launcher fires impact rounds: range ~${Core.LL_CFG.range} m, odds fall with range, about ${Math.round(Core.LL_CFG.noEffect * 100)}% of hits have no visible effect, a good hit stuns him ${Core.LL_CFG.stunTurns[0]}–${Core.LL_CFG.stunTurns[1]} turns. Each shot uses one round (shown in the loadout); out of rounds = order unavailable.`)}
@@ -5966,7 +6120,7 @@ let popDoor = null;
 function hidePop() { const p = $('pop'); if (p) { p.className = ''; p.setAttribute('aria-label', 'Breach method'); } popDoor = null; afterCtx = null; }
 function doorDesc(d) { const t = [];
   t.push(d.kind === 'garage' ? 'Garage door' : d.exterior ? 'Exterior door' : 'Interior door');
-  if (d.locked) t.push('locked'); if (d.barricaded && d.barrKnown) t.push('<span style="color:var(--red)">BARRICADED</span>');
+  if (d.locked && (d.lockKnown || !d.exterior && !d.homeLock)) t.push('locked'); else if (d.state === 'closed' && !d.lockKnown && (d.exterior || d.homeLock)) t.push('lock unknown'); else if (d.state === 'closed' && d.lockKnown) t.push('unlocked'); if (d.barricaded && d.barrKnown) t.push('<span style="color:var(--red)">BARRICADED</span>');
   if (d.storm && d.stormKnown) t.push(d.stormState === 'closed' ? '<span style="color:var(--amber)">storm door</span>' : 'storm door open');
   if (d.charge) t.push('<span style="color:var(--amber)">charge hung</span>'); return t.join(' · '); }
 function showBreachPop(u, did, sx, sy) { const S = Core.state, d = S.doors[did]; popDoor = did; popXY = [sx, sy];
@@ -6035,6 +6189,7 @@ function mapTap(sx, sy) {
     case 'move': { hidePop(); let tx = x, ty = y; if (u.kind === 'patrol') { const c = S.contain.find(p => Math.hypot(p.x - cx + 0.5, p.y - cy + 0.5) < 1.6); if (c) { tx = c.x; ty = c.y; } }
       q(u.uid, { type: 'move', x: tx, y: ty }); break; }
     case 'breach': { const d = Render.pickDoor(cx, cy); if (d === null) { hidePop(); toast('Tap on a door'); return; } if (S.doors[d].state !== 'closed') { toast('That door is already open'); return; } showBreachPop(u, d, sx, sy); SFX.click(); break; }
+    case 'opendoor': { const d = Render.pickDoor(cx, cy); if (d === null) { toast('Tap on a door'); return; } q(u.uid, { type: 'opendoor', door: d }); break; }
     case 'polecam': case 'detonate': { const d = Render.pickDoor(cx, cy); if (d === null) { toast('Tap on a door'); return; } q(u.uid, { type: V.mode, door: d }); break; }
     case 'bang': case 'gas': case 'clear': { const r = Core.roomAt(x, y); if (r < 0) { toast('Tap inside a room'); return; } if (!S.rooms[r].known && V.mode === 'clear') { toast('Room layout unknown — gather intel or breach first'); return; }
       { const kind = V.mode; if (q(u.uid, { type: kind, room: r }) && (kind === 'bang' || kind === 'gas')) showAfterPop(u, kind, sx, sy); } break; }
@@ -6063,6 +6218,8 @@ function action(k) { const S = Core.state, u = selUnit();
   if (!allowed(u, k)) { toast(k === 'corner' ? 'No corner here — move to a hallway corner, door frame or house corner first' : 'Not available for this unit'); return; }
   hidePop(); V.aim = null; pendingAim = null; $('aimbox').className = '';
   if (k === 'hold') { q(u.uid, { type: 'hold' }); return; }
+  if (k === 'land') { q(u.uid, { type: 'land' }); return; }
+  if (k === 'park') { const r = Core.parkBigRobot(u.uid); if (!r.ok) toast(r.reason); else { V.sel = null; SFX.order(); } refresh(true); return; }
   if (k === 'corner') { q(u.uid, { type: 'corner' }); return; }
   if (k === 'pa' || k === 'callout') { q(u.uid, { type: 'pa', mode: k === 'pa' ? 'contact' : 'callout' }); return; }
   if ((k === 'aid' || k === 'rescue' || k === 'evac')) { const cs = (S.cas || []).filter(c => Core.casActive(c) && c.known && c.who !== 'suspect'); if (!cs.length) { toast('No known casualties'); return; } if (cs.length === 1) { q(u.uid, { type: k, cas: cs[0].id }); return; } }
@@ -6293,7 +6450,7 @@ const rndSeed = () => Math.floor(Math.random() * 999999) + 1; let menuSeed = rnd
 function teamLine(L) { const T = Career.teamForLevel(L), g = Object.keys(T.gear).filter(k => T.gear[k] > 0);
   return `<b style="color:#fff">${T.staff} personnel</b> · teams up to ${T.teamMax} · ${g.length}/${Object.keys(T.gear).length} gear types${T.armored ? ' · armored vehicle' : ''}${T.locked.length ? `<br><span style="color:var(--dim)">Locked: ${T.locked.slice(0, 4).map(l => `${esc(l.name)} (LV ${l.at})`).join(', ')}${T.locked.length > 4 ? '…' : ''}</span>` : '<br><span style="color:var(--green)">All gear, large counts</span>'}`; }
 function renderMain() { const LI = Career.levelInfo(CAREER), started = CAREER.started || CAREER.record.played > 0;
-  $('main-dlg').innerHTML = `<div class="ph">SWAT · Barricaded Subject<span class="sp"></span><small>TACTICAL COMMAND</small></div><div class="body mm">
+  $('main-dlg').innerHTML = `<span class="verlab" id="mm-ver" title="Build version">${Core.GAME_VERSION}</span><div class="ph">SWAT · Barricaded Subject<span class="sp"></span><small>TACTICAL COMMAND</small></div><div class="body mm">
    <div class="mmq"><button id="mm-quick" class="on mmb"><b>▶ Quick Mission</b><span>One scenario at the team level you pick · not saved to the career</span></button>
     <div class="lvrow"><label for="mm-lv">Team level</label><input type="range" id="mm-lv" min="1" max="100" step="1" value="${QLEVEL}"><input type="number" id="mm-lvn" min="1" max="100" value="${QLEVEL}" inputmode="numeric"></div>
     <div id="mm-team" class="mmt">${teamLine(QLEVEL)}</div>

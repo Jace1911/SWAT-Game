@@ -275,7 +275,7 @@ function encChoose(key, offId) { const it = encCur(); if (!it || it.done || S.ph
   const o = off(oid) || S.officers.find(q => q.id === oid), nm = o ? o.name : u.name, n0 = S.log.length;
   withSp(sp, () => { const M = mindOf(sp);
     if (!hostile()) { log('He is no longer a threat.', 'good'); return; }
-    if (ENC_OPTS[key].voice) { M.cmd[key] = (M.cmd[key] || 0) + 1; log(`${nm}: ${ENC_OPTS[key].label.replace(/^Voice: /, '')}`, 'radio'); encRespond(sp, u, key, it); return; }
+    if (ENC_OPTS[key].voice) { M.cmd[key] = (M.cmd[key] || 0) + 1; S.stats.challenged = true; log(`${nm}: ${ENC_OPTS[key].label.replace(/^Voice: /, '')}`, 'radio'); encRespond(sp, u, key, it); return; }
     switch (key) {
       case 'nego': sp.talk = clamp((sp.talk || 0) + 30, 0, 100); log(`${nm} (negotiator) talks to him from cover.`, 'radio'); encRespond(sp, u, 'nego', it); return;
       case 'hold': log(`${u.name} holds and observes.`, 'radio'); encRespond(sp, u, 'hold', it); return;

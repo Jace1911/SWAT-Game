@@ -197,8 +197,8 @@ function visParams(u) {
       return { range: inside ? 9 : (hasSpec(u, 'marksman') ? 22 : 15), half: inside ? 1.4 : 1.25, near: 2.5 };
     case 'patrol': return { range: 13, half: 1.4, near: 1.5 };
     case 'cruiser': return { range: 13, half: 1.5, near: 2 };
-    case 'drone': return { range: 7, half: Math.PI, near: 7 };
-    case 'robot': return { range: 6, half: 1.6, near: 2 };
+    case 'drone': return u.landed ? { range: 4, half: 1.3, near: 1.5 } : { range: 7, half: Math.PI, near: 7 };
+    case 'robot': return u.big ? { range: 7, half: 1.6, near: 2 } : { range: 6, half: 1.6, near: 2 };
   }
   return { range: 8, half: 1.2, near: 1.5 };
 }

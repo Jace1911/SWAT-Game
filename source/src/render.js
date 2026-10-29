@@ -518,6 +518,15 @@ function drawStruct(g, now) { const S = Core.state, H = S.house;
       const t = 'PARTY WALL BREACHED'; g.font = `800 ${CS * 0.26}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; const tw = g.measureText(t).width + 12, ty = ya - CS * 0.45;
       g.fillStyle = 'rgba(60,20,10,.88)'; rr(g, hx - tw / 2, ty - 10, tw, 20, 5); g.fill(); g.fillStyle = '#ffb020'; g.fillText(t, hx, ty + 1); } }
 }
+/** v18: coloured strip along each outside wall of the residence — green = that side is seen now, red = unseen, grey = no openings. */
+let sideEdgeCache = null;
+function drawSideEdges(g) { const S = Core.state; if (!S || !S.house) return; const key = S.seed + ':' + S.rooms.length;
+  if (!sideEdgeCache || sideEdgeCache.key !== key) { const E = []; for (const rm of S.rooms) for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++)
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (Core.roomAt(nx, ny) >= 0) continue; E.push({ x, y, dx, dy, side: Core.houseSideAt(nx, ny) }); }
+    sideEdgeCache = { key, E }; }
+  const v = Core.sideSeen(), st = {}; v.sides.forEach(q => st[q.k] = q); const col = { g: 'rgba(62,240,160,.85)', r: 'rgba(255,59,78,.85)', n: 'rgba(120,132,146,.55)' };
+  for (const e of sideEdgeCache.E) { const q = st[e.side]; g.fillStyle = !q || !q.open ? col.n : q.seen ? col.g : col.r; const off = 9, T = 5;
+    if (e.dx) { const ex = (e.dx > 0 ? e.x + 1 : e.x) * CS + e.dx * off; g.fillRect(ex - T / 2, e.y * CS, T, CS); } else { const ey = (e.dy > 0 ? e.y + 1 : e.y) * CS + e.dy * off; g.fillRect(e.x * CS, ey - T / 2, CS, T); } } }
 function drawDoors(g, now) {
   const S = Core.state;
   const cand = view.sel && (view.mode === 'breach' || view.mode === 'polecam' || view.mode === 'charge' || view.mode === 'detonate');
@@ -528,7 +537,7 @@ function drawDoors(g, now) {
     if (d.kind === 'garage') { if (d.state === 'breached') { g.strokeStyle = '#ffb020'; g.setLineDash([6, 5]); g.lineWidth = 4; g.beginPath(); g.moveTo(0, 0); g.lineTo(L2, 0); g.stroke(); g.setLineDash([]); }
       else { g.fillStyle = '#8b939e'; g.fillRect(0, -5, L2, 10); g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1; for (let x = 8; x < L2; x += 10) { g.beginPath(); g.moveTo(x, -5); g.lineTo(x, 5); g.stroke(); } } }
     else if (d.state === 'closed') { g.fillStyle = d.steel ? '#6f7882' : d.barricaded && d.known ? '#8a5a3a' : '#a37b55'; g.fillRect(1, -4, L2 - 2, 8); if (d.steel) { g.fillStyle = 'rgba(255,255,255,.25)'; for (let x = 5; x < L2 - 3; x += 7) g.fillRect(x, -3, 1.5, 1.5), g.fillRect(x, 1.5, 1.5, 1.5); } g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.5; g.strokeRect(1, -4, L2 - 2, 8);
-      if (d.locked && d.known) { g.fillStyle = '#ffd36b'; g.beginPath(); g.arc(L2 - 7, 0, 2.5, 0, 7); g.fill(); }
+      if (d.locked && d.known && (d.lockKnown || !d.exterior && !d.homeLock)) { g.fillStyle = '#ffd36b'; g.beginPath(); g.arc(L2 - 7, 0, 2.5, 0, 7); g.fill(); }
       if (d.barricaded && d.known) { g.strokeStyle = '#5a3a22'; g.lineWidth = 3; g.beginPath(); g.moveTo(4, -oy * 8 - 3); g.lineTo(L2 - 4, -oy * 8 + 3); g.moveTo(4, -oy * 8 + 3); g.lineTo(L2 - 4, -oy * 8 - 3); g.stroke(); } }
     else if (d.state === 'open') { g.strokeStyle = 'rgba(190,160,120,.35)'; g.lineWidth = 1; g.setLineDash([3, 3]); g.beginPath(); g.arc(0, 0, L2 - 2, 0, Math.PI / 2); g.stroke(); g.setLineDash([]);
       g.fillStyle = '#a37b55'; g.fillRect(-3, 0, 6, L2 - 2); }
@@ -542,6 +551,11 @@ function drawDoors(g, now) {
     if (cand && d.state === 'closed') { const p = 0.5 + 0.5 * Math.sin(now / 220); g.strokeStyle = `rgba(255,176,32,${0.4 + 0.5 * p})`; g.lineWidth = 2.5; g.beginPath(); g.arc(L2 / 2, 0, CS * (0.55 + 0.15 * p), 0, 7); g.stroke(); }
     if (view.hoverDoor === d.id) { g.strokeStyle = '#ffffff'; g.lineWidth = 2; g.beginPath(); g.arc(L2 / 2, 0, CS * 0.7, 0, 7); g.stroke(); }
     g.restore(); }
+  // v18: every intact window in light grey (doors stay brown) so openings read on the roof view and on phones
+  for (const w of S.windows) { if (w.broken) continue; for (const [cx, cy, ox, oy] of w.edges) { const vert = cx !== ox, px = (Math.max(cx, ox) + (vert ? 0 : 0.5)) * CS, py = (Math.max(cy, oy) + (vert ? 0.5 : 0)) * CS, L = CS - 8, T = 6;
+    g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(px - (vert ? T / 2 + 1 : L / 2 + 1), py - (vert ? L / 2 + 1 : T / 2 + 1), vert ? T + 2 : L + 2, vert ? L + 2 : T + 2);
+    g.fillStyle = '#c9ced6'; g.fillRect(px - (vert ? T / 2 : L / 2), py - (vert ? L / 2 : T / 2), vert ? T : L, vert ? L : T); } }
+  drawSideEdges(g);
   for (const w of S.windows) { if (!w.broken) continue; for (const [cx, cy, ox, oy] of w.edges) { const px = (Math.max(cx, ox) + (cx === ox ? 0.5 : 0)) * CS, py = (Math.max(cy, oy) + (cy === oy ? 0.5 : 0)) * CS;
     if (w.cleared) { const vert = cx !== ox; g.fillStyle = 'rgba(20,14,8,.95)'; g.fillRect(px - (vert ? 3 : CS / 2), py - (vert ? CS / 2 : 3), vert ? 6 : CS, vert ? CS : 6); g.strokeStyle = '#ffb020'; g.lineWidth = 1.5; g.strokeRect(px - (vert ? 3 : CS / 2), py - (vert ? CS / 2 : 3), vert ? 6 : CS, vert ? CS : 6); } // torn-out opening (Draco)
     g.fillStyle = 'rgba(180,230,255,.7)'; for (let k = 0; k < 6; k++) g.fillRect(px + Math.cos(k * 1.7) * (4 + k * 2), py + Math.sin(k * 1.7) * (4 + k * 2), 3, 2); } }
@@ -686,6 +700,24 @@ function teamShield(u) { const s = sz(); let [ux, uy] = posOf(u.uid, u.x, u.y); 
 function inCarPos(u) { const c = Core.unit(u.inCar); if (!c) return null; const i = Math.max(0, c.occ.indexOf(u.uid)), n = c.occ.length; const [cx, cy] = posOf(c.uid, c.x, c.y);
   return [cx + (i - (n - 1) / 2) * 1.1, cy - (u.kind === 'team' ? 0.2 : 0)]; }
 function onFootVisible(u) { return !(u.kind === 'patrol' && u.inCar) && !(u.kind === 'team' && !u.deployed && false); }
+/** v18 device icons (top-down): quadcopter drone, Throwbot 2 (two-wheeled dumbbell), Large Robot (tracked EOD robot with an arm). */
+function devIcon(g, u, x, y, r, now) { const d = dirOf(u.uid, u.dir || 0);
+  g.save(); g.translate(x, y); g.lineJoin = 'round';
+  if (u.kind === 'drone') { const R = r * 1.15, spin = u.landed ? 0 : now / 60;
+    g.lineWidth = 2.4; g.beginPath(); for (const a of [0.785, 2.356]) { g.moveTo(Math.cos(a) * R, Math.sin(a) * R); g.lineTo(-Math.cos(a) * R, -Math.sin(a) * R); } g.stroke();
+    for (const a of [0.785, 2.356, 3.927, 5.498]) { const px = Math.cos(a) * R, py = Math.sin(a) * R; g.fillStyle = u.landed ? 'rgba(30,22,54,.9)' : 'rgba(167,139,250,.28)'; g.beginPath(); g.arc(px, py, r * 0.55, 0, 7); g.fill(); g.lineWidth = 1.6; g.stroke();
+      if (!u.landed) { g.beginPath(); g.moveTo(px + Math.cos(spin + a) * r * 0.5, py + Math.sin(spin + a) * r * 0.5); g.lineTo(px - Math.cos(spin + a) * r * 0.5, py - Math.sin(spin + a) * r * 0.5); g.stroke(); } }
+    g.rotate(d); g.fillStyle = '#1e1636'; rr(g, -r * 0.42, -r * 0.32, r * 0.84, r * 0.64, 3); g.fill(); g.lineWidth = 2; g.stroke(); g.fillStyle = '#e8dcff'; g.beginPath(); g.arc(r * 0.36, 0, r * 0.14, 0, 7); g.fill(); }
+  else if (!u.big) { g.rotate(d); const W = r * 0.55, Hh = r * 0.95; // Throwbot 2: two big wheels joined by a narrow body, tail behind
+    g.fillStyle = '#1e1636'; g.lineWidth = 2; for (const sy of [-1, 1]) { rr(g, -W, sy * Hh - (sy > 0 ? r * 0.55 : 0) - (sy < 0 ? 0 : 0), W * 2, r * 0.55, r * 0.25); g.fill(); g.stroke(); }
+    g.fillRect(-r * 0.28, -Hh + r * 0.5, r * 0.56, (Hh - r * 0.5) * 2); g.strokeRect(-r * 0.28, -Hh + r * 0.5, r * 0.56, (Hh - r * 0.5) * 2);
+    g.beginPath(); g.moveTo(-r * 0.28, 0); g.lineTo(-r * 1.1, 0); g.lineWidth = 1.6; g.stroke(); g.fillStyle = '#e8dcff'; g.beginPath(); g.arc(r * 0.18, 0, r * 0.12, 0, 7); g.fill(); }
+  else { g.rotate(d); const L = r * 1.3, T = r * 0.38; // Large Robot: two tracks, body, arm forward with a gripper
+    g.fillStyle = '#1e1636'; g.lineWidth = 2; for (const sy of [-1, 1]) { rr(g, -L, sy * (r * 0.62) - T / 2, L * 2, T, T / 2); g.fill(); g.stroke(); g.lineWidth = 1; for (let k = -3; k <= 3; k++) { g.beginPath(); g.moveTo(k * L / 3.6, sy * r * 0.62 - T / 2); g.lineTo(k * L / 3.6, sy * r * 0.62 + T / 2); g.stroke(); } g.lineWidth = 2; }
+    rr(g, -L * 0.7, -r * 0.42, L * 1.3, r * 0.84, 3); g.fill(); g.stroke();
+    g.lineWidth = 2.6; g.beginPath(); g.moveTo(-L * 0.25, 0); g.lineTo(L * 0.55, -r * 0.15); g.lineTo(L * 1.15, 0); g.stroke(); g.fillStyle = '#e8dcff'; g.beginPath(); g.arc(-L * 0.25, 0, r * 0.2, 0, 7); g.fill();
+    g.lineWidth = 2; g.beginPath(); g.moveTo(L * 1.15, -r * 0.3); g.lineTo(L * 1.4, -r * 0.3); g.moveTo(L * 1.15, r * 0.3); g.lineTo(L * 1.4, r * 0.3); g.moveTo(L * 1.15, -r * 0.3); g.lineTo(L * 1.15, r * 0.3); g.stroke(); }
+  g.restore(); }
 function drawUnits(g, now) {
   const S = Core.state, s = sz(), plan = S.phase === 'planning';
   for (const u of S.units) { if (u.kind === 'team' || u.kind === 'cruiser') continue; if (u.kind === 'patrol' && u.inCar && !inCarPos(u)) continue;
@@ -699,10 +731,9 @@ function drawUnits(g, now) {
       if (!down && !u.inCar) { coverBadge(g, x + r + 2, y + r - 2, Core.coverInfo(u.x, u.y), s); if ((u.impair || 0) > 0.05) badge(g, x - r - 2, y - r, '☁', '#cfe8b0', '#1a2a10', s); }
       if (!down && cam.z > 0.3) { const tag = u.panic > 0 ? 'PANIC' : (u.impair || 0) > 0.3 ? 'COUGHING' : u.retreating ? 'FALLING BACK' : ''; if (tag) { g.fillStyle = u.panic > 0 ? '#ffb020' : '#cfe8b0'; g.font = `700 ${9 * s}px system-ui,sans-serif`; g.fillText(tag, x, y - r - 9 * s); } } }
     else { if (down) continue; const r = 9 * s; g.save(); g.shadowColor = COL.violet; g.shadowBlur = 12; g.fillStyle = '#1e1636'; g.strokeStyle = COL.violet; g.lineWidth = 2;
-      if (u.kind === 'drone') { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); for (const a of [0.785, 2.356, 3.927, 5.498]) { g.beginPath(); g.arc(x + Math.cos(a) * r * 1.2, y + Math.sin(a) * r * 1.2, r * 0.45, 0, 7); g.stroke(); } }
-      else { rr(g, x - r, y - r * 0.8, r * 2, r * 1.6, 3); g.fill(); g.stroke(); }
-      g.restore(); g.fillStyle = '#e8dcff'; g.font = `700 ${9 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(u.kind === 'drone' ? 'D' : 'R', x, y + 0.5);
-      g.fillStyle = 'rgba(232,220,255,.8)'; g.font = `600 ${8 * s}px system-ui,sans-serif`; g.fillText('⚡' + u.battery, x, y + r + 9 * s);
+      devIcon(g, u, x, y, r, now); g.restore();
+      const bc = u.battery <= 20 ? '#ff6b7a' : u.battery <= 45 ? '#ffb020' : '#c9f5dd', bt = (u.big ? 'LR ' : '') + u.battery + '%' + (u.landed ? ' ⏬' : '');
+      g.font = `700 ${8.5 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; const tw = g.measureText(bt).width + 8; g.fillStyle = 'rgba(4,12,24,.8)'; rr(g, x - tw / 2, y + r * 1.45 + 2 * s, tw, 11 * s, 4); g.fill(); g.fillStyle = bc; g.fillText(bt, x, y + r * 1.45 + 7.5 * s);
       if (sel) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r + 7, 0, 7); g.stroke(); } } }
   // cruiser occupant badges
   for (const c of S.units) { if (c.kind !== 'cruiser') continue; const [ux, uy] = posOf(c.uid, c.x, c.y); const [x, y] = toScreen(ux + 0.5, uy + 0.5); const n = (c.occ || []).length;
