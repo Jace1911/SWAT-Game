@@ -100,7 +100,7 @@ function planCas(u, o, sx, sy, assume) {
 /** First aid / stabilise. Medic with a medkit = full effect; others extend the countdown. */
 function applyAid(u, c, auto) {
   if (!casActive(c)) return false; const cfg = CAS_CFG; const medic = u.kind === 'team' && hasSpec(u, 'medic'); let t;
-  const medO = medic ? teamOk(u).find(o => o.spec === 'medic') : null, medHands = medO && freeable(medO) >= ITEM_CFG.medkit.useHands;
+  const medO = medic ? teamOk(u).find(o => isSpec(o, 'medic')) : null, medHands = medO && freeable(medO) >= ITEM_CFG.medkit.useHands;
   if (medic && u.equip.medkit > 0 && !medHands) log(`${u.name}: medic's hands are not free (shield / ram) — basic aid only.`, 'alert');
   if (medic && u.equip.medkit > 0 && medHands) { withHands(u, medO, 2, () => useItem(u, 'medkit')); if (c.sev >= 3) { c.crit += cfg.medicSevere; c.aided = 2; t = `medic treats ${c.name} — severe, +${tDur(cfg.medicSevere)}; needs EMS.`; }
     else { c.stable = true; c.aided = 2; t = `medic stabilises ${c.name} — countdown stopped.`; } }

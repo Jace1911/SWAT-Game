@@ -8,8 +8,8 @@ const run = () => { Core.execute(); let g = 0; while (Core.state.phase === 'exec
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
 // version label defined once
-ok(Core.GAME_VERSION === 'v18', 'GAME_VERSION v18');
-ok(/id="mm-ver"/.test(html) && /id="mn-ver"/.test(html) && /GAME_VERSION = 'v18'/.test(html) && (html.match(/'v18'/g) || []).length === 1, 'version label element + single definition');
+ok(/^v1[89]$|^v[2-9]\d$/.test(Core.GAME_VERSION), 'GAME_VERSION >= v18');
+ok(/id="mm-ver"/.test(html) && /id="mn-ver"/.test(html) && new RegExp("GAME_VERSION = '" + Core.GAME_VERSION + "'").test(html) && (html.match(new RegExp("'" + Core.GAME_VERSION + "'", 'g')) || []).length === 1, 'version label element + single definition');
 
 // --- locks: rates and separate rng (map unchanged) ---
 let E = 0, L = 0, I = 0, H = 0, susBad = 0;

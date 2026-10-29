@@ -286,7 +286,7 @@ function encChoose(key, offId) { const it = encCur(); if (!it || it.done || S.ph
         if (hostile() && spArmed(sp) && sp.stun <= 0 && S.rng.chance(mindOf(sp).harmOff + 0.2)) { S.encNoRet = false; suspectFire(encShotFor(u, sp)); }
         return; }
       case 'taser': case 'll': { const type = key === 'taser' ? 'taser' : 'llfire', c = devCfg(type), k = key === 'taser' ? 'taser' : 'lesslethal', p = deviceChance(u, type, dist(u.x, u.y, sp.x, sp.y));
-        const tr = o ? deviceTransition(u, o, k, c.hands, q => { if (type === 'llfire') invOf(q).ll--; fx(key === 'taser' ? 'taser' : 'll', sp.x, sp.y, { fromX: u.x, fromY: u.y }); return S.rng.chance(p) && (type === 'taser' || !S.rng.chance(c.noEffect)); }) : null;
+        const tr = o ? deviceTransition(u, o, k, c.hands, q => { if (type === 'llfire') llSpend(q); fx(key === 'taser' ? 'taser' : 'll', sp.x, sp.y, { fromX: u.x, fromY: u.y }); return S.rng.chance(p) && (type === 'taser' || !S.rng.chance(c.noEffect)); }) : null;
         if (!tr) { log(`${nm}: could not free the hands for it.`, 'alert'); return; }
         if (tr.r) { sp.stun = Math.max(sp.stun || 0, (type === 'taser' ? c.stunTurns : c.stunTurns[1]) * TICKS); sp.stunBy = type === 'taser' ? 'taser' : 'll'; sp.ambush = false; sp.walk = null;
           log(`${nm}: ${key === 'taser' ? 'TASER — probes connected' : 'less-lethal round on target'} — suspect incapacitated. Move in for the arrest.`, 'good'); xpAct('bang', u); }

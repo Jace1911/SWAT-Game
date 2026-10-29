@@ -37,7 +37,7 @@ function perchAt(x, y) { return S.perches.find(p => { const nb = S.ext.nb[p.nb];
 /** The sniper's spotter (best available team-mate) and its bonus. */
 function spotterOf(u) {
   if (!u || u.kind !== 'team' || !hasSpec(u, 'marksman')) return null;
-  const ok = teamOk(u), shooter = ok.find(o => o.spec === 'marksman'), others = ok.filter(o => o !== shooter);
+  const ok = teamOk(u), shooter = ok.find(o => o.spec === 'marksman') || ok.find(o => isSpec(o, 'marksman')), others = ok.filter(o => o !== shooter);
   const q = others.find(o => o.quals && o.quals.includes('spotter'));
   if (q) return { o: q, name: q.name, q: true, mult: 1.45, label: 'qualified Sniper Spotter' };
   if (others.length) return { o: others[0], name: others[0].name, q: false, mult: 1.2, label: 'untrained spotter' };

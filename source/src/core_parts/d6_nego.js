@@ -41,7 +41,7 @@ function initNego(seed) {
   S.nego = { temper, hidden: nr.chance(NEGO_CFG.hiddenWeapon), called911: nr.chance(NEGO_CFG.number.call911) && ['barricade', 'mental'].includes((S.stype || {}).key || 'barricade'), numberKnown: false, numberSrc: null, line: false, phoneRoom: null,
     contact: null, quiet: 0, attempts: 0, refusals: 0, rounds: 0, concessions: 0, pick: null, outcome: null, hist: [], read: null, warn: false, protocol: null, ambush: null, paTurn: -1, everContact: false, how: null };
 }
-function negOnScene() { return S.officers.filter(o => o.spec === 'negotiator' && (o.status === 'staged' || o.status === 'ok')); }
+function negOnScene() { return S.officers.filter(o => isSpec(o, 'negotiator') && (o.status === 'staged' || o.status === 'ok')); }
 function negotiatorSkill() { const n = negOnScene(); return n.length ? Math.max(...n.map(o => o.skill)) : 0.5; }
 function negHist(t, kind) { S.nego.hist.push({ turn: S.turn + 1, t }); if (S.nego.hist.length > 40) S.nego.hist.shift(); log(t, kind || 'radio'); }
 function learnNumber(src) { const N = S.nego; if (N.numberKnown) return; N.numberKnown = true; N.numberSrc = src; negHist(`Negotiator: suspect's cell number obtained (${src}). Phone contact possible.`, 'intel'); }

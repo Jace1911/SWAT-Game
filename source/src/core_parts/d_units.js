@@ -34,6 +34,7 @@ function setupUnits(r) {
   const llc = q8.shuffle(S.officers.filter(o => ['point', 'leader', 'breacher', 'medic'].includes(o.spec) && !o.quals.includes('ll'))); if (llc[0]) llc[0].quals.push('ll');
   const rest = q8.shuffle(S.officers.filter(o => o.spec !== 'leader')), nSec = Math.round(S.officers.length * STAGE_CFG.secondary);
   S.officers.forEach(o => { o.stage = 'primary'; }); rest.slice(0, nSec).forEach(o => { o.stage = 'secondary'; });
+  setupSpecs19(); // v19: dual specialties, ll/gas/driver specialists, take-home gear unlocks (own rng)
   rebuildDyn(); setupRoadblocks(r); // three cruisers at the ends of the block, keeping traffic out
   const pn = r.shuffle(PATROL.slice()), rifle = r.int(0, 3);
   for (let i = 0; i < 4; i++) S.units.push({ uid: 'P' + (i + 1), kind: 'patrol', name: 'Ofc. ' + pn[i], num: i + 1, x: 0, y: 0, dir: -Math.PI / 2, skill: 0.35, panic: 0, status: 'ok', orders: [], vis: [],
@@ -44,7 +45,10 @@ function setupUnits(r) {
 function teamOk(t) { return t.members.map(id => off(id)).filter(o => o.status === 'ok'); }
 function off(id) { return S.officers.find(o => o.id === id); }
 function unit(uid) { return S.units.find(u => u.uid === uid); }
-function hasSpec(t, sp) { return teamOk(t).some(o => o.spec === sp); }
+function hasSpec(t, sp) { return teamOk(t).some(o => o.spec === sp || o.spec2 === sp); }
+function isSpec(o, sp) { return !!o && (o.spec === sp || o.spec2 === sp); }
+function specMul(o, sp) { return !o ? 0 : o.spec === sp ? 1 : o.spec2 === sp ? SPEC2_MUL : 0; }
+function teamSpecMul(t, sp) { return Math.max(0, ...teamOk(t).map(o => specMul(o, sp))); }
 function teamSkill(t) { const m = teamOk(t); if (!m.length) return 0; let s = m.reduce((a, o) => a + o.skill, 0) / m.length; if (hasSpec(t, 'leader')) s += 0.05; return clamp(s, 0, 1); }
 function unitAlive(u) { return u.status === 'ok'; }
 function suspectActive() { return S.suspect && !['detained', 'escaped'].includes(S.suspect.mode); }

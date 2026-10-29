@@ -95,7 +95,7 @@ function suspectFire(b) {
     if (!victim) { spillShot = true; tg.spill = (tg.spill || 0) + 1; const pool2 = doorExposed(T, sp.x, sp.y) || m; victim = pool2.length && S.rng.chance(SHOOT_CFG.spill) ? S.rng.pick(pool2) : null; } }
   p *= b.cls === 'slice' ? sliceHit(T) : T_HIT[b.cls] || 1; if (T.moved === S.tick) p *= 0.8;
   if (spillShot && !victim) p = 0;
-  if (T.kind === 'team') { p *= 1 - teamSkill(T) * 0.25; if (T.carrying && hasShield(T)) p *= CAS_CFG.carryShield; if (hasSpec(T, 'point')) p *= 0.95; }
+  if (T.kind === 'team') { p *= 1 - teamSkill(T) * 0.25; if (T.carrying && hasShield(T)) p *= CAS_CFG.carryShield; if (hasSpec(T, 'point')) p *= 1 - 0.05 * teamSpecMul(T, 'point'); }
   p = clamp(p, 0.01, 0.55);
   if (S.rng.chance(p)) { const a = shotOfficer(T, SUSPECT_CAL[sp.weapon] || 'pistol', b.d, sp.x, sp.y, where, victim ? { victim } : null); if (a && a.res !== 'pen' && onFoot(T) && roomAt(T.x, T.y) < 0 && !T.perch && expoAt(T.x, T.y) >= 0.15) seekCover(T, 'under fire'); }
   else { log(`SHOTS FIRED from the ${where} at ${T.name} (${b.cls === 'perched' ? 'on overwatch' : b.cls === 'open' ? 'in the open' : b.cls + ' cover'}) — no hits.`, 'alert');

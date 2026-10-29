@@ -13,7 +13,7 @@ function deviceUser(u, type) {
   if (u.kind !== 'team') return null;
   if (type === 'taser') { const m = teamOk(u), pt = m[0]; return m.filter(o => carries(o, 'taser') && freeable(o) >= TASER_CFG.hands)
     .sort((a, b) => freeHands(b) - freeHands(a) || (a === pt) - (b === pt))[0] || null; }
-  const m = teamOk(u).filter(o => (o.quals || []).includes('ll') && carries(o, 'lesslethal') && invOf(o).ll > 0);
+  const m = teamOk(u).filter(o => (o.quals || []).includes('ll') && carries(o, 'lesslethal') && invOf(o).ll > 0 && llOk(o));
   return m.find(o => holds(o, 'lesslethal')) || m.find(o => freeable(o) >= LL_CFG.hands) || null; }
 /** Why u cannot order this device right now (null = ok). */
 function deviceWhyNot(u, type) {
@@ -27,6 +27,7 @@ function deviceWhyNot(u, type) {
   const q = u.kind === 'team' ? teamOk(u).filter(o => (o.quals || []).includes('ll') && carries(o, 'lesslethal')) : [];
   if (!q.length) return 'No 40mm less-lethal launcher on this team (needs a less-lethal specialist with the launcher)';
   if (q.every(o => invOf(o).ll <= 0)) return 'The 40mm launcher is out of rounds';
+  if (q.some(o => invOf(o).ll > 0 && !llOk(o)) && q.some(o => invOf(o).ll > 0 && (holds(o, 'lesslethal') || freeable(o) >= LL_CFG.hands))) return q.some(o => invOf(o).reloadT >= S.turn) ? 'The 40mm launcher is reloading — a full turn' : 'One 40mm round per turn (a close-quarters prompt may offer a follow-on shot)';
   return 'The 40mm launcher needs BOTH hands — its carrier holds a shield or the ram (cannot be slung; change loadout)'; }
 /** Range / sight check from (sx,sy). */
 function deviceShotReq(u, type, sx, sy) { const sp = S.suspect, c = devCfg(type);
@@ -57,7 +58,7 @@ function deviceTick1(u, o) { const sp = S.suspect;
   const d = dist(u.x, u.y, sp.x, sp.y), p = deviceChance(u, o.type, d); faceTo(u, sp.x, sp.y); popOrder(u);
   const k = o.type === 'taser' ? 'taser' : 'lesslethal', c = devCfg(o.type);
   const tr = deviceTransition(u, who, k, c.hands, q => {
-    if (o.type === 'llfire') { invOf(q).ll--; }
+    if (o.type === 'llfire') { llSpend(q); }
     fx(o.type === 'taser' ? 'taser' : 'll', sp.x, sp.y, { fromX: u.x, fromY: u.y }); noise(u.x, u.y, o.type === 'taser' ? 2 : 6, 'thud');
     return S.rng.chance(p); });
   if (!tr) { log(`${u.name}: could not free the hands for the ${o.type === 'taser' ? 'taser' : 'launcher'}.`, 'alert'); return; }

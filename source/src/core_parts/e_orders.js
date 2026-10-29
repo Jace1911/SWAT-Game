@@ -20,7 +20,7 @@ function adjacentToRoomOpening(x, y, roomId, assume, u) {
 }
 function canThrowFrom(x, y, roomId, assume, u, kind) {
   if (adjacentToRoomOpening(x, y, roomId, assume, u)) return true;
-  const rm = S.rooms[roomId]; const lim = kind === 'gas' && u.equip && u.equip.lesslethal > 0 ? 11 : 4;
+  const rm = S.rooms[roomId]; const lim = kind === 'cs40' ? CS40_CFG.range : kind === 'gas' && u.equip && u.equip.lesslethal > 0 ? 11 : 4;
   for (let yy = rm.y; yy < rm.y + rm.h; yy++) for (let xx = rm.x; xx < rm.x + rm.w; xx++) if (dist(x, y, xx, yy) <= lim && los(x, y, xx, yy)) return true;
   return false;
 }
@@ -70,7 +70,7 @@ function planOrder(u, o, sx, sy, assume) {
       const a2 = new Set(assume); a2.delete(o.door);
       const p = isGoal(sx, sy) ? [] : findPath(sx, sy, isGoal, Object.assign({}, mo, { assume: a2 }));
       if (!p) return { ok: false, reason: 'Cannot reach that door' }; const end = p.length ? p[p.length - 1] : [sx, sy]; return { ok: true, path: p, end }; }
-    case 'bang': case 'gas': {
+    case 'bang': case 'gas': case 'cs40': {
       const fn = (x, y) => roomAt(x, y) !== o.room && canThrowFrom(x, y, o.room, assume, u, o.type);
       if (canThrowFrom(sx, sy, o.room, assume, u, o.type)) return { ok: true, path: [], end: [sx, sy] };
       const p = pathAny(fn); if (!p) return { ok: false, reason: 'No opening into that room (breach a door or reach a window)' }; return { ok: true, path: p, end: p[p.length - 1] }; }
@@ -105,6 +105,7 @@ function orderReq(u, o) {
     if (o.type === 'detonate') { const d = S.doors[o.door]; if (!d.charge && !u.orders.some(q => q.type === 'breach' && q.door === o.door && q.hangOnly)) return 'No charge hung on that door'; }
     if (o.type === 'bang' && pending('bang') >= (e.bang || 0)) return 'No flashbangs left on this team';
     if (o.type === 'gas' && pending('gas') >= (e.gas || 0)) return 'No CS gas on this team';
+    if (o.type === 'cs40' && pending('cs40') >= (e.cs40 || 0)) return 'No 40mm CS ready — needs a less-lethal-qualified officer holding the 4-shot 40mm (ready, not reloading) with 40mm CS rounds from the equipment vehicle';
     if ((o.type === 'bang' || o.type === 'gas') && !taskMember(u, o.type, 2)) return 'A throw needs BOTH hands — whoever carries it holds a shield or the ram (change loadout)';
     if (DEVICE_ORDERS.includes(o.type)) { const w = deviceWhyNot(u, o.type); if (w) return w; }
     if (o.type === 'polecam' && !(e.polecam > 0)) return 'Team has no pole camera';

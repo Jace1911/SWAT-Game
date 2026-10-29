@@ -8,7 +8,7 @@ function execute() {
   log(`— TURN ${S.turn + 1}: EXECUTE —`, 'system');
   if (S.cmd) { runCommand(S.cmd); S.cmd = null; }
   if (S.nego.pick) runTalk();
-  if (S.units.some(u => u.kind === 'team' && unitAlive(u) && u.orders.some(o => o.type === 'gas'))) donMasks('CS gas going in');
+  if (S.units.some(u => u.kind === 'team' && unitAlive(u) && u.orders.some(o => o.type === 'gas' || o.type === 'cs40'))) donMasks('CS gas going in');
   computeExpo();
   // officers left standing in a line of fire with nothing to do get behind something
   if (suspList().some(spHostile)) for (const u of S.units) if (onFoot(u) && !u.orders.length && !u.stayPut && roomAt(u.x, u.y) < 0 && expoAt(u.x, u.y) >= 0.6) seekCover(u, 'exposed to the house windows');
@@ -154,19 +154,24 @@ function unitAct(u) {
     if (d.state !== 'closed') { if (d.charge) d.charge = null; popOrder(u); return; }
     breachTick(u, o, d, other); return;
   }
-  if (o.type === 'bang' || o.type === 'gas') {
+  if (o.type === 'bang' || o.type === 'gas' || o.type === 'cs40') {
     if (!canThrowFrom(u.x, u.y, o.room, null, u, o.type)) { const r = stepAlong(u, o, (x, y) => roomAt(x, y) !== o.room && canThrowFrom(x, y, o.room, null, u, o.type), speed); if (r === null) failOrders(u, 'no opening into room'); return; }
     // open/break into room if needed
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = u.x + dx, ny = u.y + dy; if (roomAt(nx, ny) !== o.room) continue; const e = edge(u.x, u.y, nx, ny);
       if (e.t === 'D' && e.d.state === 'closed' && !e.d.locked && !e.d.barricaded) { e.d.state = 'open'; break; } if (e.t === 'W' && !e.w.broken && !canSeeRoom(u, o.room)) { e.w.broken = true; noise(nx, ny, 6, 'glass'); break; } }
     const rm = S.rooms[o.room]; const tc = roomTargetCell(o.room);
+    if (o.type === 'cs40') { faceTo(u, tc[0], tc[1]); const q = teamOk(u).find(m => usableCount(m, 'cs40') > 0);
+      if (!q) { failOrders(u, 'no 40mm CS round ready (4-shot 40mm in hand, not reloading)'); return; }
+      const iv = invOf(q); iv.vest.cs40 = Math.max(0, (iv.vest.cs40 || 0) - 1); iv.llTurn = S.turn; syncEquip(u); popOrder(u); S.stats.cs40 = (S.stats.cs40 || 0) + 1;
+      gasAdd(o.room, 1.1 * CS40_CFG.frac); fx('gas', tc[0], tc[1], { room: o.room, fromX: u.x, fromY: u.y }); noise(tc[0], tc[1], 5, 'glass');
+      log(`${q.name}: 40mm CS round into ${rm.known ? rm.name : 'room'} (about a quarter of a canister's gas).`, 'radio'); aggressive(8); runAfter(u, o); return; }
     faceTo(u, tc[0], tc[1]); const th = handsTask(u, o.type, ITEM_CFG[o.type].throwHands, q => useItem(u, o.type, x => x === q));
     if (!th) { failOrders(u, 'nobody can free both hands to throw (shield / ram)'); return; }
     if (th.stowed.length) log(`${th.o.name}: ${th.stowed.map(k => WEAPONS[k] ? WEAPONS[k].short.toLowerCase() : k).join(' + ')} put away for the two-handed throw — back in hand, not ready until next turn.`); popOrder(u);
     if (o.type === 'bang') { fx('flash', tc[0], tc[1], { fromX: u.x, fromY: u.y }); log(`${u.name}: BANG OUT — flashbang into ${rm.known ? rm.name : 'room'}.`, 'radio'); noise(tc[0], tc[1], 10, 'bang');
       let nb = 0; eachSp(sp => { if (sp.room === o.room && hostile()) { sp.stun = 5; sp.stunBy = null; sp.daze = FIRE_CFG.bangDaze; sp.ambush = false; nb++; } });
       if (nb) { xpAct('bang', u); log(nb > 1 ? `${nb} suspects disoriented by flashbang.` : 'Suspect disoriented by flashbang.', 'good'); } aggressive(10); }
-    else { gasDeploy(o.room); fx('gas', tc[0], tc[1], { room: o.room, fromX: u.x, fromY: u.y }); log(`${u.name}: CS gas deployed into ${rm.known ? rm.name : 'room'}.`, 'radio'); aggressive(15); }
+    else { const ga = gasThrowAmt(th.o); gasDeploy(o.room, ga); if (ga < 1) log(`${th.o.name}: canister bounced off the frame and landed short — only partial gas in the room.`, 'radio'); fx('gas', tc[0], tc[1], { room: o.room, fromX: u.x, fromY: u.y }); log(`${u.name}: CS gas deployed into ${rm.known ? rm.name : 'room'}.`, 'radio'); aggressive(15); }
     runAfter(u, o); return;
   }
 }

@@ -24,7 +24,7 @@ const allStaged = S => S.officers.forEach(o => { o.status = 'staged'; o.stage = 
   const p = S.officers.filter(o => o.stage === 'primary'), s = S.officers.filter(o => o.stage === 'secondary');
   if (p.length && s.length) { ok(!Core.formTeam([p[0].id, s[0].id]).ok, 'cannot mix officers from different staging areas');
     const r = Core.formTeam(s.slice(0, 3).map(o => o.id)); ok(r.ok && Core.dist(r.team.x, r.team.y, S.ext.staging2.x, S.ext.staging2.y) < 4, 'secondary team forms at secondary staging');
-    ok(!Object.values(r.team.equip).some(v => v > 0), 'secondary team has personal weapons only'); ok(Core.weaponOf(r.team), 'secondary team still armed');
+    ok(Object.entries(r.team.equip).every(([k, v]) => !(v > 0) || r.team.members.some(id => (Core.off(id).inv.home || []).includes(k))), 'secondary team has take-home gear only (v19)'); ok(Core.weaponOf(r.team), 'secondary team still armed');
     const dr = Core.invAct(s[0].id, 'draw', 'shield'); ok(!dr.ok && /equipment vehicle/.test(dr.reason), 'gear drawn only at the equipment vehicle');
     const q = Core.queueOrder(r.team.uid, { type: 'move', x: S.ext.staging2.x + 3, y: S.ext.staging2.y }); ok(q.ok, 'secondary team can move'); } else ok(false, 'seed has both stages'); }
 // 4) team forming: point / defense / order
@@ -43,7 +43,7 @@ const allStaged = S => S.officers.forEach(o => { o.status = 'staged'; o.stage = 
   const rf = offs.find(o => Core.invView(o).two && Core.invView(o).hands[0] === 'rifle');
   const s1 = Core.invAct(rf.id, 'switch', 'pistol'); ok(s1.ok && Core.invView(rf).hands.includes('pistol'), 'switch to pistol costs no order');
   ok(!Core.isReady(rf, 'pistol') && Core.invView(rf).notReady.includes('pistol'), 'switched weapon is NOT READY (shown in loadout view)');
-  const lone = Core.newGame(77); allStaged(lone); const two = lone.officers.filter(o => o.spec !== 'marksman' && o.spec !== 'leader').slice(0, 2).map(o => o.id);
+  const lone = Core.newGame(77); allStaged(lone); const two = lone.officers.filter(o => !['marksman', 'leader', 'point', 'breacher', 'll'].includes(o.spec)).slice(0, 2).map(o => o.id);
   const L = Core.formTeam(two).team, [la, lb] = L.members.map(Core.off);
   ok(Core.weaponOf(L), 'pair armed'); Core.invAct(la.id, 'stow', 'pistol'); Core.invAct(lb.id, 'switch', 'pistol');
   ok(!Core.isReady(la, 'pistol') && !Core.isReady(lb, 'pistol') && !Core.isReady(lb, 'rifle'), 'holstered / switched weapons not ready');

@@ -50,7 +50,7 @@ function armorHit(who, t, cal, d, fx_, fy) { const r = S.rng;
     const own = shieldOf(who), ptS = shieldOf(teamOk(t)[0]);
     const sk = own || (ptS && who !== teamOk(t)[0] ? ptS : null), share = own ? SHIELD_CFG.cover : SHIELD_CFG.stack;
     if (sk && front && r.chance(share)) { if (r.chance(SHIELDS[sk].stops[cal] || 0)) return { res: 'shield', zone: 'shield', by: sk }; } }
-  if (!r.chance(ARMOR_CFG.torso)) return { res: 'pen', zone: 'limb' };
+  if (!r.chance(ARMOR_CFG.torso)) return helmetStops(who, cal) ? { res: 'helmet', zone: 'head', by: helmetOf(who) } : { res: 'pen', zone: 'limb' }; // v19 helmet: own rng
   const a = armorOf(who); if (!r.chance(ARMOR[a].stops[cal] || 0)) return { res: 'pen', zone: 'torso', by: a };
   const bp = (ARMOR_CFG.blunt[cal] || 0) * clamp(1 - (d - 1) / Math.max(0.5, ARMOR_CFG.bluntRange - 1), 0, 1);
   return { res: d <= ARMOR_CFG.bluntRange && r.chance(bp) ? 'blunt' : 'stopped', zone: 'torso', by: a }; }
@@ -61,6 +61,7 @@ function shotOfficer(t, cal, d, fx_, fy, where, opt) {
   const nm = who.name, src = where ? ` from the ${where}` : '';
   if (a.res === 'shield') { fx('text', t.x, t.y, { text: 'SHIELD', color: '#7fe3ff' }); log(`SHOTS FIRED${src} — round stopped by ${nm}'s ${SHIELDS[a.by].short}. Unhurt.`, 'alert'); }
   else if (a.res === 'stopped') { fx('text', t.x, t.y, { text: 'ARMOR', color: '#7fe3ff' }); log(`SHOTS FIRED${src} — ${nm} hit in the vest; the ${ARMOR[a.by].short} armor stopped it. Unhurt, still in the fight.`, 'alert'); }
+  else if (a.res === 'helmet') { fx('text', t.x, t.y, { text: 'HELMET', color: '#7fe3ff' }); log(`SHOTS FIRED${src} — round deflected by ${nm}'s ${HELMETS[a.by].short}. Unhurt, still in the fight.`, 'alert'); }
   else if (a.res === 'blunt') { S.stats.minor = (S.stats.minor || 0) + 1; officerDown(t, null, { victim: who, minor: true, cal }); }
   else officerDown(t, null, { victim: who });
   return a; }

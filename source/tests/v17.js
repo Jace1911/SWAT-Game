@@ -9,8 +9,8 @@ const prep = (seed, enc = true, extra = {}) => { const S = Core.newGame(seed, Ob
 const settle = (pick = 'hold') => { let k = 0, ph = Core.state.phase; while (ph === 'encounter' && k++ < 12) { const c = Core.encCur(); if (c && !c.done) Core.encChoose(c.options.some(o => o.key === pick) ? pick : c.options[0].key); ph = Core.encNext();
     if (ph === 'executing') { let g = 0; while (!Core.stepTick() && g++ < 200); ph = Core.state.phase; } } return ph; };
 // invariant hook: any tick a team has a line on a live hostile suspect, that suspect must have had its popup this turn
-let missed = 0, contactTicks = 0;
-const watch = () => { const S = Core.state; if (S.phase !== 'executing' && S.phase !== 'encounter') return; for (const sp of (S.suspects || [S.suspect])) { if (!sp || !Core.spHostile(sp) || sp.stun > 0 || sp.mode === 'fleeing') continue;
+let missed = 0, contactTicks = 0, encOn = true; // v19: the invariant only applies with encounters on
+const watch = () => { const S = Core.state; if (!encOn) return; if (S.phase !== 'executing' && S.phase !== 'encounter') return; for (const sp of (S.suspects || [S.suspect])) { if (!sp || !Core.spHostile(sp) || sp.stun > 0 || sp.mode === 'fleeing') continue;
     if (Core.encSeers(sp).length) { contactTicks++; if (!(sp.mind && sp.mind.contactTurn === S.turn)) missed++; } } };
 // run one turn; returns list of encounter pauses {tick, mid, kinds, why, modeAtPause}
 const turn = (pick = 'hold') => { const S = Core.state, out = []; Core.execute(); let g = 0;
@@ -100,7 +100,7 @@ ok(/fixed front mount/.test(R) && /contact ring/.test(R), 'render: fixed mount +
     if (!pl) continue; t.orders = []; t.stance = 'hold'; Core.updateVision(); runs++; const p = turn(); const n = p.reduce((a, x) => a + x.kinds.filter(k => k === 'contact').length, 0); if (n > 1) multi++; }
   ok(runs >= 5 && multi === 0, `at most one contact popup per suspect per turn (${runs} runs)`); }
 // f) encounters off → never pauses
-{ const { S, t } = prep(3, false); const sp = S.suspect, d = roomDoor(S, sp.room); if (d) { d.state = 'open'; const o = outside(S, d, sp.room); t.x = o[0]; t.y = o[1]; Core.queueOrder(t.uid, { type: 'clear', room: sp.room }); }
+{ encOn = false; const { S, t } = prep(3, false); const sp = S.suspect, d = roomDoor(S, sp.room); if (d) { d.state = 'open'; const o = outside(S, d, sp.room); t.x = o[0]; t.y = o[1]; Core.queueOrder(t.uid, { type: 'clear', room: sp.room }); }
   const p = turn(); ok(!p.length && !S.encMid, 'encounters off: no pause'); }
 ok(missed === 0, `invariant: every tick with a line on a live hostile suspect had its popup that turn (${contactTicks} ticks, ${missed} missed)`);
 // help text

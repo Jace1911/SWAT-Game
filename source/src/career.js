@@ -13,14 +13,14 @@
    ===================================================================== */
 const Career = (() => {
   const VERSION = 3, KEY = 'swat.career', XP_KEY = 'swat.career.teamxp', CODE_PREFIX = 'SWATC';
-  const SPEC_NAME = { leader: 'Team Leader', breacher: 'Breacher', point: 'Point', tech: 'Robot / Tech', negotiator: 'Negotiator', medic: 'Medic', marksman: 'Sniper', k9: 'K9 Handler' };
+  const SPEC_NAME = { leader: 'Team Leader', breacher: 'Breacher', point: 'Point', tech: 'Robot / Tech', negotiator: 'Negotiator', medic: 'Medic', marksman: 'Sniper', k9: 'K9 Handler', ll: 'Less-Lethal Specialist', gas: 'Gas Specialist', driver: 'Driver' };
   const RANKS = [[0, 'Ofc.'], [150, 'Cpl.'], [400, 'Sgt.'], [800, 'Lt.']];
   const NAMES = ['Ahn', 'Bauer', 'Carter', 'Duval', 'Ellis', 'Grant', 'Holm', 'Iqbal', 'Jensen', 'Keane', 'Lopez', 'Mbeki', 'Ortiz', 'Park', 'Ruiz', 'Shah', 'Torres', 'Usman', 'Vance', 'Weber', 'Young', 'Zane', 'Reyes', 'Kim', 'Novak', 'Okafor', 'Brennan', 'Castillo', 'Haddad', 'Lindqvist', 'Morales', 'Tran', 'Walsh', 'Diaz', 'Petrov', 'Hughes', 'Sato', 'Mensah', 'Kowalski', 'Rivera', 'Abara', 'Fischer', 'Quinn', 'Varga', 'Ito', 'Moreau', 'Nolan', 'Silva'];
   /** Unlock catalog. gear: armory pool overrides; base = what a new career has. */
   const UNLOCKS = {
     drone:      { name: 'Micro Drone', cost: 300, desc: 'Flying scout + thermal flyby (needs Tech).', gear: { drone: 1 } },
     robot:      { name: 'Ground Robot', cost: 450, desc: 'Tracked camera robot; can carry in a throw phone (needs Tech).', gear: { robot: 1 } },
-    lesslethal: { name: 'Less-Lethal Launchers', cost: 350, desc: '40 mm launchers: incapacitate, or launch gas through windows.', gear: { lesslethal: 2 } },
+    lesslethal: { name: 'Less-Lethal Launchers', cost: 350, desc: '40 mm launchers: incapacitate, or launch gas through windows.', gear: { lesslethal: 2, cs40: 4 } },
     negotiator2:{ name: 'Second Negotiator', cost: 300, desc: 'A second negotiator on the call-out list.', recruit: 'negotiator' },
     armored:    { name: 'Armored Vehicle (BearCat)', cost: 700, desc: 'Armored rescue vehicle at staging: rounds stop against it.' },
     team6:      { name: 'Bigger Teams (6)', cost: 400, desc: 'Teams of up to 6 officers.', teamMax: 6 },
@@ -42,10 +42,10 @@ const Career = (() => {
     gear: { shield: [1, 1, 6], ram: [1, 1, 4], halligan: [1, 1, 6], medkit: [1, 1, 10], bullhorn: [1, 1, 3],
       bang: [10, 2, 20], polecam: [15, 1, 4], tphone: [20, 1, 4], charge: [25, 1, 8], drone: [30, 1, 3],
       gas: [35, 1, 10], lesslethal: [45, 1, 6], robot: [50, 1, 3],
-      draco: [60, 1, 1], shield3: [70, 1, 4], plate: [75, 6, 30] }, // v9: Draco arm kit (BearCat), Level III shields, rifle plates (all 30 at L100)
+      draco: [60, 1, 1], shield3: [70, 1, 4], plate: [75, 6, 30], gasbag: [35, 1, 3], cs40: [45, 4, 12] }, // v19: gas bags with CS gas, 40mm CS rounds with the launchers // v9: Draco arm kit (BearCat), Level III shields, rifle plates (all 30 at L100)
     xpCurve: [40, 1.5], // team XP needed for level L = 40 · (L-1)^1.5  (L2 = 40, L10 ≈ 1 080, L50 ≈ 13 700, L100 ≈ 39 400)
   };
-  const GEAR_NAME = { shield: 'Ballistic shields', ram: 'Rams', halligan: 'Halligan bars', medkit: 'Medkits', bullhorn: 'Bullhorns', bang: 'Flashbangs', polecam: 'Pole cameras', tphone: 'Throw phones', charge: 'Breaching charges', drone: 'Micro drone', gas: 'CS gas', lesslethal: 'Less-lethal launchers', robot: 'Ground robot', draco: 'Draco arm kit (BearCat)', shield3: 'Level III rifle shields', plate: 'Rifle plate carriers' };
+  const GEAR_NAME = { gasbag: 'Gas bags', cs40: '40mm CS rounds', shield: 'Ballistic shields', ram: 'Rams', halligan: 'Halligan bars', medkit: 'Medkits', bullhorn: 'Bullhorns', bang: 'Flashbangs', polecam: 'Pole cameras', tphone: 'Throw phones', charge: 'Breaching charges', drone: 'Micro drone', gas: 'CS gas', lesslethal: 'Less-lethal launchers', robot: 'Ground robot', draco: 'Draco arm kit (BearCat)', shield3: 'Level III rifle shields', plate: 'Rifle plate carriers' };
   const lerp = (a, b, t) => a + (b - a) * t;
   const clampL = L => Math.max(1, Math.min(LEVEL.max, Math.round(+L) || 1));
   /** Everything a team of this level brings: roster specialties, armory counts, unlocks, team size. */

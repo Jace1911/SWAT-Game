@@ -12,14 +12,14 @@ function breachMethods(u) { return Object.keys(BREACH).filter(k => breachCan(u, 
 function breachCan(u, m) { const B = BREACH[m]; if (!B) return 'Unknown method';
   if (B.eq && !(u.equip && u.equip[B.eq] > 0)) return `Needs a ${EQUIP[B.eq].name}`;
   if (m === 'charge' && !hasSpec(u, 'breacher')) return 'Only a Breacher can hang a charge';
-  if (m === 'charge' && u.kind === 'team' && !teamOk(u).some(o => o.spec === 'breacher' && countOf(o, 'charge') > 0 && freeable(o) >= ITEM_CFG.charge.needFree)) return 'The breacher with the charges has no free hand (shield / ram)';
+  if (m === 'charge' && u.kind === 'team' && !teamOk(u).some(o => isSpec(o, 'breacher') && countOf(o, 'charge') > 0 && freeable(o) >= ITEM_CFG.charge.needFree)) return 'The breacher with the charges has no free hand (shield / ram)';
   if (m === 'ram' && u.kind === 'team' && !teamOk(u).some(ramReady)) return 'The ram carrier\'s other hand holds a shield — both hands are needed on the ram';
   return true; }
 function breachP(u, d, m, layer) { const B = BREACH[m]; let p = layer === 'storm' ? B.storm : B.p;
   if (layer !== 'storm' && d.barricaded) p *= B.barr;
   if (layer !== 'storm' && d.kind === 'garage' && m !== 'charge') p *= 0.35;
   if (layer !== 'storm') p *= doorMul(d, m);
-  if (m !== 'charge' && hasSpec(u, 'breacher')) p = Math.min(0.95, p + 0.15);
+  if (m !== 'charge' && hasSpec(u, 'breacher')) p = Math.min(0.95, p + 0.15 * teamSpecMul(u, 'breacher'));
   if ((u.impair || 0) > 0) p *= 1 - 0.4 * u.impair;
   return clamp(p, 0.02, 0.98); }
 function defaultMethod(u, d) { const ms = breachMethods(u); if (d.barricaded || d.kind === 'garage') { for (const m of ['charge', 'ram', 'pry', 'kick']) if (ms.includes(m)) return m; }
@@ -49,7 +49,7 @@ function breachTick(u, o, d, other) {
   if (m === 'ram' && u.kind === 'team' && !u.ramGrip) { const rm = teamOk(u).find(ramReady); if (rm) { u.ramGrip = { oid: rm.id, st: autoStow(rm, 'ram'), order: o }; invOf(rm).hands = ['ram', 'ram']; if (u.ramGrip.st.length) log(`${rm.name}: pistol holstered — both hands on the ram.`); } }
   if (m === 'charge') {
     if (!d.charge) { if (!(u.equip.charge > 0)) { failOrders(u, 'no charge left'); return; }
-      const bo = teamOk(u).find(o => o.spec === 'breacher' && countOf(o, 'charge') > 0 && freeable(o) >= 1);
+      const bo = teamOk(u).find(o => isSpec(o, 'breacher') && countOf(o, 'charge') > 0 && freeable(o) >= 1);
       if (bo && (o.drawT = (o.drawT || 0) + 1) <= ITEM_CFG.charge.drawTicks) { if (o.drawT === 1) log(`${bo.name}: drawing a charge off the vest…`); return; }
       if (bo) { const st = freeHands(bo) ? [] : autoStow(bo, heldList(bo).find(k => !(ITEM_CFG[k] || {}).stow)); useItem(u, 'charge', q => q === bo); autoRedraw(bo, st); } else useItem(u, 'charge'); d.charge = { by: u.uid, turn: S.turn }; if (d.storm) d.stormKnown = true;
       log(`${u.name}: charge hung on ${d.name}${d.storm && d.stormState === 'closed' ? ' (storm door included)' : ''}.`, 'radio'); fx('text', other[0], other[1], { text: 'CHARGE SET', color: '#ffb020' });

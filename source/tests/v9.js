@@ -30,13 +30,14 @@ const tally = (n, f) => { const c = {}; for (let i = 0; i < n; i++) { const r = 
   ok(Core.shieldOf(pt) === 'shield3' && Core.hasShield(t), 'default kit gives the point the Level III shield when issued');
   t.dir = 0; const fr = tally(3000, () => Core.armorHit(pt, t, 'rifle', 8, t.x + 10, t.y).res), bk = tally(3000, () => Core.armorHit(pt, t, 'rifle', 8, t.x - 10, t.y).res);
   ok(fr.shield > 1000 && fr.shield < 1500 && !bk.shield, `Level III shield stops rifle only in the frontal arc (${fr.shield} front / ${bk.shield || 0} rear)`);
-  const st = Core.off(t.members[2]), sb = tally(3000, () => Core.armorHit(st, t, 'pistol', 8, t.x + 10, t.y).res); ok(sb.shield > 700 && sb.shield < 1400, `stacked teammate gets a partial shield bonus (${sb.shield}/3000)`);
+  const st = t.members.slice(1).map(Core.off).find(o => !Core.shieldOf(o)), sb = tally(3000, () => Core.armorHit(st, t, 'pistol', 8, t.x + 10, t.y).res); ok(sb.shield > 700 && sb.shield < 1400, `stacked teammate gets a partial shield bonus (${sb.shield}/3000)`);
   const S2 = Core.newGame(4242); allStaged(S2); const t2 = Core.formTeam(S2.officers.slice(0, 4).map(o => o.id)).team, p2 = Core.off(t2.members[0]); t2.dir = 0;
   ok(Core.shieldOf(p2) === 'shield', 'without Level III, point gets the IIIA shield');
   const f2 = tally(3000, () => Core.armorHit(p2, t2, 'rifle', 8, t2.x + 10, t2.y).res); ok(!f2.shield, 'IIIA shield does not stop rifle'); }
 // 4) plates: worn slot, individually issued
 { const S = Core.newGame(4242, { gear: { plate: 2 } }); allStaged(S); const t = Core.formTeam(S.officers.slice(0, 4).map(o => o.id)).team; const offs = t.members.map(Core.off);
-  ok(offs.filter(o => Core.armorOf(o) === 'plate').length === 2 && S.armory.plate === 0, 'plates issued individually from the pool (2 for 4 officers)');
+  ok(offs.every(o => Core.armorOf(o) === 'plate') && S.armory.plate === 2, 'v19: plates unlocked → everyone takes home rifle plates (pool untouched)');
+  Core.invAct(offs[1].id, 'return', 'plate'); Core.invAct(offs[3].id, 'return', 'plate'); S.armory.plate = 0;
   const a = Core.teamArmor(t); ok(a.plate === 2 && a.soft === 2, 'team armor badge counts');
   const w = offs.find(o => Core.armorOf(o) === 'plate'), s = offs.find(o => Core.armorOf(o) !== 'plate');
   let r = Core.invAct(w.id, 'return', 'plate'); ok(r.ok && Core.armorOf(w) === 'soft' && S.armory.plate === 1, 'return plate → soft IIIA, back in pool');
