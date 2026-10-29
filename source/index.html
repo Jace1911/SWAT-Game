@@ -1815,7 +1815,9 @@ function detonateCharge(u, d) {
    ===================================================================== */
 const DRACO_CFG = {
   installTurns: 5, crew: 2,
-  reach: 3.8,                 // cells from the BearCat's centre to the opening (boom ≈ 1.5 cells past the bumper)
+  reach: 3.5,                 // v17: max cells from the BearCat's centre to the opening, straight ahead (bumper at 1.5, boom up to 2 cells past it)
+  minReach: 2,                // the front end cannot be closer than the bumper + a short boom
+  lateral: 0.55,              // the arm is fixed to the front (no left/right swing): the opening must be dead ahead
   deployTicks: 1,             // swinging the boom out before the first pull
   door: { p: 0.9, barr: 0.75, garage: 0.85, storm: 0.85 }, // per-tick pull success (manual ram 0.5 / charge 0.97)
   noise: 16,
@@ -1828,7 +1830,24 @@ function dracoTargetReq(o) {
   if (o.door !== undefined && o.door !== null) { const d = S.doors[o.door]; if (!d) return 'Tap a door or window'; if (!d.exterior) return 'The Draco arm reaches exterior doors only';
     if (d.state !== 'closed' && !(d.storm && d.stormState === 'closed')) return 'That door is already open'; return null; }
   const w = S.windows[o.win]; if (!w) return 'Tap a door or window'; if (w.cleared) return 'That window is already torn out'; return null; }
-function dracoReach(o) { const [mx, my] = openingMid(o); return (x, y) => S.drive[idx(x, y)] && dist(x, y, mx, my) <= DRACO_CFG.reach; }
+/** v17: the Draco arm is FIXED to the vehicle's front — it does not swing left or right. A firing spot is a drivable
+    centre cell + heading (one of 4 axis headings, square to the wall) with the whole 3-cell footprint drivable and the
+    opening dead ahead of the front bumper, within the boom's reach. */
+const DIRS4 = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+function openingNormal(o) { if (o.door !== undefined && o.door !== null) { const d = S.doors[o.door], c = d.cells[Math.floor(d.cells.length / 2)]; return [Math.sign(c[1][0] - c[0][0]), Math.sign(c[1][1] - c[0][1])]; }
+  const e = S.windows[o.win].edges[0]; return [Math.sign(e[2] - e[0]), Math.sign(e[3] - e[1])]; }
+function dracoFit(o, x, y, h) { const [mx, my] = openingMid(o), [dx, dy] = DIRS4[h], [nx, ny] = openingNormal(o);
+  if (Math.abs(dx * nx + dy * ny) !== 1) return null; const along = (mx - x) * dx + (my - y) * dy, lat = Math.abs((mx - x) * dy - (my - y) * dx);
+  if (along < DRACO_CFG.minReach || along > DRACO_CFG.reach || lat > DRACO_CFG.lateral) return null;
+  for (let k = -1; k <= 1; k++) { const fx_ = x + dx * k, fy = y + dy * k; if (!inb(fx_, fy) || !S.drive[idx(fx_, fy)]) return null; }
+  return { x, y, h, dir: Math.atan2(dy, dx), along, lat }; }
+function dracoSpots(o) { const [mx, my] = openingMid(o), out = [];
+  for (let y = Math.floor(my - 4); y <= Math.ceil(my + 4); y++) for (let x = Math.floor(mx - 4); x <= Math.ceil(mx + 4); x++) { if (!inb(x, y) || !S.drive[idx(x, y)]) continue;
+    for (let h = 0; h < 4; h++) { const f = dracoFit(o, x, y, h); if (f) out.push(f); } } return out; }
+function dracoReach(o) { const sp = dracoSpots(o); return (x, y) => sp.some(q => q.x === x && q.y === y); }
+function dracoSpotAt(o, x, y) { return dracoSpots(o).filter(q => q.x === x && q.y === y).sort((a, b) => a.lat - b.lat || a.along - b.along)[0] || null; }
+/** Is the arm's claw in contact with the opening right now (vehicle position + heading only — the arm cannot rotate)? */
+function dracoContact(c, o) { const h = DIRS4.findIndex(([dx, dy]) => Math.abs(Math.cos(c.dir || 0) - dx) < 0.01 && Math.abs(Math.sin(c.dir || 0) - dy) < 0.01); return h >= 0 ? dracoFit(o, c.x, c.y, h) : null; }
 /** Team side: one tick of installing the kit (team must be next to the BearCat). */
 function dracoInstallTick(u, o, speed) { const c = unit(o.car); if (!c || c.draco) { popOrder(u); return; }
   if (teamOk(u).length < DRACO_CFG.crew) { failOrders(u, `installing the Draco arm needs ${DRACO_CFG.crew} officers`); return; }
@@ -1851,7 +1870,11 @@ function dracoTick(c, o) {
       const fp = footprint(c, nx, ny, ax); if (S.units.some(q => onFoot(q) && fp.some(([a, b]) => a === q.x && b === q.y))) { log(`${c.name}: waiting — officer in the way.`); break; }
       c.x = nx; c.y = ny; c.dir = dir; c.moved = S.tick; rebuildDyn(); }
     syncCar(c); if (!(c.x === o.x && c.y === o.y)) return; }
-  c.dracoAim = Math.atan2(my - c.y, mx - c.x); c.dracoOut = S.turn;
+  // v17: square the nose up to the opening (the arm is fixed — the whole vehicle points at the target)
+  if (!dracoContact(c, o)) { const f = dracoSpotAt(o, c.x, c.y); if (!f) { failOrders(c, 'cannot point the front end at the opening from here'); return; }
+    c.dir = f.dir; c.moved = S.tick; rebuildDyn(); syncCar(c); log(`${c.name}: lining the front end up square on the ${o.door != null ? S.doors[o.door].name : S.rooms[S.windows[o.win].room].name + ' window'}.`, 'radio'); return; }
+  const ct = dracoContact(c, o); c.dracoAim = c.dir; c.dracoLen = Math.max(0.3, ct.along - 1.5); c.dracoOut = S.turn;
+  if (!o.contact) { o.contact = true; fx('text', mx, my, { text: 'ARM CONTACT', color: '#7fe3ff' }); }
   if ((o.prog = (o.prog || 0) + 1) <= DRACO_CFG.deployTicks) { log(`${c.name}: Draco arm deploying toward the ${o.door != null ? S.doors[o.door].name : S.rooms[S.windows[o.win].room].name + ' window'}…`, 'radio'); noise(mx, my, 6, 'engine'); return; }
   if (o.win !== undefined && o.win !== null) { const w = S.windows[o.win], wasBarred = !!w.barred; w.broken = true; w.cleared = true; w.barred = false; if (S.duplex) S.duplex.wallV++; S.stats.breaches++;
     fx('breach', mx, my, { how: 'draco' }); fx('text', mx, my, { text: 'WINDOW OUT', color: '#ffb020' }); noise(mx, my, DRACO_CFG.noise, 'breach'); aggressive(15);
@@ -3330,7 +3353,9 @@ function mindOf(sp) { if (sp.mind) return sp.mind;
   return sp.mind; }
 function hostageAvail(sp) { const M = mindOf(sp); return !!(M.hostageHook && S.hostages && S.hostages.some(h => h.room === sp.room && !h.out)); } // hook: no hostage system yet
 /** Teams with a direct line to the suspect (nearest first). */
-function encSeers(sp) { return S.units.filter(u => u.kind === 'team' && unitAlive(u) && u.deployed && teamOk(u).length && u.vis && u.vis.includes(idx(sp.x, sp.y)) && los(u.x, u.y, sp.x, sp.y) === 1)
+/** v17: an officer slicing the pie at a corner sees around it from the peek cell — that is visual contact too. */
+function encSliceSees(u, sp) { return !!(u.slice && u.slice.ox === u.x && u.slice.oy === u.y && u.slice.cells.includes(idx(sp.x, sp.y))); }
+function encSeers(sp) { return S.units.filter(u => u.kind === 'team' && unitAlive(u) && u.deployed && teamOk(u).length && ((u.vis && u.vis.includes(idx(sp.x, sp.y)) && los(u.x, u.y, sp.x, sp.y) === 1) || encSliceSees(u, sp)))
   .sort((a, b) => dist(a.x, a.y, sp.x, sp.y) - dist(b.x, b.y, sp.x, sp.y)); }
 /** Pick his visible state this turn from his previous one, weapon, mood and personality. */
 function encPose(sp, u) { const M = mindOf(sp), r = S.rng, armed = spArmed(sp), agit = (sp.agit || 0) / 100;
@@ -3437,11 +3462,12 @@ function encBuild() { const items = [], ev = S.encEv || []; S.encEv = [];
     if (M.delay > 0 && hostile()) { M.delay = 0; const n = S.log.length; surrender(`${spName()}: "Okay — okay, I'm coming out. Don't shoot." — he puts everything down and complies.`); 
       items.push({ kind: 'result', sp: i, title: 'He gives up', text: 'After stalling, he complies.', res: encLogFrom(n), done: true }); return; }
     if (!hostile() || sp.stun > 0 || sp.mode === 'fleeing') return;
+    if (M.contactTurn === S.turn) return; // v17: already had its popup this turn (first contact pauses mid-turn)
     const seers = encSeers(sp); let u = seers[0], pose;
     if (!u) { const near = S.units.filter(q => q.kind === 'team' && unitAlive(q) && q.deployed && teamOk(q).length && roomAt(q.x, q.y) >= 0 && cheb(q.x, q.y, sp.x, sp.y) <= ENC_CFG.heardDist && !los(q.x, q.y, sp.x, sp.y))
         .sort((a, b) => dist(a.x, a.y, sp.x, sp.y) - dist(b.x, b.y, sp.x, sp.y));
       if (!near.length || !S.rng.chance(ENC_CFG.heard)) return; u = near[0]; pose = 'heard'; }
-    else pose = encPose(sp, u);
+    else { pose = encPose(sp, u); M.contactTurn = S.turn; }
     M.pose = pose; M.poseTurn = S.turn; M.seen++; const rd = encRead(sp, u, pose); M.read = rd;
     const text = encDescribe(sp, u, pose, rd);
     if (pose === 'aim') { const n = S.log.length; encExchange(sp, u, 'aim');
@@ -3449,6 +3475,22 @@ function encBuild() { const items = [], ev = S.encEv || []; S.encEv = [];
     items.push({ kind: 'contact', sp: i, uid: u.uid, pose, read: { conf: rd.conf, looks: rd.looks }, title: pose === 'heard' ? 'Movement heard' : `Visual contact — ${u.name}`, text, options: encOptions(sp, u, pose, rd) });
   }));
   return items; }
+/** v17: FIRST visual contact this turn → pause right at that moment (mid-turn), before the officers' automatic
+    responses (challenge, less-lethal, hands-on arrest) or his reaction can resolve it unseen. One popup per suspect per
+    turn; nothing when nobody has a line on a live, hostile suspect. Called by stepTick after movement + vision. */
+function encContactCheck() { if (!encOn() || S.phase !== 'executing') return false; const items = [];
+  suspList().forEach((sp, i) => withSp(sp, () => {
+    if (!suspectActive() || !hostile() || sp.stun > 0 || sp.mode === 'fleeing') return; const M = mindOf(sp); if (M.contactTurn === S.turn) return;
+    const u = encSeers(sp)[0]; if (!u) return;
+    const pose = encPose(sp, u); M.pose = pose; M.poseTurn = S.turn; M.contactTurn = S.turn; M.seen++; const rd = encRead(sp, u, pose); M.read = rd;
+    const text = encDescribe(sp, u, pose, rd), why = encWhy(u);
+    if (pose === 'aim') { const n = S.log.length; encExchange(sp, u, 'aim');
+      items.push({ kind: 'result', sp: i, uid: u.uid, pose, mid: true, title: 'Armed and aiming — officers engage', text, res: encLogFrom(n), done: true }); return; }
+    items.push({ kind: 'contact', sp: i, uid: u.uid, pose, mid: true, why, read: { conf: rd.conf, looks: rd.looks }, title: `Visual contact — ${u.name}${why ? ' (' + why + ')' : ''}`, text, options: encOptions(sp, u, pose, rd) });
+  }));
+  if (!items.length) return false; log(`— Contact: turn paused at the moment of sight (tick ${S.tick}/${TICKS}). —`, 'system'); return encPause(items, false); }
+/** What the seeing team was doing when contact happened (shown in the popup title). */
+function encWhy(u) { const o = u.orders && u.orders[0]; if (!o) return ''; return { clear: 'entering and clearing', corner: 'working the corner', breach: 'at the breach', move: 'moving', polecam: 'at the door' }[o.type] || ''; }
 function encPause(items, atEnd) { if (!items.length) return false; if (S.enc && S.enc.items) { S.enc.items.push(...items); return true; }
   S.enc = { items, i: 0, atEnd: !!atEnd, turn: S.turn }; S.phase = 'encounter'; S.version++; return true; }
 /** Called by stepTick on the last tick: true = paused for the half-turn. */
@@ -3563,7 +3605,7 @@ function encNext() { if (!S.enc) return S.phase; const it = encCur(); if (it && 
   if (S.enc.final) { S.enc.i++; if (S.enc.i < S.enc.items.length) return 'encounter'; S.enc = null; S.version++; return 'over'; }
   S.enc.i++; if (S.enc.i < S.enc.items.length) { S.version++; return 'encounter'; }
   const atEnd = S.enc.atEnd; S.enc = null; S.phase = 'executing'; updateVision(); checkEnd(); if (S.phase === 'over') return 'over';
-  if (atEnd) endTurn(); else if (S.tick >= TICKS) { if (!encEndTurn()) endTurn(); }
+  if (atEnd) endTurn(); else if (S.tick >= TICKS && !S.encMid) { if (!encEndTurn()) endTurn(); }
   S.version++; return S.phase; }
 /** Debrief lines for encounters / reviews. */
 function encDebrief() { const out = []; (S.reviews || []).forEach(r => out.push({ k: 'Use-of-force review', v: `${r.name} — out for ${r.missions} missions pending investigation. Review outcome: ${r.removed ? 'removed from the team' : 'returns to duty after the review'}.` }));
@@ -3626,7 +3668,7 @@ function planOrder(u, o, sx, sy, assume) {
       if (u.kind === 'cruiser') { if (!S.drive[idx(o.x, o.y)]) return { ok: false, reason: 'Cruiser cannot park there (needs open road, driveway or lawn)' }; }
       const p = path(o.x, o.y); if (!p) return { ok: false, reason: u.kind === 'cruiser' ? 'No drivable route (fences, trees or cars in the way)' : 'No route (locked/barricaded door or obstacle)' }; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
     case 'dracoInstall': { const c = unit(o.car); if (!c) return { ok: false, reason: 'No vehicle' }; const g = carAdjGoal(c); const p = g(sx, sy) ? [] : pathAny(g); if (!p) return { ok: false, reason: 'Cannot reach the BearCat' }; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
-    case 'draco': { const g = dracoReach(o), gg = (x, y) => g(x, y) && !carClash(x, y, u.uid); const p = gg(sx, sy) ? [] : pathAny(gg); if (!p) return { ok: false, reason: 'No drivable spot within the Draco arm\'s reach of that opening' }; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
+    case 'draco': { const g = dracoReach(o), gg = (x, y) => g(x, y) && !carClash(x, y, u.uid); const p = gg(sx, sy) ? [] : pathAny(gg); if (!p) return { ok: false, reason: 'No drivable spot where the BearCat can point its front end square at that opening (the Draco arm is fixed — it does not swing)' }; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
     case 'board': { const c = unit(o.car); if (!c) return { ok: false, reason: 'No cruiser' }; const g = carAdjGoal(c); const p = g(sx, sy) ? [] : pathAny(g); if (!p) return { ok: false, reason: 'Cannot reach that cruiser' }; return { ok: true, path: p, end: [c.x, c.y] }; }
     case 'exit': return { ok: true, path: [], end: [sx, sy] };
     case 'overwatch': {
@@ -3735,7 +3777,7 @@ function queueOrder(uid, o) {
   for (let i = 0; i < upto; i++) if (prev[i].ok) { sx = prev[i].end[0]; sy = prev[i].end[1]; }
   const assume = plannedBreaches(); if (o.type === 'breach') assume.delete(o.door);
   const r = planOrder(u, o, sx, sy, assume); if (!r.ok) return r;
-  if (o.type === 'draco') { o.x = r.end[0]; o.y = r.end[1]; }
+  if (o.type === 'draco') { o.x = r.end[0]; o.y = r.end[1]; const f = dracoSpotAt(o, o.x, o.y); o.dir = f ? f.dir : null; }
   if (o.type === 'hold') u.orders = u.orders.filter(q => q.type !== 'hold');
   if (o.type === 'overwatch') u.orders = u.orders.filter(q => q.type !== 'overwatch');
   if (o.type === 'shoot') { u.orders = u.orders.filter(q => q.type !== 'shoot'); o.est = hitChance(u, o.x, o.y, [sx, sy]).p; }
@@ -3849,6 +3891,7 @@ function execute() {
 }
 function stepTick() {
   if (S.phase !== 'executing') return true;
+  if (S.encMid) { const m = S.encMid; S.encMid = false; if (m !== 'end') stepTickB(); return stepTickEnd(); } // v17: resume the tick that paused at the moment of contact
   S.tick++; S.tickLog = {};
   for (const u of S.units.slice()) { if (!unitAlive(u)) continue;
     if (S.gasEver) gasExpose(u);
@@ -3858,7 +3901,12 @@ function stepTick() {
   casualtyTick();
   if (S.gasEver) eachSp(suspectGas);
   rebuildDyn(); computeExpo();
-  updateVision(); eachSp(suspectTick); officersFire(); teamResponses(); updateVision(); checkEnd();
+  updateVision();
+  if (encContactCheck()) { S.encMid = true; S.version++; return true; } // v17: first sight this turn → pause before anyone reacts
+  stepTickB(); return stepTickEnd(); }
+function stepTickB() { eachSp(suspectTick); officersFire(); teamResponses(); updateVision(); checkEnd();
+  if (S.phase === 'executing' && encContactCheck()) S.encMid = 'end'; } // v17: he stepped into view during his own move → pause at the end of this tick
+function stepTickEnd() {
   if (S.phase === 'over') return true;
   if (S.phase === 'encounter') { S.version++; return true; } // v16: paused for a decision (blind fire at a threshold)
   if (S.tick >= TICKS) { if (encEndTurn()) return true; endTurn(); return true; } // v16: half-turn encounter decisions before the turn ends
@@ -4519,7 +4567,7 @@ function newGame(seed, opts) {
   return S;
 }
 
-return { ENC_CFG, ENC_TRAITS, ENC_POSES, ENC_OPTS, BLIND_OPTS, encOn, encWord, mindOf, encSeers, encPose, encRead, encDescribe, encWho, encOdds, encOptions, encBuild, encPause, encEndTurn, encCur, encChoose, encNext, encFinal, encExchange, encFirstP, encMarkDev, encJustified, encThreshold, blindChoose, encScore, encDebrief, encWithdraw, spAt, DRUG_CFG, INMATE_CFG, DUPLEX_CFG, TRAILER_CFG, DOOR_MUL, doorMul, exitWin, roomInPlay, camSees, camTurn, duplexTurn, partyBreach, thinWallTurn, types3Turn, cmdShown, structFor, STRUCT_CFG, STRUCT_KEYS, ownRooms, isOwnRoom, MULTI_TYPES, multiType, PAROLE_CFG, SOVCIT_CFG, BASE_KEYS, hiddenNow, applyTypeExtras, NEGO_FLAVOR, SCEN_TYPES, SCEN_KEYS, typeForSeed, stypeCfg, resolvedNoForce, onNeighborSide, typeFireMul, LEGAL_TXT, typeDebrief, SHOOT_CFG, MAX_RETURN_FIRE, returnFirers, returnFire, memberWeapon, primaryOf, suspectTick, suspectFire, TASER_CFG, doorExposed, FORM_CFG, wallSpots, doorStack, pickVictim, LL_CFG, DEVICE_ORDERS, deviceUser, deviceWhyNot, deviceShotReq, deviceChance, ARMOR, ARMOR_CFG, SHIELDS, SHIELD_CFG, SUSPECT_CAL, armorOf, shieldOf, armorHit, shotOfficer, suspectArmorStops, hasShield, teamArmor, revealSuspectArmor, officerDown, suspectHit, fireAt, DRACO_CFG, bearcat, installTicks, dracoTick, passE, edge, dracoTargetReq, openingMid,
+return { cornerAt, encSliceSees, doorSides, spHostile, dracoSpots, dracoContact, dracoFit, dracoSpotAt, openingNormal, ENC_CFG, ENC_TRAITS, ENC_POSES, ENC_OPTS, BLIND_OPTS, encOn, encWord, mindOf, encSeers, encPose, encRead, encDescribe, encWho, encOdds, encOptions, encBuild, encPause, encEndTurn, encCur, encChoose, encNext, encFinal, encExchange, encFirstP, encMarkDev, encJustified, encThreshold, blindChoose, encScore, encDebrief, encWithdraw, spAt, DRUG_CFG, INMATE_CFG, DUPLEX_CFG, TRAILER_CFG, DOOR_MUL, doorMul, exitWin, roomInPlay, camSees, camTurn, duplexTurn, partyBreach, thinWallTurn, types3Turn, cmdShown, structFor, STRUCT_CFG, STRUCT_KEYS, ownRooms, isOwnRoom, MULTI_TYPES, multiType, PAROLE_CFG, SOVCIT_CFG, BASE_KEYS, hiddenNow, applyTypeExtras, NEGO_FLAVOR, SCEN_TYPES, SCEN_KEYS, typeForSeed, stypeCfg, resolvedNoForce, onNeighborSide, typeFireMul, LEGAL_TXT, typeDebrief, SHOOT_CFG, MAX_RETURN_FIRE, returnFirers, returnFire, memberWeapon, primaryOf, suspectTick, suspectFire, TASER_CFG, doorExposed, FORM_CFG, wallSpots, doorStack, pickVictim, LL_CFG, DEVICE_ORDERS, deviceUser, deviceWhyNot, deviceShotReq, deviceChance, ARMOR, ARMOR_CFG, SHIELDS, SHIELD_CFG, SUSPECT_CAL, armorOf, shieldOf, armorHit, shotOfficer, suspectArmorStops, hasShield, teamArmor, revealSuspectArmor, officerDown, suspectHit, fireAt, DRACO_CFG, bearcat, installTicks, dracoTick, passE, edge, dracoTargetReq, openingMid,
   REAR_CFG, REAR_OFF, reach, newGame, get state() { return S; }, MULTI_CFG, suspList, multiSp, spName, spState, suspectCountInfo, fleeCount, patrolReport, suspById, withSp, eachSp, spHostile, spActive, setLead, MAP_W, MAP_H, TICKS, LOSE_DOWN, SCORE, withdraw, forceLeft, updateVision, computeVis, checkEnd, EQUIP, SPECS, QUALS, WEAPONS, SUSPECT_WEAPONS, STANCES, COVER_NAMES, COMMANDS, idx, roomAt, edge, los, losEx, findPath, planFor, queueOrder, undoOrder, clearOrders, AFTER_CFG, AFTER_ORDERS, setAfter, afterOrders, afterRoom, regroupSpot, regroupForm, startRegroup, roomDoorCells, addrLabels, ADDR_CFG, neighbourAddr,
   setCommand, execute, stepTick, formTeam, assign, equip, renameTeam, intelInfo, unit, off, teamOk, hasSpec, teamSkill, nearStaging, orderReq, setStance, BREACH, CHARGE_SAFE, breachEst, breachMethods, breachCan, defaultMethod, doorMid, gasAt, gasTurn, gasDeploy, gasCond, gasExpose, suspectGas, suspectGasTurn, masked, impairAcc, impairVis, donMasks, detonateCharge, dist, hitChance, coverInfo, expoAt, computeExpo,
   validateHouse, patrolStartOk, patrolCoverKind, suspSees, houseRectDist, onProperty, suspEyePts, vehId, vehDist, vehNear, VEH_CFG, PATROL_CFG, GEO_CFG, downedSpot, losEx, sceneTurn, validateWorld, footprint, carAxis, houseSideOf, exitCell, spotterOf, perchAt, owCone, weaponOf, onFoot, skillOf, houseCenter, carAt, snapCover, shieldAt, validateContain, COVER_CFG, exposedOrders, ITEM_CFG, INV_CFG, invAct, invView, invOf, isReady, teamWeapon, syncEquip, setTeamOrder, atEquipment, stagePos, CAR_SEATS, carSeats, seatsUsed, TURN_SEC, missionScore, careerSummary, ACT_XP, xpAct, xpSummary, callState, preview, cornerAt, cornerAvail, CORNER_CFG, FIRE_CFG, fireImpair, formationFor, FORM_CFG, initialArrivals, ARRIVE_CFG, mmss, tDur, tMin, clockAt, elapsedAt, sideWatch, watchAt, houseSides, statusCheck, review911, roadblockHeld, withVirtualCar, SCENE_CFG, VARIANT_TXT, setupScene, sceneDebrief, T_HIT, T_TRY,
@@ -4996,16 +5044,17 @@ function drawBearCat(g, c, Ln, Wd, blink) { const dis = c.disabled;
   g.fillStyle = 'rgba(220,230,255,.9)'; g.font = `800 ${CS * 0.24}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SWAT', -Ln * 0.34, 0);
   if (c.draco || c.dracoProg) drawDraco(g, c, Ln, Wd); }
 /** v9 Draco arm: hydraulic boom on the BearCat's FRONT (+x) ending in a claw. Ghosted while being installed (with progress);
- *  swung out toward the opening during a Draco breach this turn. */
+ *  extended straight ahead (fixed to the front, no swing) during a Draco breach this turn. */
 function drawDraco(g, c, Ln, Wd) { const S = Core.state, inst = !c.draco, act = !inst && c.dracoOut === S.turn && c.dracoAim !== undefined;
-  let rel = 0; if (act) { rel = c.dracoAim - (c.dir || 0); while (rel > Math.PI) rel -= 2 * Math.PI; while (rel < -Math.PI) rel += 2 * Math.PI; rel = Math.max(-0.9, Math.min(0.9, rel)); }
-  const bx = Ln * 0.28, L = act ? Ln * 0.22 + CS * 1.9 : Ln * 0.22 + CS * 1.05; g.save(); if (inst) { g.globalAlpha = 0.45; g.setLineDash([4, 3]); }
-  g.fillStyle = '#d9a21a'; g.beginPath(); g.arc(bx, 0, Wd * 0.17, 0, 7); g.fill(); g.strokeStyle = '#3a2a05'; g.lineWidth = 1.5; g.stroke(); // turret / pivot
-  g.translate(bx, 0); g.rotate(rel);
+  // v17: the arm is fixed to the front of the vehicle — it never swings left/right; only the boom extends straight ahead
+  const bx = Ln * 0.28, L = act ? Ln * 0.22 + CS * (c.dracoLen || 1.9) : Ln * 0.22 + CS * 1.05; g.save(); if (inst) { g.globalAlpha = 0.45; g.setLineDash([4, 3]); }
+  g.fillStyle = '#d9a21a'; g.beginPath(); g.arc(bx, 0, Wd * 0.17, 0, 7); g.fill(); g.strokeStyle = '#3a2a05'; g.lineWidth = 1.5; g.stroke(); // fixed front mount (no turret)
+  g.translate(bx, 0);
   g.fillStyle = '#e8b322'; g.strokeStyle = '#3a2a05'; g.lineWidth = 1.5; g.beginPath(); g.rect(0, -CS * 0.13, L, CS * 0.26); g.fill(); g.stroke(); // boom
   g.fillStyle = '#9aa3ad'; g.fillRect(L * 0.15, -CS * 0.05, L * 0.6, CS * 0.1); // hydraulic ram
   g.translate(L, 0); g.strokeStyle = '#c9ced6'; g.lineWidth = CS * 0.11; g.lineCap = 'round'; const o = act ? 0.55 : 0.35;
   for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(0, sg * CS * 0.08); g.lineTo(CS * 0.32, sg * CS * (0.14 + o * 0.3)); g.lineTo(CS * 0.55, sg * CS * 0.06); g.stroke(); } // claw tines
+  if (act) { g.strokeStyle = '#7fe3ff'; g.lineWidth = 2; g.beginPath(); g.arc(CS * 0.45, 0, CS * 0.32, 0, 7); g.stroke(); } // v17: contact ring where the claw meets the opening
   g.restore();
   if (inst) { const f = Math.min(1, (c.dracoProg || 0) / Core.installTicks()); g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(-Ln * 0.4, -Wd / 2 - CS * 0.32, Ln * 0.8, CS * 0.18);
     g.fillStyle = '#e8b322'; g.fillRect(-Ln * 0.4, -Wd / 2 - CS * 0.32, Ln * 0.8 * f, CS * 0.18); } }
@@ -5585,7 +5634,7 @@ const ACTS = [
   { k: 'llfire', ic: '◍', name: 'Less-Lethal', key: ']', kinds: 'team', tip: 'Fire the 40mm less-lethal launcher (LL-qualified officer): range ~11 m, odds fall with range, sometimes no effect; a good hit stuns him 2–3 turns. Uses one round. Both hands: the carrier slings his weapon and re-draws after (not ready next turn). A shield or ram carrier cannot use it', instant: true },
   { k: 'overwatch', ic: '⌯', name: 'Overwatch', key: 'O', kinds: 'team', tip: 'Tap a green perch (neighbor window/roof) or a yard spot for the sniper; the cone shows the sight-lines' },
   { k: 'board', ic: '⛐', name: 'Get In', key: 'E', kinds: 'patrol team', tip: 'Tap a vehicle to get in (cruiser 2 seats, BearCat 10). Inside, this chip drives the vehicle' },
-  { k: 'draco', ic: '⚒', name: 'Draco Breach', key: 'B', kinds: 'incar', tip: 'BearCat with the Draco arm: tap an exterior door or a window — the vehicle drives up and the boom rips it out (doors ~90% per pull, storm doors first; windows always). Loud; crew stays under armor' },
+  { k: 'draco', ic: '⚒', name: 'Draco Breach', key: 'B', kinds: 'incar', tip: 'BearCat with the Draco arm: tap an exterior door or a window — the vehicle drives up, points its nose square at it (the arm is fixed to the front, it does not swing) and rips it out (doors ~90% per pull, storm doors first; windows always). Loud; crew stays under armor' },
   { k: 'dracoinst', ic: '⚙', name: 'Install Draco', key: 'I', kinds: 'team', tip: 'Team of 2+ goes to the BearCat and mounts the Draco arm kit from the equipment pool: 5 turns of work, more exposed and not returning fire. Leaving interrupts (progress is kept)', instant: true },
   { k: 'exit-house', ic: '⇱', name: 'Exit · House', key: 'E', kinds: 'incar', tip: 'Occupants get out on the house side (fast, but exposed)', instant: true },
   { k: 'exit-safe', ic: '⇲', name: 'Exit · Safe', key: 'Q', kinds: 'incar', tip: 'Occupants get out on the far side, behind the car body (a driver sliding across takes +1 tick)', instant: true },
@@ -5864,7 +5913,7 @@ $('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><b
  ${HB('Mission brief & 911 call', 'every mission opens with a brief of what happened before SWAT was activated: the 911 call, what the first patrol units did, and anything known about the suspect. <b>Listen to the 911 call</b> (📋 button, or Intel → Review 911 Call) shows the transcript with times and can read it aloud (mute / skip). The caller ID or a family caller may give you his phone number. Reviewing is instant.')}
  ${HB('Perimeter on arrival', 'patrol cruisers start at the ends of the block or at the nearest intersection, keeping traffic out (striped <b>TRAFFIC BLOCKED</b> markers on the map and minimap) — moving one opens the street. Patrol officers may already be in good positions, or may have left a side of the house unwatched by accident, or bunched up at the front. Run Intel → <b>Status Check</b> (instant) for a roll call: it reveals which sides are watched and flags any gap. An unwatched side is how he slips out.')}
  ${HB('Officer down on arrival', `about ${Math.round(Core.SCENE_CFG.injury * 100)}% of calls a patrol officer was hit before SWAT arrived: injured and mobile, immobile and bleeding out with a critical countdown, or killed. A downed officer in the front yard is in the line of fire — plan the rescue (shield, cover, medic) before the timer runs out.`)}
-${HB('Encounters (seeing the suspect)', 'whenever a team has <b>visual contact</b> with a suspect, the game pauses at the end of the turn (a half-turn) with one decision per suspect. The description is written fresh each turn from what the suspect is actually doing — aiming, weapon at the side, hands visible, hands in pockets, recording or calling on a phone, hands behind the back, turned away, hands hidden, behind cover, or only <b>heard</b> moving. Officers say how sure they are: <i>confident it is a gun</i>, <i>uncertain but it looks like a gun</i>, or <i>unknown item</i> — and they can be wrong (a phone can look like a pistol). Pick a response (voice commands, negotiate if a negotiator is on scene, hold and observe, taser, 40mm, flashbang, CS gas, shoot, withdraw), then pick the officer who does it (only those with the equipment, range and line of sight are listed). Each option shows a likelihood word — <b>Very likely · Likely · Possible · Unlikely · Very unlikely</b> — no percentages. Repeating a command can help (or harden him); a negotiator improves the odds. Every suspect has a personality (scared, intoxicated, in crisis, determined, compliant-but-stalling) that shapes the answer: comply, ignore, back deeper into the house, surrender after a delay, or open fire.')}
+${HB('Encounters (seeing the suspect)', 'whenever a team has <b>visual contact</b> with a live suspect, the game pauses <b>at the moment of first sight</b> — mid-turn, for example while entering and clearing a room, working a corner, looking through a doorway or right after a breach — before officers or the suspect react. One decision per suspect per turn (no popup when nobody can see him); a suspect only heard is raised at the end of the turn. The description is written fresh each turn from what the suspect is actually doing — aiming, weapon at the side, hands visible, hands in pockets, recording or calling on a phone, hands behind the back, turned away, hands hidden, behind cover, or only <b>heard</b> moving. Officers say how sure they are: <i>confident it is a gun</i>, <i>uncertain but it looks like a gun</i>, or <i>unknown item</i> — and they can be wrong (a phone can look like a pistol). Pick a response (voice commands, negotiate if a negotiator is on scene, hold and observe, taser, 40mm, flashbang, CS gas, shoot, withdraw), then pick the officer who does it (only those with the equipment, range and line of sight are listed). Each option shows a likelihood word — <b>Very likely · Likely · Possible · Unlikely · Very unlikely</b> — no percentages. Repeating a command can help (or harden him); a negotiator improves the odds. Every suspect has a personality (scared, intoxicated, in crisis, determined, compliant-but-stalling) that shapes the answer: comply, ignore, back deeper into the house, surrender after a delay, or open fire.')}
  ${HB('Armed and aiming', 'shooting is always justified and is not a prompt — it simply happens. About 3 times in 4 the suspect gets the first rounds off; a flashbang, CS gas or breaching charge that turn cuts that. Whenever a suspect fires at a team with a direct line, officers return fire automatically and a result box explains what happened.')}
  ${HB('Shots through the doorway', 'after a breach or a bang/gas throw a suspect may fire blindly at the threshold. You choose: <b>cancel the entry</b>, <b>continue in and return fire</b>, <b>work the doorway</b> from outside, or have <b>point and defense engage from the door frame</b>. This replaces the follow-up you picked in the "After this" menu.')}
  ${HB('Use of force review', 'a suspect in custody unhurt scores far more than any other outcome; a minor injury keeps 80% of the mission points and a fatal outcome only 33%. Firing on a suspect who is unarmed or complying cuts the mission points by 95% and the officer is placed on administrative leave for a 10-mission review, which can end in reassignment out of the unit (career roster; in a single mission it is shown in the debrief).')}
@@ -5885,7 +5934,7 @@ ${HB('Patrol start positions', `patrol officers always start <b>off the suspect\
  ${HB('Several suspects (fleeing-suspect calls)', `a suspect who fled into a vacant house may not be alone: 1–4 suspects (one is most common — ${Math.round(Core.MULTI_CFG.countW[0] * 100)}% / ${Math.round(Core.MULTI_CFG.countW[1] * 100)}% / ${Math.round(Core.MULTI_CFG.countW[2] * 100)}% / ${Math.round(Core.MULTI_CFG.countW[3] * 100)}%). The patrol report can be uncertain or under-count. Each suspect has a separate position, weapon, armor, mask and behavior (hiding, fleeing, fighting, ready to give up, or injured). The intel panel shows the count as <b>Unknown (N seen)</b> until every suspect has been seen and every room cleared. Negotiation works on the group, but individuals can break away. The call is only resolved when <b>every</b> suspect is in custody; each escape costs points.`)}
  ${HB('Rotating a phone', 'the map re-measures itself after a rotate (and again a moment later, since iOS reports stale sizes). It keeps the same spot centred and never stretches. If you had not moved the view, it re-frames the house.')}
  ${HB('Suspect body armor', `about ${Math.round(Core.ARMOR_CFG.suspect * 100)}% of suspects wear armor — mostly soft vests, occasionally rifle plates. You only learn it when he is seen wearing it or a hit is stopped (log: “The round appears to have been stopped by body armor”). Handgun rounds are stopped by a soft vest; rifles penetrate soft armor but plates stop most of them; the .308 precision rifle penetrates soft armor and has a reduced chance against plates. Hits outside the vest still count — in a window he shows mostly head and shoulders.`)}
- ${HB('Draco arm (BearCat)', `career level ~60 adds a <b>Draco Arm Kit</b> to the pool. Select a team of 2+ and tap <b>⚙ Install Draco</b>: they walk to the BearCat and mount it in ${Core.DRACO_CFG.installTurns} turns of work (progress bar on the vehicle). Installers are busy and more exposed and do not return fire; any other order interrupts the install (progress is kept). Once installed, select whoever is inside the BearCat and use <b>⚒ Draco Breach</b> on an exterior door or a window: the BearCat drives up and the claw rips it out — a door in one or two pulls (storm doors first, still faster than by hand), windows always. It is loud, takes the frame with it, and the crew stays under armor. The new opening is used for vision, gas and entry.`)}
+ ${HB('Draco arm (BearCat)', `career level ~60 adds a <b>Draco Arm Kit</b> to the pool. Select a team of 2+ and tap <b>⚙ Install Draco</b>: they walk to the BearCat and mount it in ${Core.DRACO_CFG.installTurns} turns of work (progress bar on the vehicle). Installers are busy and more exposed and do not return fire; any other order interrupts the install (progress is kept). Once installed, select whoever is inside the BearCat and use <b>⚒ Draco Breach</b> on an exterior door or a window: the BearCat drives up and <b>points its front end</b> square at the opening — the arm is <b>fixed to the front</b> of the vehicle and does not swing left or right, so the whole vehicle lines up nose-on (it straightens up first if it arrives at an angle). A cyan contact ring shows the claw touching the door or window, then it rips it out — a door in one or two pulls (storm doors first, still faster than by hand), windows always. It is loud, takes the frame with it, and the crew stays under armor. The new opening is used for vision, gas and entry.`)}
  ${HB('Taser', `Taser order (team or patrol): an officer with a free(able) hand draws the taser one-handed — the suspect must be in view with a clear line within ~${Core.TASER_CFG.range} m. Odds are best up close (~${Math.round(Core.TASER_CFG.p * 100)}% at 1 m, lower with distance and against body armor) and it can fail. A hit incapacitates him for ~${Core.TASER_CFG.stunTurns} turns: move a team in to detain him.`)}
  ${HB('Less-lethal 40mm', `an LL-qualified officer with the launcher fires impact rounds: range ~${Core.LL_CFG.range} m, odds fall with range, about ${Math.round(Core.LL_CFG.noEffect * 100)}% of hits have no visible effect, a good hit stuns him ${Core.LL_CFG.stunTurns[0]}–${Core.LL_CFG.stunTurns[1]} turns. Each shot uses one round (shown in the loadout); out of rounds = order unavailable.`)}
  ${HB('Hand transitions', 'throwing a flashbang / CS needs <b>both hands</b>, the taser <b>one</b>, the 40mm launcher <b>both</b>. The officer automatically holsters or slings what he holds, uses the device, then re-draws his previous weapon — which is <b>not ready</b> until next turn (logged). A <b>ballistic shield cannot be slung or put down</b>: a shield holder keeps it and uses the taser in his free hand, but cannot fire the launcher (give the launcher to someone else in the loadout).')}

@@ -10,7 +10,8 @@ const prep = (seed, enc = true) => { const S = Core.newGame(seed, { encounters: 
 const placeLOS = (S, t, minD = 2) => { const sp = S.suspect, rm = S.rooms[sp.room]; for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) {
   if (S.block[y * W + x] || Math.max(Math.abs(x - sp.x), Math.abs(y - sp.y)) < minD || Core.los(x, y, sp.x, sp.y) !== 1) continue; t.x = x; t.y = y; t.orders = []; Core.updateVision(); return true; } return false; };
 const runTurn = () => { Core.execute(); let g = 0; while (!Core.stepTick() && g++ < 200); return Core.state.phase; };
-const settle = (pick) => { let k = 0, ph = Core.state.phase; while (ph === 'encounter' && k++ < 12) { const c = Core.encCur(); if (c && !c.done) Core.encChoose(pick && c.options.some(o => o.key === pick) ? pick : c.options[0].key); ph = Core.encNext(); } return ph; };
+const settle = (pick) => { let k = 0, ph = Core.state.phase; while (ph === 'encounter' && k++ < 12) { const c = Core.encCur(); if (c && !c.done) Core.encChoose(pick && c.options.some(o => o.key === pick) ? pick : c.options[0].key); ph = Core.encNext();
+    if (ph === 'executing') { let g = 0; while (!Core.stepTick() && g++ < 200); ph = Core.state.phase; } } return ph; }; // v17: a mid-turn contact pause resumes the turn
 
 // 1) off by default (headless harness/bots unaffected); UI turns it on
 ok(Core.ENC_CFG.enabled === false, 'encounters off by default in the core');
@@ -29,7 +30,7 @@ ok(Core.ENC_CFG.enabled === false, 'encounters off by default in the core');
 // 4) real turns: pause at the end of the turn, fresh descriptions, options with officers and words
 let contacts = 0, results = 0, poses = new Set(), confs = new Set(), misreads = 0, optsSeen = new Set(), wordsOK = true, whoOK = true;
 for (let seed = 1; seed <= 40; seed++) { const { S, t } = prep(seed); if (!placeLOS(S, t, 2)) continue; const turn0 = S.turn; runTurn();
-  if (S.phase !== 'encounter') continue; ok(S.enc.atEnd && S.turn === turn0, 'paused as a half-turn before the turn ends');
+  if (S.phase !== 'encounter') continue; ok(S.turn === turn0 && (S.enc.atEnd || S.enc.items.some(i => i.mid)), 'paused within the turn (v17: at the moment of first sight)');
   for (const it of S.enc.items) { if (it.kind === 'result') { results++; ok(it.done && it.res.length > 0, 'result box has text'); continue; }
     if (it.kind !== 'contact') continue; contacts++; poses.add(it.pose); confs.add(it.read.conf); const M = Core.mindOf(S.suspect); if (M.read && M.read.looks === 'gun' && M.read.actual !== 'weapon') misreads++;
     ok(typeof it.text === 'string' && it.text.length > 30 && !/\d+\s*%/.test(it.text), 'description text');

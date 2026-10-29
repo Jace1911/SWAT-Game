@@ -48,7 +48,7 @@ function planOrder(u, o, sx, sy, assume) {
       if (u.kind === 'cruiser') { if (!S.drive[idx(o.x, o.y)]) return { ok: false, reason: 'Cruiser cannot park there (needs open road, driveway or lawn)' }; }
       const p = path(o.x, o.y); if (!p) return { ok: false, reason: u.kind === 'cruiser' ? 'No drivable route (fences, trees or cars in the way)' : 'No route (locked/barricaded door or obstacle)' }; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
     case 'dracoInstall': { const c = unit(o.car); if (!c) return { ok: false, reason: 'No vehicle' }; const g = carAdjGoal(c); const p = g(sx, sy) ? [] : pathAny(g); if (!p) return { ok: false, reason: 'Cannot reach the BearCat' }; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
-    case 'draco': { const g = dracoReach(o), gg = (x, y) => g(x, y) && !carClash(x, y, u.uid); const p = gg(sx, sy) ? [] : pathAny(gg); if (!p) return { ok: false, reason: 'No drivable spot within the Draco arm\'s reach of that opening' }; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
+    case 'draco': { const g = dracoReach(o), gg = (x, y) => g(x, y) && !carClash(x, y, u.uid); const p = gg(sx, sy) ? [] : pathAny(gg); if (!p) return { ok: false, reason: 'No drivable spot where the BearCat can point its front end square at that opening (the Draco arm is fixed — it does not swing)' }; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
     case 'board': { const c = unit(o.car); if (!c) return { ok: false, reason: 'No cruiser' }; const g = carAdjGoal(c); const p = g(sx, sy) ? [] : pathAny(g); if (!p) return { ok: false, reason: 'Cannot reach that cruiser' }; return { ok: true, path: p, end: [c.x, c.y] }; }
     case 'exit': return { ok: true, path: [], end: [sx, sy] };
     case 'overwatch': {
@@ -157,7 +157,7 @@ function queueOrder(uid, o) {
   for (let i = 0; i < upto; i++) if (prev[i].ok) { sx = prev[i].end[0]; sy = prev[i].end[1]; }
   const assume = plannedBreaches(); if (o.type === 'breach') assume.delete(o.door);
   const r = planOrder(u, o, sx, sy, assume); if (!r.ok) return r;
-  if (o.type === 'draco') { o.x = r.end[0]; o.y = r.end[1]; }
+  if (o.type === 'draco') { o.x = r.end[0]; o.y = r.end[1]; const f = dracoSpotAt(o, o.x, o.y); o.dir = f ? f.dir : null; }
   if (o.type === 'hold') u.orders = u.orders.filter(q => q.type !== 'hold');
   if (o.type === 'overwatch') u.orders = u.orders.filter(q => q.type !== 'overwatch');
   if (o.type === 'shoot') { u.orders = u.orders.filter(q => q.type !== 'shoot'); o.est = hitChance(u, o.x, o.y, [sx, sy]).p; }

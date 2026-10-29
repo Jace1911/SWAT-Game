@@ -80,7 +80,7 @@ const tally = (n, f) => { const c = {}; for (let i = 0; i < n; i++) { const r = 
   ok(c.status === 'ok' && t.status === 'ok', 'crew stays under armor'); }
 // 8) storm door: extra pull, still faster than manual
 { let pulls = 0, n = 0, plain = 0, pn = 0; for (let s = 1; s <= 30 && (n < 5 || pn < 5); s++) { const S = Core.newGame(s, { armored: true }); const c = Core.bearcat(); c.draco = true; c.occ = ['T1'];
-    for (const fd of S.doors.filter(d => d.exterior && d.state === 'closed')) { const o = { type: 'draco', door: fd.id, x: c.x, y: c.y }; c.orders = [o]; let k = 0; while (fd.state === 'closed' && k++ < 30) Core.dracoTick(c, o);
+    for (const fd of S.doors.filter(d => d.exterior && d.state === 'closed')) { const o0 = { type: 'draco', door: fd.id }, sp = Core.dracoSpots(o0)[0]; if (!sp) continue; c.x = sp.x; c.y = sp.y; c.dir = sp.dir; const o = { type: 'draco', door: fd.id, x: c.x, y: c.y }; c.orders = [o]; let k = 0; while (fd.state === 'closed' && k++ < 30) Core.dracoTick(c, o);
       if (fd.storm) { pulls += k - 1; n++; } else { plain += k - 1; pn++; } } }
   ok(n > 0 && pulls / n < 3.5 && pulls / n > plain / pn, `storm doors take extra pulls (${(pulls / n).toFixed(1)} vs ${(plain / pn).toFixed(1)}) but beat manual`);
   ok(pn > 0 && plain / pn < 2, `plain doors: high per-pull success (${(plain / pn).toFixed(2)})`); }

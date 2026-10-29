@@ -82,7 +82,9 @@ function mindOf(sp) { if (sp.mind) return sp.mind;
   return sp.mind; }
 function hostageAvail(sp) { const M = mindOf(sp); return !!(M.hostageHook && S.hostages && S.hostages.some(h => h.room === sp.room && !h.out)); } // hook: no hostage system yet
 /** Teams with a direct line to the suspect (nearest first). */
-function encSeers(sp) { return S.units.filter(u => u.kind === 'team' && unitAlive(u) && u.deployed && teamOk(u).length && u.vis && u.vis.includes(idx(sp.x, sp.y)) && los(u.x, u.y, sp.x, sp.y) === 1)
+/** v17: an officer slicing the pie at a corner sees around it from the peek cell — that is visual contact too. */
+function encSliceSees(u, sp) { return !!(u.slice && u.slice.ox === u.x && u.slice.oy === u.y && u.slice.cells.includes(idx(sp.x, sp.y))); }
+function encSeers(sp) { return S.units.filter(u => u.kind === 'team' && unitAlive(u) && u.deployed && teamOk(u).length && ((u.vis && u.vis.includes(idx(sp.x, sp.y)) && los(u.x, u.y, sp.x, sp.y) === 1) || encSliceSees(u, sp)))
   .sort((a, b) => dist(a.x, a.y, sp.x, sp.y) - dist(b.x, b.y, sp.x, sp.y)); }
 /** Pick his visible state this turn from his previous one, weapon, mood and personality. */
 function encPose(sp, u) { const M = mindOf(sp), r = S.rng, armed = spArmed(sp), agit = (sp.agit || 0) / 100;
@@ -189,11 +191,12 @@ function encBuild() { const items = [], ev = S.encEv || []; S.encEv = [];
     if (M.delay > 0 && hostile()) { M.delay = 0; const n = S.log.length; surrender(`${spName()}: "Okay — okay, I'm coming out. Don't shoot." — he puts everything down and complies.`); 
       items.push({ kind: 'result', sp: i, title: 'He gives up', text: 'After stalling, he complies.', res: encLogFrom(n), done: true }); return; }
     if (!hostile() || sp.stun > 0 || sp.mode === 'fleeing') return;
+    if (M.contactTurn === S.turn) return; // v17: already had its popup this turn (first contact pauses mid-turn)
     const seers = encSeers(sp); let u = seers[0], pose;
     if (!u) { const near = S.units.filter(q => q.kind === 'team' && unitAlive(q) && q.deployed && teamOk(q).length && roomAt(q.x, q.y) >= 0 && cheb(q.x, q.y, sp.x, sp.y) <= ENC_CFG.heardDist && !los(q.x, q.y, sp.x, sp.y))
         .sort((a, b) => dist(a.x, a.y, sp.x, sp.y) - dist(b.x, b.y, sp.x, sp.y));
       if (!near.length || !S.rng.chance(ENC_CFG.heard)) return; u = near[0]; pose = 'heard'; }
-    else pose = encPose(sp, u);
+    else { pose = encPose(sp, u); M.contactTurn = S.turn; }
     M.pose = pose; M.poseTurn = S.turn; M.seen++; const rd = encRead(sp, u, pose); M.read = rd;
     const text = encDescribe(sp, u, pose, rd);
     if (pose === 'aim') { const n = S.log.length; encExchange(sp, u, 'aim');
@@ -201,6 +204,22 @@ function encBuild() { const items = [], ev = S.encEv || []; S.encEv = [];
     items.push({ kind: 'contact', sp: i, uid: u.uid, pose, read: { conf: rd.conf, looks: rd.looks }, title: pose === 'heard' ? 'Movement heard' : `Visual contact — ${u.name}`, text, options: encOptions(sp, u, pose, rd) });
   }));
   return items; }
+/** v17: FIRST visual contact this turn → pause right at that moment (mid-turn), before the officers' automatic
+    responses (challenge, less-lethal, hands-on arrest) or his reaction can resolve it unseen. One popup per suspect per
+    turn; nothing when nobody has a line on a live, hostile suspect. Called by stepTick after movement + vision. */
+function encContactCheck() { if (!encOn() || S.phase !== 'executing') return false; const items = [];
+  suspList().forEach((sp, i) => withSp(sp, () => {
+    if (!suspectActive() || !hostile() || sp.stun > 0 || sp.mode === 'fleeing') return; const M = mindOf(sp); if (M.contactTurn === S.turn) return;
+    const u = encSeers(sp)[0]; if (!u) return;
+    const pose = encPose(sp, u); M.pose = pose; M.poseTurn = S.turn; M.contactTurn = S.turn; M.seen++; const rd = encRead(sp, u, pose); M.read = rd;
+    const text = encDescribe(sp, u, pose, rd), why = encWhy(u);
+    if (pose === 'aim') { const n = S.log.length; encExchange(sp, u, 'aim');
+      items.push({ kind: 'result', sp: i, uid: u.uid, pose, mid: true, title: 'Armed and aiming — officers engage', text, res: encLogFrom(n), done: true }); return; }
+    items.push({ kind: 'contact', sp: i, uid: u.uid, pose, mid: true, why, read: { conf: rd.conf, looks: rd.looks }, title: `Visual contact — ${u.name}${why ? ' (' + why + ')' : ''}`, text, options: encOptions(sp, u, pose, rd) });
+  }));
+  if (!items.length) return false; log(`— Contact: turn paused at the moment of sight (tick ${S.tick}/${TICKS}). —`, 'system'); return encPause(items, false); }
+/** What the seeing team was doing when contact happened (shown in the popup title). */
+function encWhy(u) { const o = u.orders && u.orders[0]; if (!o) return ''; return { clear: 'entering and clearing', corner: 'working the corner', breach: 'at the breach', move: 'moving', polecam: 'at the door' }[o.type] || ''; }
 function encPause(items, atEnd) { if (!items.length) return false; if (S.enc && S.enc.items) { S.enc.items.push(...items); return true; }
   S.enc = { items, i: 0, atEnd: !!atEnd, turn: S.turn }; S.phase = 'encounter'; S.version++; return true; }
 /** Called by stepTick on the last tick: true = paused for the half-turn. */
@@ -315,7 +334,7 @@ function encNext() { if (!S.enc) return S.phase; const it = encCur(); if (it && 
   if (S.enc.final) { S.enc.i++; if (S.enc.i < S.enc.items.length) return 'encounter'; S.enc = null; S.version++; return 'over'; }
   S.enc.i++; if (S.enc.i < S.enc.items.length) { S.version++; return 'encounter'; }
   const atEnd = S.enc.atEnd; S.enc = null; S.phase = 'executing'; updateVision(); checkEnd(); if (S.phase === 'over') return 'over';
-  if (atEnd) endTurn(); else if (S.tick >= TICKS) { if (!encEndTurn()) endTurn(); }
+  if (atEnd) endTurn(); else if (S.tick >= TICKS && !S.encMid) { if (!encEndTurn()) endTurn(); }
   S.version++; return S.phase; }
 /** Debrief lines for encounters / reviews. */
 function encDebrief() { const out = []; (S.reviews || []).forEach(r => out.push({ k: 'Use-of-force review', v: `${r.name} — out for ${r.missions} missions pending investigation. Review outcome: ${r.removed ? 'removed from the team' : 'returns to duty after the review'}.` }));

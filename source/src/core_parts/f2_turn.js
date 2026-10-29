@@ -16,6 +16,7 @@ function execute() {
 }
 function stepTick() {
   if (S.phase !== 'executing') return true;
+  if (S.encMid) { const m = S.encMid; S.encMid = false; if (m !== 'end') stepTickB(); return stepTickEnd(); } // v17: resume the tick that paused at the moment of contact
   S.tick++; S.tickLog = {};
   for (const u of S.units.slice()) { if (!unitAlive(u)) continue;
     if (S.gasEver) gasExpose(u);
@@ -25,7 +26,12 @@ function stepTick() {
   casualtyTick();
   if (S.gasEver) eachSp(suspectGas);
   rebuildDyn(); computeExpo();
-  updateVision(); eachSp(suspectTick); officersFire(); teamResponses(); updateVision(); checkEnd();
+  updateVision();
+  if (encContactCheck()) { S.encMid = true; S.version++; return true; } // v17: first sight this turn → pause before anyone reacts
+  stepTickB(); return stepTickEnd(); }
+function stepTickB() { eachSp(suspectTick); officersFire(); teamResponses(); updateVision(); checkEnd();
+  if (S.phase === 'executing' && encContactCheck()) S.encMid = 'end'; } // v17: he stepped into view during his own move → pause at the end of this tick
+function stepTickEnd() {
   if (S.phase === 'over') return true;
   if (S.phase === 'encounter') { S.version++; return true; } // v16: paused for a decision (blind fire at a threshold)
   if (S.tick >= TICKS) { if (encEndTurn()) return true; endTurn(); return true; } // v16: half-turn encounter decisions before the turn ends

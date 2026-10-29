@@ -466,16 +466,17 @@ function drawBearCat(g, c, Ln, Wd, blink) { const dis = c.disabled;
   g.fillStyle = 'rgba(220,230,255,.9)'; g.font = `800 ${CS * 0.24}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SWAT', -Ln * 0.34, 0);
   if (c.draco || c.dracoProg) drawDraco(g, c, Ln, Wd); }
 /** v9 Draco arm: hydraulic boom on the BearCat's FRONT (+x) ending in a claw. Ghosted while being installed (with progress);
- *  swung out toward the opening during a Draco breach this turn. */
+ *  extended straight ahead (fixed to the front, no swing) during a Draco breach this turn. */
 function drawDraco(g, c, Ln, Wd) { const S = Core.state, inst = !c.draco, act = !inst && c.dracoOut === S.turn && c.dracoAim !== undefined;
-  let rel = 0; if (act) { rel = c.dracoAim - (c.dir || 0); while (rel > Math.PI) rel -= 2 * Math.PI; while (rel < -Math.PI) rel += 2 * Math.PI; rel = Math.max(-0.9, Math.min(0.9, rel)); }
-  const bx = Ln * 0.28, L = act ? Ln * 0.22 + CS * 1.9 : Ln * 0.22 + CS * 1.05; g.save(); if (inst) { g.globalAlpha = 0.45; g.setLineDash([4, 3]); }
-  g.fillStyle = '#d9a21a'; g.beginPath(); g.arc(bx, 0, Wd * 0.17, 0, 7); g.fill(); g.strokeStyle = '#3a2a05'; g.lineWidth = 1.5; g.stroke(); // turret / pivot
-  g.translate(bx, 0); g.rotate(rel);
+  // v17: the arm is fixed to the front of the vehicle — it never swings left/right; only the boom extends straight ahead
+  const bx = Ln * 0.28, L = act ? Ln * 0.22 + CS * (c.dracoLen || 1.9) : Ln * 0.22 + CS * 1.05; g.save(); if (inst) { g.globalAlpha = 0.45; g.setLineDash([4, 3]); }
+  g.fillStyle = '#d9a21a'; g.beginPath(); g.arc(bx, 0, Wd * 0.17, 0, 7); g.fill(); g.strokeStyle = '#3a2a05'; g.lineWidth = 1.5; g.stroke(); // fixed front mount (no turret)
+  g.translate(bx, 0);
   g.fillStyle = '#e8b322'; g.strokeStyle = '#3a2a05'; g.lineWidth = 1.5; g.beginPath(); g.rect(0, -CS * 0.13, L, CS * 0.26); g.fill(); g.stroke(); // boom
   g.fillStyle = '#9aa3ad'; g.fillRect(L * 0.15, -CS * 0.05, L * 0.6, CS * 0.1); // hydraulic ram
   g.translate(L, 0); g.strokeStyle = '#c9ced6'; g.lineWidth = CS * 0.11; g.lineCap = 'round'; const o = act ? 0.55 : 0.35;
   for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(0, sg * CS * 0.08); g.lineTo(CS * 0.32, sg * CS * (0.14 + o * 0.3)); g.lineTo(CS * 0.55, sg * CS * 0.06); g.stroke(); } // claw tines
+  if (act) { g.strokeStyle = '#7fe3ff'; g.lineWidth = 2; g.beginPath(); g.arc(CS * 0.45, 0, CS * 0.32, 0, 7); g.stroke(); } // v17: contact ring where the claw meets the opening
   g.restore();
   if (inst) { const f = Math.min(1, (c.dracoProg || 0) / Core.installTicks()); g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(-Ln * 0.4, -Wd / 2 - CS * 0.32, Ln * 0.8, CS * 0.18);
     g.fillStyle = '#e8b322'; g.fillRect(-Ln * 0.4, -Wd / 2 - CS * 0.32, Ln * 0.8 * f, CS * 0.18); } }
