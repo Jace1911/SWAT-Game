@@ -60,7 +60,9 @@ function afterOrders(u, m, r) { const out = [], rm = S.rooms[r], tc = r >= 0 ? r
   else out.push(Object.assign({ type: 'hold', fromAfter: true }, face)); // hold (also the fallback when there is no room / opening)
   return out; }
 /** Action resolved: put the follow-up at the front of the queue. */
-function runAfter(u, o) { if (!o || !o.after || o.afterDone || !AFTER_CFG.modes.includes(o.after)) return null; o.afterDone = true;
+/** v16: every resolved breach / throw marks the device for the first-fire rule and may draw blind fire at the threshold. */
+function runAfter(u, o) { encMarkDev(o); const L = runAfter0(u, o); encThreshold(u, o); return L; }
+function runAfter0(u, o) { if (!o || !o.after || o.afterDone || !AFTER_CFG.modes.includes(o.after)) return null; o.afterDone = true;
   const r = afterRoom(u, o), list = afterOrders(u, o.after, r); u.orders.unshift(...list); u.regroup = null;
   log(`${u.name}: ${AFTER_CFG.names[o.after].toLowerCase()}${r >= 0 && S.rooms[r] && S.rooms[r].known ? ' — ' + S.rooms[r].name : ''}.`, 'radio'); return list; }
 /** UI/API: set (or clear) the follow-up on a queued breach / throw order. */

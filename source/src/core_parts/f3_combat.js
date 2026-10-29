@@ -90,6 +90,7 @@ function suspectFire(b) {
   let tg = primaryOf(), victim = null, spillShot = false;
   if (!tg) { const off = T.kind === 'team' ? pickVictim(T, sp.x, sp.y) : null; tg = sp.tgt = { uid: T.uid, off: off ? off.id : null, turn: S.turn, spill: 0 };
     log(`Suspect opens fire at ${off ? off.name + ' (' + T.name + ')' : T.name}.`, 'alert'); }
+  if (T.kind === 'team' && los(sp.x, sp.y, T.x, T.y) === 1) encNoteFire(T, where);
   if (T.kind === 'team') { const m = teamOk(T); victim = m.find(o => o.id === tg.off) || null;
     if (!victim) { spillShot = true; tg.spill = (tg.spill || 0) + 1; const pool2 = doorExposed(T, sp.x, sp.y) || m; victim = pool2.length && S.rng.chance(SHOOT_CFG.spill) ? S.rng.pick(pool2) : null; } }
   p *= b.cls === 'slice' ? sliceHit(T) : T_HIT[b.cls] || 1; if (T.moved === S.tick) p *= 0.8;
@@ -113,7 +114,7 @@ function returnFirers() { const sp = S.suspect, c = [];
   return c.sort((a, b) => a.d - b.d || a.i - b.i).slice(0, SHOOT_CFG.maxReturn); }
 /** The nearest officers with a sight line shoot back at the muzzle flash (max 3); the log lists who fired and the result. */
 function returnFire() {
-  const sp = S.suspect; if (!hostile()) return; const who = returnFirers(); if (!who.length) return; let res = 'no hits';
+  const sp = S.suspect; if (!hostile() || S.encNoRet) return; const who = returnFirers(); if (!who.length) return; let res = 'no hits';
   for (const f of who) { if (!hostile()) break; const r = fireAt(f.u, sp.x, sp.y, 'fire', true); if (r === 'hit') { res = `${f.name} hit ${multiSp() ? spName().toLowerCase() : 'the suspect'}`; break; } if (r === 'stopped') res = `${f.name}'s round was stopped by body armor`; }
   S.stats.returnVolleys = (S.stats.returnVolleys || 0) + 1; S.lastReturn = who.map(f => f.o.id || f.u.uid);
   log(`Return fire: ${who.map(f => f.name).join(', ')} — ${res}.`, 'radio'); if (who.length >= 2 && hostile()) sp.suppressed = Math.max(sp.suppressed, 1);

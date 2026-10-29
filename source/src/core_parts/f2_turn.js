@@ -27,7 +27,8 @@ function stepTick() {
   rebuildDyn(); computeExpo();
   updateVision(); eachSp(suspectTick); officersFire(); teamResponses(); updateVision(); checkEnd();
   if (S.phase === 'over') return true;
-  if (S.tick >= TICKS) { endTurn(); return true; }
+  if (S.phase === 'encounter') { S.version++; return true; } // v16: paused for a decision (blind fire at a threshold)
+  if (S.tick >= TICKS) { if (encEndTurn()) return true; endTurn(); return true; } // v16: half-turn encounter decisions before the turn ends
   S.version++; return false;
 }
 function faceTo(u, x, y) { if (x !== u.x || y !== u.y) u.dir = Math.atan2(y - u.y, x - u.x); }

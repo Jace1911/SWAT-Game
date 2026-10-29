@@ -12,6 +12,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const isPhone = () => window.innerWidth <= 760;
 const V = Render.view;
 let uiVer = -1, logLen = 0, busy = false, lastFxSound = 0, openTeam = null;
+Core.ENC_CFG.enabled = true; // v16: interactive games pause for see-suspect decisions (headless harness keeps them off)
 
 /* ---------------- audio (WebAudio beeps, no assets) ---------------- */
 let actx = null, muted = localStorage.getItem('swat.muted') === '1';
@@ -178,7 +179,7 @@ function renderHint() { const S = Core.state, u = selUnit(); let t;
   else if (!u) t = isPhone() ? 'Tap a shield or patrol chip (vehicles: tap who is inside) · drag to pan · pinch to zoom' : 'Select a team or patrol officer — vehicles are driven by whoever is inside (click map / card / 1–9) · drag to pan · wheel to zoom';
   else { const a = actsFor(u).find(q => q.k === V.mode); t = `${u.name}: ${a ? a.tip : ''}`; }
   if (V.hint) t = V.hint; $('hint').textContent = t; }
-function refresh(force) { const S = Core.state; if (!force && uiVer === S.version) return; uiVer = S.version; { const su = selUnit(); if (su && su.inCar && V.mode === 'move') V.mode = 'drive'; else if (su && !su.inCar && V.mode === 'drive') V.mode = 'move'; } renderTop(); renderTeams(); renderInfo(); renderLog(force); renderActs(); renderHint(); if (openTeam && $('m-team').classList.contains('show')) renderTeamDlg(); layoutSafe(); }
+function refresh(force) { const S = Core.state; if (S && S.phase === 'encounter' && hasGame && !$('m-enc').classList.contains('show')) { busy = true; setTimeout(openEnc, 0); } if (!force && uiVer === S.version) return; uiVer = S.version; { const su = selUnit(); if (su && su.inCar && V.mode === 'move') V.mode = 'drive'; else if (su && !su.inCar && V.mode === 'drive') V.mode = 'move'; } renderTop(); renderTeams(); renderInfo(); renderLog(force); renderActs(); renderHint(); if (openTeam && $('m-team').classList.contains('show')) renderTeamDlg(); layoutSafe(); }
 
 /* ---------------- team detail modal ---------------- */
 function renderTeamDlg() { const S = Core.state, u = Core.unit(openTeam); if (!u) { closeModal('m-team'); return; }
@@ -332,6 +333,10 @@ $('help-dlg').innerHTML = `<div class="ph">How to Play<span class="sp"></span><b
  ${HB('Mission brief & 911 call', 'every mission opens with a brief of what happened before SWAT was activated: the 911 call, what the first patrol units did, and anything known about the suspect. <b>Listen to the 911 call</b> (📋 button, or Intel → Review 911 Call) shows the transcript with times and can read it aloud (mute / skip). The caller ID or a family caller may give you his phone number. Reviewing is instant.')}
  ${HB('Perimeter on arrival', 'patrol cruisers start at the ends of the block or at the nearest intersection, keeping traffic out (striped <b>TRAFFIC BLOCKED</b> markers on the map and minimap) — moving one opens the street. Patrol officers may already be in good positions, or may have left a side of the house unwatched by accident, or bunched up at the front. Run Intel → <b>Status Check</b> (instant) for a roll call: it reveals which sides are watched and flags any gap. An unwatched side is how he slips out.')}
  ${HB('Officer down on arrival', `about ${Math.round(Core.SCENE_CFG.injury * 100)}% of calls a patrol officer was hit before SWAT arrived: injured and mobile, immobile and bleeding out with a critical countdown, or killed. A downed officer in the front yard is in the line of fire — plan the rescue (shield, cover, medic) before the timer runs out.`)}
+${HB('Encounters (seeing the suspect)', 'whenever a team has <b>visual contact</b> with a suspect, the game pauses at the end of the turn (a half-turn) with one decision per suspect. The description is written fresh each turn from what the suspect is actually doing — aiming, weapon at the side, hands visible, hands in pockets, recording or calling on a phone, hands behind the back, turned away, hands hidden, behind cover, or only <b>heard</b> moving. Officers say how sure they are: <i>confident it is a gun</i>, <i>uncertain but it looks like a gun</i>, or <i>unknown item</i> — and they can be wrong (a phone can look like a pistol). Pick a response (voice commands, negotiate if a negotiator is on scene, hold and observe, taser, 40mm, flashbang, CS gas, shoot, withdraw), then pick the officer who does it (only those with the equipment, range and line of sight are listed). Each option shows a likelihood word — <b>Very likely · Likely · Possible · Unlikely · Very unlikely</b> — no percentages. Repeating a command can help (or harden him); a negotiator improves the odds. Every suspect has a personality (scared, intoxicated, in crisis, determined, compliant-but-stalling) that shapes the answer: comply, ignore, back deeper into the house, surrender after a delay, or open fire.')}
+ ${HB('Armed and aiming', 'shooting is always justified and is not a prompt — it simply happens. About 3 times in 4 the suspect gets the first rounds off; a flashbang, CS gas or breaching charge that turn cuts that. Whenever a suspect fires at a team with a direct line, officers return fire automatically and a result box explains what happened.')}
+ ${HB('Shots through the doorway', 'after a breach or a bang/gas throw a suspect may fire blindly at the threshold. You choose: <b>cancel the entry</b>, <b>continue in and return fire</b>, <b>work the doorway</b> from outside, or have <b>point and defense engage from the door frame</b>. This replaces the follow-up you picked in the "After this" menu.')}
+ ${HB('Use of force review', 'a suspect in custody unhurt scores far more than any other outcome; a minor injury keeps 80% of the mission points and a fatal outcome only 33%. Firing on a suspect who is unarmed or complying cuts the mission points by 95% and the officer is placed on administrative leave for a 10-mission review, which can end in reassignment out of the unit (career roster; in a single mission it is shown in the debrief).')}
  ${HB('After this, the team will', 'when you finish a <b>Breach</b> (method chosen) or a <b>Flashbang / CS gas</b> throw (room tapped), a second menu asks what the team does once it resolves: <b>Hold position</b>, <b>Enter and clear</b>, <b>Limited penetration and hold</b> (a step or two inside, off the doorway line, then hold) or <b>Assess from doorway</b> (at the opening looking in, then hold). The follow-up runs the moment the action succeeds, in the same turn. Defaults: breach → assess, flashbang → enter and clear, CS → hold. <b>‹ Back</b> returns to the previous step, <b>✕ Cancel</b> removes the action. Keys: <kbd>1</kbd>–<kbd>4</kbd>, <kbd>Enter</kbd> = highlighted, <kbd>Esc</kbd> = cancel. If the breach fails, nothing follows.')}
 ${HB('After a room is cleared', 'when a team clears a room and has nothing else queued it <b>stacks up shoulder to shoulder on the wall that holds the nearest door</b> of that room, without crossing any doorway, point man nearest the door frame. Nobody stands in the opening.')}
 ${HB('Address labels', 'the suspect address is shown in <b style="color:#ff3b4e">RED</b> over the target house. In a <b>duplex</b> the other unit has its own address (two numbers apart, e.g. 412 and 414), shown in <b style="color:#3ddc84">GREEN</b> over that unit, so you can tell which door is the suspect\'s. Labels keep the same size at any zoom.')}
@@ -504,8 +509,38 @@ const TICK_MS = 300;
 function execute() { const S = Core.state; if (S.phase !== 'planning' || busy) return; ac(); hidePop(); V.aim = null; $('aimbox').className = '';
   const n = S.units.reduce((a, q) => a + (q.status === 'ok' ? q.orders.length : 0), 0); if (!n && !S.cmd) toast('No orders queued — units will hold for 30 s', true);
   if (!Core.execute()) return; busy = true; SFX.exec(); V.hint = null; refresh(true);
-  const step = () => { Render.snapshot(TICK_MS - 20); const done = Core.stepTick(); sounds(); refresh(); if (!done) setTimeout(step, TICK_MS); else setTimeout(() => { Render.endAnim(); busy = false; sounds(); refresh(true); if (Core.state.phase === 'over') { careerRecordEnd(); setTimeout(showEnd, 700); } else checkStranded(); }, TICK_MS); };
-  setTimeout(step, 120); }
+  setTimeout(execStep, 120); }
+function execStep() { Render.snapshot(TICK_MS - 20); const done = Core.stepTick(); sounds(); refresh(); if (Core.state.phase === 'encounter') { setTimeout(() => { Render.endAnim(); refresh(true); openEnc(); }, TICK_MS); return; }
+  if (!done) setTimeout(execStep, TICK_MS); else setTimeout(finishTurn, TICK_MS); }
+function finishTurn() { Render.endAnim(); if (Core.state.phase === 'over' && Core.encFinal()) { refresh(true); openEnc(); return; } busy = false; sounds(); refresh(true); if (Core.state.phase === 'over') { careerRecordEnd(); setTimeout(showEnd, 700); } else checkStranded(); }
+
+/* ---------------- v16: encounter (see-suspect) decisions ---------------- */
+let ENC = null; // { pick: optionKey | null }
+const ENC_ICON = { contact: '👁', result: '⚠', blind: '🚪', heard: '👂' };
+function encOffName(id) { const o = Core.state.officers.find(q => q.id === id); return o ? o.name : id; }
+function encOffNote(id, key) { const o = Core.state.officers.find(q => q.id === id); if (!o) return ''; const inv = Core.invOf ? Core.invOf(o) : null; const w = Core.memberWeapon ? Core.memberWeapon(o) : null;
+  if (key === 'll' && inv) return `40mm · ${inv.ll || 0} rounds`; if (key === 'shoot' && w) return (w.name || w.label || '') + (o.quals && o.quals.includes('marksman') ? ' · marksman' : ''); if (key === 'nego') return 'negotiator';
+  return o.quals && o.quals.length ? o.quals.join(', ') : ''; }
+function openEnc() { const it = Core.encCur(); if (!it) { const ph = Core.encNext(); encAfter(ph); return; } if (!ENC || ENC.item !== it) ENC = { item: it, pick: null }; renderEnc(); $('m-enc').classList.add('show'); }
+function renderEnc() { const it = ENC.item, S = Core.state, n = S.enc ? S.enc.items.length : 1, i = S.enc ? S.enc.i + 1 : 1;
+  let h = `<div class="ph">${ENC_ICON[it.kind] || '!'} ${esc(it.title || 'Encounter')}<span class="sp"></span><span class="enc-n">${n > 1 ? i + ' / ' + n : ''}</span></div><div class="body">`;
+  h += `<p class="enc-t">${esc(it.text || '')}</p>`;
+  if (it.done || it.kind === 'result') { h += (it.res || []).map(l => `<p class="enc-r">${esc(l)}</p>`).join(''); h += `<div class="enc-opts"><button class="enc-b def" id="enc-go">Continue ▸</button></div>`; }
+  else if (ENC.pick) { const op = it.options.find(o => o.key === ENC.pick); h += `<div class="enc-q">${esc(op.label)} — who does it?<span>Officers with the equipment, range and a line of sight</span></div><div class="enc-opts">`;
+    h += op.who.map((id, k) => `<button class="enc-b" data-eo="${id}"><b>${k + 1}. ${esc(encOffName(id))}</b>${encOffNote(id, op.key) ? `<span class="enc-w">${esc(encOffNote(id, op.key))}</span>` : ''}</button>`).join('') + `<button class="enc-b back" id="enc-back">‹ Back</button></div>`; }
+  else { if (it.res && it.res.length) h += it.res.map(l => `<p class="enc-r">${esc(l)}</p>`).join('');
+    h += `<div class="enc-q">${it.kind === 'blind' ? 'The plan was to go through — what now?' : 'Your call'}<span>${it.kind === 'blind' ? 'This replaces the follow-up chosen in “After this, the team will”' : 'Likelihood the suspect responds the way you want'}</span></div><div class="enc-opts">`;
+    h += it.options.map((o, k) => `<button class="enc-b${o.key === 'hold' || o.key === 'cancel' ? ' def' : ''}" data-ek="${o.key}"><b>${k + 1}. ${esc(o.label)}</b>${o.word ? `<span class="enc-w w${o.word.replace(/\s/g, '')}">${esc(o.word)}</span>` : ''}${o.note ? `<small>${esc(o.note)}</small>` : ''}</button>`).join('') + `</div>`; }
+  h += `</div>`; $('enc-dlg').innerHTML = h; }
+function encPick(key) { const it = ENC.item; const op = it.options.find(o => o.key === key); if (!op) return; SFX.click();
+  if (it.kind === 'blind') { Core.blindChoose(key); renderEnc(); return; }
+  if (op.who && op.who.length > 1 && !op.team) { ENC.pick = key; renderEnc(); return; } encDo(key, op.who && op.who[0]); }
+function encDo(key, id) { Core.encChoose(key, id); ENC.pick = null; sounds(); refresh(true); renderEnc(); }
+function encContinue() { SFX.click(); const ph = Core.encNext(); ENC = null; encAfter(ph); }
+function encAfter(ph) { if (ph === 'encounter') { openEnc(); return; } $('m-enc').classList.remove('show'); refresh(true);
+  if (ph === 'executing') setTimeout(execStep, 160); else finishTurn(); }
+$('enc-dlg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || !ENC) return; if (b.id === 'enc-go') encContinue(); else if (b.id === 'enc-back') { ENC.pick = null; renderEnc(); }
+  else if (b.dataset.ek) encPick(b.dataset.ek); else if (b.dataset.eo) encDo(ENC.pick, b.dataset.eo); });
 $('exec').addEventListener('click', execute);
 
 /* ---------------- pointer: pan / pinch / wheel / tap ---------------- */
@@ -536,8 +571,10 @@ function bindOvw(c) { let down = false; const jump = e => { const r = c.getBound
   c.addEventListener('pointermove', e => { if (down) jump(e); }); const stop = () => { down = false; }; c.addEventListener('pointerup', stop); c.addEventListener('pointercancel', stop); }
 bindOvw($('ovw')); bindOvw($('ovw2'));
 window.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return; if (!hasGame) return; const S = Core.state; const k = e.key.toLowerCase();
+  if (ENC && $('m-enc').classList.contains('show')) { const it = ENC.item; e.preventDefault(); if (k === 'enter' && (it.done || it.kind === 'result')) encContinue(); else if (k === 'escape' || k === 'backspace') { if (ENC.pick) { ENC.pick = null; renderEnc(); } }
+    else if (/^[1-9]$/.test(k)) { const n = +k - 1; if (ENC.pick) { const op = it.options.find(o => o.key === ENC.pick); if (op && op.who[n]) encDo(ENC.pick, op.who[n]); } else if (!it.done && it.options && it.options[n]) encPick(it.options[n].key); } return; }
   if (afterCtx) { const ix = '1234'.indexOf(k); if (k === 'enter') { e.preventDefault(); afterChoose(afterCtx.sel); return; } if (k === 'escape') { e.preventDefault(); afterChoose('cancel'); return; } if (k === 'backspace') { e.preventDefault(); afterChoose('back'); return; } if (ix >= 0) { e.preventDefault(); afterChoose(Core.AFTER_CFG.modes[ix]); return; } }
-  if (k === 'escape') { if (document.querySelector('.modal.show')) document.querySelectorAll('.modal.show').forEach(m => closeModal(m.id)); else if (popDoor !== null) hidePop(); else { V.sel = null; V.aim = null; $('aimbox').className = ''; refresh(true); } return; }
+  if (k === 'escape') { if (document.querySelector('.modal.show:not(#m-enc)')) document.querySelectorAll('.modal.show:not(#m-enc)').forEach(m => closeModal(m.id)); else if (popDoor !== null) hidePop(); else { V.sel = null; V.aim = null; $('aimbox').className = ''; refresh(true); } return; }
   if (document.querySelector('.modal.show:not(.mini)')) return;
   if (k === 'enter') { execute(); return; } if (k === 'backspace') { e.preventDefault(); action('undo'); return; } if (k === '0') { Render.fit('house'); return; }
   if (/^[1-9]$/.test(k)) { const t = S.units.find(u => u.kind === 'team' && u.num === +k); if (t) { select(t.uid); centerOn(t); } return; }
@@ -732,5 +769,5 @@ requestAnimationFrame(loop);
 
 
 /* test / automation hook */
-window.GAME = { Core, Render, Career, showAfterPop, get afterCtx() { return afterCtx; }, openForm, openLoad, get career() { return CAREER; }, set career(c) { CAREER = c; }, openMain, openCalls, openStateCall, setQLevel, get qlevel() { return QLEVEL; }, get hasGame() { return hasGame; }, openBrief, open911, openCareer, select, mapTap, action, execute, openTeamDlg, closeModal, newGame, refresh, showBreachPop, hidePop, showAim, aimInfo, get busy() { return busy; }, setPtr(t) { lastPtrType = t; } };
+window.GAME = { Core, Render, Career, showAfterPop, openEnc, get enc() { return ENC; }, get afterCtx() { return afterCtx; }, openForm, openLoad, get career() { return CAREER; }, set career(c) { CAREER = c; }, openMain, openCalls, openStateCall, setQLevel, get qlevel() { return QLEVEL; }, get hasGame() { return hasGame; }, openBrief, open911, openCareer, select, mapTap, action, execute, openTeamDlg, closeModal, newGame, refresh, showBreachPop, hidePop, showAim, aimInfo, get busy() { return busy; }, setPtr(t) { lastPtrType = t; } };
 })();

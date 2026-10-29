@@ -102,6 +102,15 @@ button.on{background:linear-gradient(180deg,#1f6fd0,#124a8e);border-color:var(--
 /* modals */
 .modal{position:fixed;inset:0;background:rgba(2,6,12,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:12px}
 .modal.show{display:flex}
+#m-enc{z-index:60;background:rgba(2,6,12,.45)}.dlg.enc{width:min(560px,100%)}.dlg.enc .body{-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.enc-t{font-size:14px;line-height:1.45;color:#e8f1fb;margin:0 0 8px}.enc-r{font-size:12.5px;color:#ffd9a8;margin:4px 0;padding-left:8px;border-left:2px solid #c9792e}.enc-n{font-size:11px;color:var(--mut,#8aa)}
+.enc-q{font-weight:800;color:#fff;margin:10px 0 6px}.enc-q span{display:block;font-weight:400;font-size:11px;color:#8fa6bf}
+.enc-opts{display:flex;flex-direction:column;gap:6px}.enc-b{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:46px;padding:9px 12px;text-align:left;font-size:14px;border-radius:8px}
+.enc-b b{flex:1;min-width:150px}.enc-b small{flex-basis:100%;font-size:11px;color:#8fa6bf}.enc-b.def{border-color:var(--cyan2);box-shadow:0 0 0 1px var(--cyan2) inset}.enc-b.back{justify-content:center;opacity:.85}
+.enc-w{font-size:11.5px;font-weight:800;padding:2px 8px;border-radius:10px;background:rgba(120,150,180,.18);color:#cfe0f2;white-space:nowrap}
+.enc-w.wVerylikely{background:rgba(40,170,90,.3);color:#b6f5cc}.enc-w.wLikely{background:rgba(60,150,90,.22);color:#c8f0d4}.enc-w.wPossible{background:rgba(200,170,60,.22);color:#f3e2a6}.enc-w.wUnlikely{background:rgba(210,110,50,.22);color:#f6c9a8}.enc-w.wVeryunlikely{background:rgba(200,60,60,.26);color:#f7b8b8}
+@media (max-width:600px){#m-enc{padding:6px;align-items:flex-end}.dlg.enc{max-height:calc(100% - 12px)}.enc-b{min-height:52px;font-size:15px}}
+
 .mm .mmb{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px 12px;min-height:54px;width:100%}.mm .mmb b{font-size:14px}.mm .mmb span{font-size:11px;color:var(--dim);font-weight:400}.mm .mmb.on span{color:#dff}
 .mmq{border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}.mmg{gap:8px}
 .lvrow{display:flex;align-items:center;gap:8px;font-size:12px;color:#bcd0e6}.lvrow label{min-width:70px}.lvrow input[type=range]{flex:1;min-width:80px;accent-color:var(--cyan2);height:28px}.lvrow input[type=number]{width:58px;background:#0b1622;color:#fff;border:1px solid var(--line);border-radius:6px;padding:5px;font:inherit;font-size:14px}
@@ -255,6 +264,7 @@ body.nogame .modal{background:transparent}
   <button id="b-state" class="cmd" style="display:none"><b>☎ Call State SWAT Team</b><span>Hand over the scene · keep action XP only</span></button></div></div></div></div>
 <div class="modal" id="m-main"><div class="panel dlg" id="main-dlg"></div></div>
 <div class="modal" id="m-calls"><div class="panel dlg" id="calls-dlg"></div></div>
+<div class="modal" id="m-enc" role="dialog" aria-label="Encounter decision"><div class="panel dlg enc" id="enc-dlg"></div></div>
 <div class="modal" id="m-help"><div class="panel dlg" id="help-dlg"></div></div>
 <script>
 /*__CORE__*/

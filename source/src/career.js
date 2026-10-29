@@ -150,7 +150,9 @@ const Career = (() => {
     const R = c.record, notes = []; R.played++; if (m.win) R.wins++; else R.losses++; R.outcomes[m.outcome] = (R.outcomes[m.outcome] || 0) + 1; R.timeSec += m.timeSec | 0;
     R.bestScore = R.bestScore == null ? m.score : Math.max(R.bestScore, m.score); R.patrolHit += m.patrol.hit; R.patrolLost += m.patrol.lost; R.suspects[m.suspect] = (R.suspects[m.suspect] || 0) + 1;
     // recovering officers sat this one out: one mission closer to duty
-    for (const o of c.roster) if (o.recover > 0 && !m.officers.some(q => q.careerId === o.id)) { o.recover--; if (!o.recover) notes.push(`${o.rank} ${o.last} is back on duty.`); }
+    for (const o of c.roster.slice()) if (o.recover > 0 && !m.officers.some(q => q.careerId === o.id)) { o.recover--; if (o.recover) continue;
+      if (o.review) { const rm = !!o.review.removed; delete o.review; if (rm) { c.roster = c.roster.filter(x => x !== o); notes.push(`${o.rank} ${o.last}: use-of-force review complete — reassigned out of the unit.`); continue; } notes.push(`${o.rank} ${o.last}: use-of-force review complete — cleared, back on duty.`); }
+      else notes.push(`${o.rank} ${o.last} is back on duty.`); }
     const L0 = levelOf(c), noWin = !!m.stateTakeover, acts = Array.isArray(m.actions) ? m.actions : []; let teamGain = 0;
     const actFor = id => acts.reduce((a, x) => a + ((x.ids || []).includes(id) ? x.xp : 0), 0);
     acts.forEach(x => { if (!(x.ids && x.ids.length)) teamGain += x.xp; }); // patrol / command actions: team XP only
@@ -163,6 +165,9 @@ const Career = (() => {
       if (q.onScene) o.skill = +Math.min(0.95, o.skill + (m.win ? 0.012 : 0.006)).toFixed(3);
       if (o.missions === 4 && !o.quals.includes('spotter') && o.spec !== 'marksman' && o.spec !== 'leader' && m.win) { o.quals.push('spotter'); notes.push(`${o.last} qualified as Spotter.`); }
       if (q.cas) { R.officersHit++; o.injuries++; o.recover = q.cas.stable && q.cas.sev < 3 ? 1 : q.cas.sev >= 3 ? 3 : 2; notes.push(`${o.rank} ${o.last} injured — recovering, out for ${o.recover} mission${o.recover > 1 ? 's' : ''}.`); } }
+    // v16: use-of-force reviews — the officer sits out N missions; the outcome (cleared / reassigned) is applied when the review ends
+    for (const r of (Array.isArray(m.reviews) ? m.reviews : [])) { const o = c.roster.find(x => x.id === r.careerId); if (!o) continue; const n = Math.max(1, r.missions | 0);
+      o.recover = Math.max(o.recover | 0, n); o.review = { removed: !!r.removed }; notes.push(`${o.rank} ${o.last} placed on administrative leave — use-of-force review, out for ${n} missions.`); }
     // keep every core role staffed: hire a rookie when nobody (fit or recovering) holds it
     c.teamXp = (validXp(c.teamXp) || 0) + teamGain; const L1 = levelOf(c);
     notes.unshift(`+${teamGain} team XP${noWin ? ' (individual actions only — no mission completion XP)' : ''} · Team level ${L1}${L1 > L0 ? ` ▲ (was ${L0})` : ''}`);

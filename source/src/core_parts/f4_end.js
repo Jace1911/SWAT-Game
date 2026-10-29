@@ -99,7 +99,7 @@ function debrief() {
   const M = missionScore(); out.push({ k: 'Score', v: `${M.score} — ${M.grade}` });
   M.items.forEach(i => out.push({ k: '  ' + (i.pts < 0 ? 'Deduction' : 'Bonus'), v: `${i.label}: ${i.pts > 0 ? '+' : '−'}${Math.abs(i.pts)}`, pts: i.pts }));
   if (multiSp()) out.push({ k: 'Suspects', v: `${suspList().length} — ${suspList().filter(s => s.mode === 'detained').length} in custody. Patrol reported ${S.brief && S.brief.report ? S.brief.report.text : 'one subject'}.` });
-  out.push(...suspectsDebrief()); void sc;
+  out.push(...suspectsDebrief()); out.push(...encDebrief()); void sc;
   return out;
 }
 
@@ -123,6 +123,7 @@ function missionScore() {
   const init = S.cas.find(c => c.initial && c.state !== 'kia'); if (init && (init.state === 'evacuated' || init.state === 'transport' || init.stable)) add('Rescued officer down on arrival', SCORE.rescued);
   typeScore(add); typeScore3(add);
   if (S.scene && S.scene.gap0.length && S.scene.gapClosed != null && !S.scene.slipTried) add('Closed perimeter gap', SCORE.gapClosed);
+  if (encOn()) encScore(items, add);
   const sc = items.reduce((a, i) => a + i.pts, 0), sg = v => (v > 0 ? '+' : '−') + Math.abs(v);
   const grade = sc >= 1000 ? 'Medal of Valor' : sc >= 650 ? 'Unit Commendation' : sc >= 350 ? 'Satisfactory' : sc >= 0 ? 'Needs Review' : 'Board of Inquiry';
   return { score: sc, grade, items, parts: items.map(i => `${i.label} ${sg(i.pts)}`), deductions: items.filter(i => i.pts < 0) };
@@ -139,5 +140,6 @@ function careerSummary() {
   return { seed: S.seed, win: !!R.win, title: R.title || '', method: m, outcome, turns: S.turn + 1, timeSec: (S.turn + 1) * TURN_SEC, score: M.score, grade: M.grade, deductions: M.deductions.map(d => ({ label: d.label, pts: d.pts })), officers,
     patrol: { hit: pc.length, lost: pc.filter(c => c.state === 'kia' || c.state === 'lost').length },
     suspect: suspList().some(s => s.deceased) ? 'lost' : scs ? 'injured' : suspList().some(s => s.mode === 'escaped') ? 'escaped' : suspList().every(s => s.mode === 'detained') ? 'unhurt' : 'inside', suspects: suspList().length, variant: S.scene ? S.scene.variant : null, stype: S.stype ? S.stype.key : 'barricade',
-    stateTakeover: !!S.stats.stateTeam, actions: (S.xpLog || []).map(x => ({ key: x.key, label: x.label, xp: x.xp, ids: x.ids.slice(), by: x.by, detail: x.detail, turn: x.turn })), level: (S.opts && S.opts.level) || null };
+    stateTakeover: !!S.stats.stateTeam, actions: (S.xpLog || []).map(x => ({ key: x.key, label: x.label, xp: x.xp, ids: x.ids.slice(), by: x.by, detail: x.detail, turn: x.turn })), level: (S.opts && S.opts.level) || null,
+    reviews: (S.reviews || []).map(r => ({ careerId: r.careerId, id: r.id, name: r.name, missions: r.missions, removed: !!r.removed })) };
 }
