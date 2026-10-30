@@ -37,6 +37,10 @@ function setupRoadblocks(r) {
   const c1 = place(ends[0].x, mid, Math.PI / 2, 0); S.roadblocks.push({ x: c1.x, y: c1.y, side: 'W', kind: ends[0].kind, car: c1.uid });
   const c2 = place(ends[1].x, mid, Math.PI / 2, 1); S.roadblocks.push({ x: c2.x, y: c2.y, side: 'E', kind: ends[1].kind, car: c2.uid });
   const k = r.chance(0.5) ? 0 : 1, e = ends[k]; place(e.x + (e.side === 'W' ? 4 : -4), G.ST + 2, e.side === 'W' ? 0 : Math.PI, 2);
+  // v22: cordon markers — at each end of the block, and on every arm of a cross / side street (multi-road sides)
+  S.cordon = S.roadblocks.map(b => ({ x: b.x, y: G.ST - 1, side: b.side, kind: b.kind }));
+  if (G.cross) { const cx = Math.round((G.cross.x0 + G.cross.x1) / 2), side = cx < hcx ? 'W' : 'E';
+    for (const y of [G.ST - 6, G.SB + 6]) if (y > 1 && y < MAP_H - 2) S.cordon.push({ x: cx, y, side, kind: 'cross street' }); }
 }
 /** Is a roadblock still held (a cruiser within 3 cells of it)? */
 function roadblockHeld(b) { return S.units.some(u => u.kind === 'cruiser' && !u.disabled && dist(u.x, u.y, b.x, b.y) <= 3); }

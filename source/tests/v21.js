@@ -9,7 +9,7 @@ const team = (S, n = 4, pred) => Core.formTeam((pred ? S.officers.filter(pred).c
 const force = (S, v, fn) => { const c = S.rng.chance; S.rng.chance = () => v; try { return fn(); } finally { S.rng.chance = c; } };
 const GORE = /blood|gore|brain|guts|splatter|gush|mangled|severed|maul/i;
 
-ok(Core.GAME_VERSION === 'v21' && (html.match(/'v21'/g) || []).length === 1, 'GAME_VERSION v21 defined once');
+ok(/^v2[1-9]$/.test(Core.GAME_VERSION), 'GAME_VERSION v21+ (v22 checks its own)');
 ok(/apple-touch-icon/.test(html) && /apple-mobile-web-app-capable/.test(html), 'iOS meta kept');
 ok(['Personal kit, drops', 'Wall charges, cameras', 'K9 (v21)'].every(h => html.includes(h)), 'help sections (v21)');
 ok(/data-ldrop/.test(html) && /data-v21/.test(html) && /Actions here/.test(html), 'Drop button + team actions UI');
@@ -22,7 +22,7 @@ ok(/data-ldrop/.test(html) && /data-v21/.test(html) && /Actions here/.test(html)
   ok(L.every(o => Core.invOf(o).hands.some(Boolean)), 'leavers hold something (shield / launcher / pistol)');
   const a = L[0], t = team(S, 1, o => o === a); const s0 = Core.teamSkill(t);
   ok(Core.invAct(a.id, 'draw', 'rifle').ok && Core.carries(a, 'rifle') && Core.rifleBurden(a), 'can take the rifle at the vehicle');
-  ok(Math.abs(Core.teamSkill(t) - Math.min(1, s0 * 0.9 + (Core.hasSpec(t, 'leader') ? 0.05 * 0.1 : 0))) < 0.011, `slung rifle costs 10% (${s0.toFixed(3)} → ${Core.teamSkill(t).toFixed(3)})`);
+  ok(Math.abs(Core.teamSkill(t) - Math.min(1, s0 * Core.V21.rifleMul + (Core.hasSpec(t, 'leader') ? 0.05 * (1 - Core.V21.rifleMul) : 0))) < 0.011, `slung rifle costs ${Math.round(100 - Core.V21.rifleMul * 100)}% (${s0.toFixed(3)} → ${Core.teamSkill(t).toFixed(3)})`);
   ok(!Core.invAct(a.id, 'draw', 'rifle').ok, 'only one rifle');
   ok(Core.invAct(a.id, 'return', 'rifle').ok && !Core.carries(a, 'rifle') && Math.abs(Core.teamSkill(t) - s0) < 1e-9, 'leave it again → full skill');
   t.deployed = true; t.x += 12; ok(!Core.invAct(a.id, 'draw', 'rifle').ok, 'rifle only at the vehicle'); }
@@ -52,8 +52,8 @@ ok(/data-ldrop/.test(html) && /data-v21/.test(html) && /Actions here/.test(html)
   const br = S.officers.find(o => Core.holds(o, 'ram')); if (br) { const t2 = team(S, 1, q => q === br); t2.deployed = true; ok(Core.v21Actions(t2.uid).some(a => a.act === 'drop' && a.icon === '⚒'), 'ram drop icon'); } }
 
 // --- 22: wall charges ---
-const wallSpot = S => { for (let y = 1; y < Core.MAP_H - 1; y++) for (let x = 1; x < Core.MAP_W - 1; x++) { if (Core.roomAt(x, y) !== -1 || S.block[Core.idx(x, y)]) continue;
-  for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) { const nx = x + dx, ny = y + dy; if (Core.roomAt(nx, ny) >= 0 && Core.edge(x, y, nx, ny).t === 'X' && !S.block[Core.idx(nx, ny)]) return [x, y, nx, ny]; } } return null; };
+const wallSpot = S => { for (let y = 1; y < Core.MAP_H - 1; y++) for (let x = 1; x < Core.MAP_W - 1; x++) { if (Core.roomAt(x, y) < 0 || S.block[Core.idx(x, y)]) continue; // v22: interior walls only
+  for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) { const nx = x + dx, ny = y + dy; if (Core.roomAt(nx, ny) >= 0 && Core.roomAt(nx, ny) !== Core.roomAt(x, y) && Core.edge(x, y, nx, ny).t === 'X' && !S.block[Core.idx(nx, ny)]) return [x, y, nx, ny]; } } return null; };
 { let hole = 0, port = 0, tried = 0, held = 0, fails = 0;
   for (let seed = 1; seed <= 6; seed++) { const S = prep(seed * 7); const b = S.officers.find(o => o.spec === 'breacher'); const t = team(S, 4, q => q === b); S.armory.charge = 4;
     Core.invAct(b.id, 'draw', 'charge'); Core.invAct(b.id, 'draw', 'charge'); Core.syncEquip && Core.syncEquip(t); const w = wallSpot(S); if (!w || !(t.equip.charge > 0)) continue; tried++;

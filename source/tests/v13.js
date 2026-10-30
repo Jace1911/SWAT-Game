@@ -14,9 +14,9 @@ ok(Core.BASE_KEYS.join() === 'barricade,mental,domestic,flee,neighbor', 'base ty
   ok(Core.structFor(5, { struct: 'duplex' }) === 'duplex' && Core.structFor(5, { struct: 'trailer' }) === 'trailer' && Core.structFor(5, { struct: 'house' }) === 'house', 'opts.struct forces the structure'); }
 // 2) house seeds keep their v12 layout (structure draw on its own stream)
 { const F = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/v12_houses.json'), 'utf8')); let same = 0, n = 0;
-  for (const seed of Object.keys(F)) { if (Core.structFor(+seed) !== 'house') continue; n++; const S = Core.newGame(+seed, { stype: 'barricade' }), f = F[seed]; if (S.geo.side) { n--; continue; } // v14 corner lots re-plan the block
+  for (const seed of Object.keys(F)) { if (Core.structFor(+seed) !== 'house') continue; n++; const S = Core.newGame(+seed, { stype: 'barricade' }), f = F[seed]; if (S.geo.side) { n--; continue; } /* v14 corner lots re-plan the block */ { const g = S.rooms.find(r => r.type === 'garage'); if (g && g.w > 7) { n--; continue; } } // v22: 2- / 3-car garages widen the plan on purpose
     const sig = S.rooms.map(q => [q.name, q.x, q.y, q.w, q.h].join(',')).join(';'); if (sig === f.rooms && S.doors.length === f.doors && S.windows.length === f.wins && S.house.archName === f.arch) same++; else console.log('  changed', seed); }
-  ok(n >= 28 && same === n, `house layouts unchanged vs v12 (${same}/${n})`); }
+  ok(n >= 26 && same === n, `house layouts unchanged vs v12 (${same}/${n})`); }
 // 3) fortified drug house
 { const cnt = [0, 0, 0, 0, 0]; let armor = 0, tot = 0, barred = 0, wins = 0, camsOk = 0, n = 0;
   for (let seed = 1; seed <= 40; seed++) { const S = Core.newGame(seed * 13 + 1, { stype: 'drughouse' }); n++; const L = Core.suspList(); cnt[L.length]++; tot += L.length; armor += L.filter(s => s.armor && s.armor !== 'none').length;

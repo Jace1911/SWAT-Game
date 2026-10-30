@@ -1,0 +1,73 @@
+import json
+from playwright.sync_api import sync_playwright
+URL='http://127.0.0.1:8765/index.html'
+errs=[]; out={}
+def page_for(b, w, h, dpr=1, touch=False):
+    ctx=b.new_context(viewport={'width':w,'height':h}, device_scale_factor=dpr, has_touch=touch, is_mobile=touch)
+    p=ctx.new_page()
+    p.on('console', lambda m: m.type=='error' and errs.append(f'{w}x{h}: {m.text}'))
+    p.on('pageerror', lambda e: errs.append(f'{w}x{h} pageerror: {e}'))
+    p.goto(URL); p.wait_for_timeout(700)
+    return ctx,p
+def game(p, seed, opts='null'):
+    p.evaluate(f"() => GAME.newGame({seed},false,null,'barricade',{opts})"); p.wait_for_timeout(600)
+    p.evaluate("() => { GAME.closeModal(); GAME.Render.fit('house'); GAME.Core.state.version++; GAME.refresh(true); }"); p.wait_for_timeout(500)
+def js(name):
+    return open(f'/workspace/swat-game/tests/shots_v22_js/{name}.js').read()
+GRP="() => [...document.querySelectorAll('[data-grp]')].map(b=>b.textContent.trim()+' | '+b.getAttribute('aria-expanded'))"
+with sync_playwright() as pw:
+    b=pw.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
+    for (w,h,dpr,touch,sfx) in [(1024,471,1,False,''),(390,844,3,True,'_portrait')]:
+        ctx,p=page_for(b,w,h,dpr,touch)
+        p.evaluate("() => GAME.openMain()"); p.wait_for_timeout(500)
+        out['ver'+sfx]=p.evaluate("() => { const e=document.getElementById('mm-ver'); return e && e.textContent; }")
+        game(p,12345)
+        if touch: p.evaluate("() => { const t=document.getElementById('t-teams'); if (t) t.click(); }"); p.wait_for_timeout(300)
+        out['grp0'+sfx]=p.evaluate(GRP); out['title'+sfx]=p.evaluate("() => document.querySelector('#left .pt').textContent")
+        p.screenshot(path=f'screenshots/v22_panel{sfx}.png')
+        p.evaluate("() => { document.querySelector('[data-grp=patrol]').click(); document.querySelector('[data-grp=cars]').click(); }"); p.wait_for_timeout(300)
+        out['grp1'+sfx]=p.evaluate(GRP)
+        p.screenshot(path=f'screenshots/v22_panel_open{sfx}.png')
+        p.evaluate("() => { document.querySelector('[data-grp=patrol]').click(); document.querySelector('[data-grp=cars]').click(); }"); p.wait_for_timeout(200)
+        if touch: p.evaluate(js('maptab')); p.wait_for_timeout(300)
+        p.evaluate("() => { GAME.Render.fit('all'); GAME.Core.state.version++; GAME.refresh(true); }"); p.wait_for_timeout(500)
+        p.screenshot(path=f'screenshots/v22_map_all{sfx}.png')
+        out['cordon'+sfx]=p.evaluate("() => GAME.Core.state.cordon")
+        p.evaluate("() => GAME.openBrief()"); p.wait_for_timeout(400); p.screenshot(path=f'screenshots/v22_brief{sfx}.png')
+        out['brief'+sfx]=p.evaluate("() => GAME.Core.state.brief.known.filter(k=>/car|garage/i.test(k))")
+        p.evaluate("() => GAME.closeModal()"); p.wait_for_timeout(200)
+        uid=p.evaluate(js('team'))
+        out['wall'+sfx]=p.evaluate(js('wall'), uid); p.wait_for_timeout(300)
+        p.evaluate("() => { GAME.Render.fit('house'); GAME.action('hangwall'); }"); p.wait_for_timeout(400)
+        p.screenshot(path=f'screenshots/v22_hang1{sfx}.png')
+        p.evaluate("() => document.querySelector('[data-wk=port]').click()"); p.wait_for_timeout(300)
+        p.screenshot(path=f'screenshots/v22_hang2{sfx}.png')
+        p.evaluate(js('hangnow0')); p.wait_for_timeout(300)
+        p.evaluate("() => GAME.action('hangwall')"); p.wait_for_timeout(300)
+        p.evaluate("() => { const b=document.querySelector('[data-wk=hole]'); if (b) b.click(); }"); p.wait_for_timeout(200)
+        p.evaluate(js('hangnow0')); p.wait_for_timeout(300)
+        out['hung'+sfx]=p.evaluate("(u) => GAME.Core.hungOf(u).length", uid)
+        p.evaluate("() => { GAME.Core.state.version++; GAME.refresh(true); }"); p.wait_for_timeout(300)
+        p.screenshot(path=f'screenshots/v22_map_hung{sfx}.png')
+        p.evaluate("() => GAME.action('detonate')"); p.wait_for_timeout(400)
+        p.screenshot(path=f'screenshots/v22_detonate{sfx}.png')
+        out['det'+sfx]=p.evaluate(js('det')); p.wait_for_timeout(400)
+        p.evaluate("() => { GAME.closeModal(); GAME.Core.state.version++; GAME.refresh(true); }"); p.wait_for_timeout(400)
+        p.screenshot(path=f'screenshots/v22_map_wall{sfx}.png')
+        p.evaluate(js('load')); p.wait_for_timeout(400)
+        out['load'+sfx]=p.evaluate(js('loadtxt'))
+        p.screenshot(path=f'screenshots/v22_loadout{sfx}.png')
+        p.evaluate("() => GAME.closeModal()"); p.wait_for_timeout(200)
+        out['carSeed'+sfx]=p.evaluate(js('findseed'), ['ranch','cars']); p.wait_for_timeout(500)
+        out['cars'+sfx]=p.evaluate(js('cars')); p.wait_for_timeout(400)
+        p.screenshot(path=f'screenshots/v22_cars{sfx}.png')
+        out['rotSeed'+sfx]=p.evaluate(js('findseed'), ['trailer','rot']); p.wait_for_timeout(600)
+        p.screenshot(path=f'screenshots/v22_trailer{sfx}.png')
+        p.reload(); p.wait_for_timeout(1200); p.evaluate("() => { GAME.closeModal && GAME.closeModal(); GAME.openMain(); }"); p.wait_for_timeout(500)
+        p.evaluate("() => document.getElementById('mm-help').click()"); p.wait_for_timeout(300)
+        for name,pat in [('help_rifle','^Rifles, pole cam feed'),('help_panel','^SWAT Elements panel')]:
+            p.evaluate(js('scrollhelp'), pat); p.wait_for_timeout(300)
+            p.screenshot(path=f'screenshots/v22_{name}{sfx}.png')
+        ctx.close()
+    b.close()
+print(json.dumps(out, indent=0)[:6000]); print('ERRORS', len(errs)); [print(e) for e in errs]

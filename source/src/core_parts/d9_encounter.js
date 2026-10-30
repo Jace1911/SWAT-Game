@@ -207,7 +207,7 @@ function encBuild() { const items = [], ev = S.encEv || []; S.encEv = [];
 /** v17: FIRST visual contact this turn → pause right at that moment (mid-turn), before the officers' automatic
     responses (challenge, less-lethal, hands-on arrest) or his reaction can resolve it unseen. One popup per suspect per
     turn; nothing when nobody has a line on a live, hostile suspect. Called by stepTick after movement + vision. */
-function encContactCheck() { if (!encOn() || S.phase !== 'executing') return false; const items = [];
+function encContactCheck() { if (!encOn() || (S.phase !== 'executing' && !(S.phase === 'encounter' && S.enc && S.enc.items))) return false; /* v22: a blind-fire pause in the same tick still gets the sight popup appended */ const items = [];
   suspList().forEach((sp, i) => withSp(sp, () => {
     if (!suspectActive() || !hostile() || sp.stun > 0 || sp.mode === 'fleeing') return; const M = mindOf(sp); if (M.contactTurn === S.turn) return;
     const u = encSeers(sp)[0]; if (!u) return;

@@ -9,7 +9,7 @@
    Coordinates: integer grid cells (1 cell ≈ 1 m). Cell (x,y) centre = (x,y).
    ===================================================================== */
 /** Build version shown on the main menu — bump this one constant each build. */
-const GAME_VERSION = 'v21';
+const GAME_VERSION = 'v22';
 
 const Core = (function () {
 'use strict';

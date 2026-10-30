@@ -156,7 +156,7 @@ function queueOrder(uid, o) {
   if (o.type === 'move' && (u.kind === 'patrol' || u.kind === 'team')) { o.req = [o.x, o.y]; o.snapped = false; // v8: move ANYWHERE — no snapping; just flag exposure
     const ci = coverInfo(o.x, o.y); o.cover = ci.level === 'inside' ? 'inside' : ci.level === 'open' ? 'open' : ci.q; o.exposed = roomAt(o.x, o.y) < 0 && ci.level === 'open' && ci.expo >= COVER_CFG.exposedAt; }
   const last = u.orders[u.orders.length - 1];
-  const replacing = last && last.type === 'move' && o.type === 'move';
+  const replacing = last && last.type === 'move' && o.type === 'move' && !o.wp; /* v22: waypoint legs append */
   const prev = planFor(u); let [sx, sy] = planStart(u);
   const upto = replacing ? prev.length - 1 : prev.length;
   for (let i = 0; i < upto; i++) if (prev[i].ok) { sx = prev[i].end[0]; sy = prev[i].end[1]; }

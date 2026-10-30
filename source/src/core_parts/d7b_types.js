@@ -69,7 +69,7 @@ function applyScenType() {
 }
 /** Officer is on the neighbor's side of the house (neighbor-dispute aggression). */
 function onNeighborSide(u) { const st = S.stype; if (!st || !st.side) return false; const H = S.house; return st.side === 'left' ? u.x < H.x0 : u.x > H.x1; }
-function typeFireMul(u) { const T = stypeCfg(); let m = T.fireMul || 1; if (T.sideMul && u) m *= onNeighborSide(u) ? T.sideMul : T.offSideMul; return m; }
+function typeFireMul21(u) { const T = stypeCfg(); let m = T.fireMul || 1; if (T.sideMul && u) m *= onNeighborSide(u) ? T.sideMul : T.offSideMul; return m; }
 /** Mental-health type: was it resolved without force? */
 function resolvedNoForce() { const R = S.result || {}, m = S.stats.method || ''; return !!R.win && !S.stats.ofShots && !S.stats.breaches && !/fire|Less-lethal|Taser|gas|flashbang|entry/i.test(m) && !S.gasEver; }
 /** Debrief lines for the scenario type. */

@@ -91,8 +91,8 @@ function seatsNeeded(u) { return u.kind === 'team' ? Math.max(1, teamOk(u).lengt
 const STAGE_CFG = { secondary: 0.3 };
 /** Secondary (on-foot) staging at the other end of the street: low exposure, reachable. No equipment there. */
 function setupStaging2() { const st = S.ext.staging, tx = MAP_W - 1 - st.x, D = reach(st.x, st.y, { outdoor: true }, 1e6); let best = null, bs = 1e9;
-  for (let y = Math.max(1, st.y - 6); y <= Math.min(MAP_H - 2, st.y + 4); y++) for (let x = Math.max(2, tx - 12); x <= Math.min(MAP_W - 3, tx + 12); x++) { const c = idx(x, y);
-    if (D[c] >= 1e9 || S.block[c] || roomAt(x, y) >= 0 || carAt && carAt(x, y)) continue; const s = expoAt(x, y) * 40 + Math.abs(x - tx) * 0.4 + Math.abs(y - st.y) * 0.3; if (s < bs) { bs = s; best = [x, y]; } }
+  for (let y = Math.max(1, st.y - 6); y <= Math.min(MAP_H - 2, st.y + 4); y++) for (let x = Math.max(2, tx - 14); x <= Math.min(MAP_W - 3, tx + 14); x++) { const c = idx(x, y);
+    if (D[c] >= 1e9 || S.block[c] || roomAt(x, y) >= 0 || carAt && carAt(x, y)) continue; const s = expoAt(x, y) * 40 + Math.abs(x - tx) * 0.4 + Math.abs(y - st.y) * 0.3 + (suspSees(x, y) ? 30 : 0) + Math.min(x, MAP_W - 1 - x) * 0.15; /* v22: toward the map edge, out of his sight */ if (s < bs) { bs = s; best = [x, y]; } }
   S.ext.staging2 = best ? { x: best[0], y: best[1] } : { x: st.x, y: st.y }; }
 function boardCar(p, c) { p.inCar = c.uid; p.x = c.x; p.y = c.y; if (!c.occ.includes(p.uid)) c.occ.push(p.uid); p.orders = []; }
 function houseCenter() { const H = S.house; return [(H.x0 + H.x1) / 2, (H.y0 + H.y1) / 2]; }
@@ -180,9 +180,11 @@ function seekCover(u, why) {
   const [hx, hy] = houseCenter(), here = expoAt(u.x, u.y);
   const D = reach(u.x, u.y, Object.assign({}, moveOpts(u), { outdoor: true, expo: true }), 16);
   const taken = new Set(S.units.filter(q => q !== u && onFoot(q)).map(q => q.x + ',' + q.y));
+  const hung = S.doors.filter(d => d.charge).map(d => doorMid(d));
   let best = null, bs = here * 6 - dist(u.x, u.y, hx, hy) * 0.12;
   for (let y = Math.max(1, u.y - 12); y <= Math.min(MAP_H - 2, u.y + 12); y++) for (let x = Math.max(1, u.x - 12); x <= Math.min(MAP_W - 2, u.x + 12); x++) {
     const c = idx(x, y); if (D[c] >= 1e9 || taken.has(x + ',' + y) || S.room[c] >= 0) continue;
+    if (hung.some(([mx, my]) => dist(x, y, mx, my) < CHARGE_SAFE)) continue; /* v22: never take cover inside a hung charge's safety distance */
     const s = S.expo[c] * 6 + D[c] * 0.22 - (coverAdj(x, y) ? 0.5 : 0) - dist(x, y, hx, hy) * 0.12; if (s < bs - 0.3) { bs = s; best = [x, y]; } }
   if (!best) return false;
   u.orders = [{ type: 'move', x: best[0], y: best[1], auto: true }];
@@ -223,7 +225,7 @@ function updateVision() {
   S.vis.fill(0);
   const W = new Set(watchers());
   for (const u of S.units) { if (!W.has(u)) { u.vis = []; continue; } u.vis = computeVis(u); for (const c of u.vis) S.vis[c] = 1; }
-  for (const c of S.peek) S.vis[c] = 1;
+  for (const c of S.peek) S.vis[c] = 1; v22Vis(); // v22: pole-cam feeds + viewports
   for (const u of W) if (u.slice && u.slice.ox === u.x && u.slice.oy === u.y && u.slice.cells.length) { for (const c of u.slice.cells) S.vis[c] = 1; u.vis = u.vis.concat(u.slice.cells); } // pie-slice reveal
   // mutual sight: if the suspect has a clear line to one of our units inside sight range, that unit sees him too (no facing needed)
   for (const sp0 of suspList()) if (spActive(sp0)) { const sc = idx(sp0.x, sp0.y); for (const u of W) { if (u.kind === 'cruiser' || !u.vis || u.vis.includes(sc)) continue; const p = visParamsG(u);

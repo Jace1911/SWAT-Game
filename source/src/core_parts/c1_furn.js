@@ -1,5 +1,7 @@
 
 /* ---------- furniture (blocks movement, not sight) ---------- */
+/** v22: car stalls in a garage room (6-7 m wide = 1, 10-11 m = 2, 14-15 m = 3). */
+function garageStalls(rm) { return Math.max(1, Math.min(3, Math.round((rm.w - 2) / GARAGE_CFG.stallW))); }
 function genFurniture(r) {
   S.furn = [];
   const reserved = new Set();
@@ -42,7 +44,11 @@ function genFurniture(r) {
       case 'bed': { const big = rm.w >= 5 && rm.h >= 5; wall(rm, 'bed', big ? 3 : 2, 3, ALL, 20) || wall(rm, 'bed', 2, 2, ALL); wall(rm, 'dresser', 2, 1, ALL); wall(rm, 'nightstand', 1, 1, ALL); break; }
       case 'bath': wall(rm, 'tub', Math.min(3, Math.max(rm.w, rm.h) - 1), 1, ALL); wall(rm, 'toilet', 1, 1, ALL); wall(rm, 'vanity', 1, 1, ALL); break;
       case 'office': wall(rm, 'desk', 2, 1, ALL); wall(rm, 'shelves', 2, 1, ALL); corner(rm, 'plant'); break;
-      case 'garage': { const f = tryPlace(rm, 'car', rm.x + 1 + r.int(0, Math.max(0, rm.w - 5)), rm.y + rm.h - 5, 2, 4, 's') || tryPlace(rm, 'car', rm.x + 2, rm.y + rm.h - 5, 2, 4, 's');
+      case 'garage': { const stalls = garageStalls(rm), cr = makeRng(S.seed * 389 + 5), x1 = rm.x + 1 + r.int(0, Math.max(0, Math.min(rm.w, 7) - 5)); // v22: each stall has its own 50% car
+        for (let i = 0; i < stalls; i++) { const has = S.opts && S.opts.garageCars != null ? i < S.opts.garageCars : cr() < GARAGE_CFG.carP; if (!has) continue;
+          const bx = i ? rm.x + 2 + i * GARAGE_CFG.stallW : x1; let f = null; // the garage door keeps its threshold clear: try rows a step back, then shift sideways
+          for (const dy of [5, 6, 7]) { for (const dx of [0, 1, -1, 2]) { f = tryPlace(rm, 'car', bx + dx, rm.y + rm.h - dy, 2, 4, 's'); if (f) break; } if (f) break; }
+          if (f) { f.stall = i; f.garageCar = true; } }
         wall(rm, 'workbench', 3, 1, ['n']); wall(rm, 'shelves', 2, 1, ['e', 'w']); break; }
     }
   }

@@ -72,8 +72,9 @@ function genNeighborhood(r) {
   const outOf = d => d && (d.cells[0].find(c => roomAt(c[0], c[1]) < 0) || d.cells[0][1]);
   if (H.duplex) { const bf = outOf(S.doors.find(d => d.name === 'Unit B Front Door')), bb = outOf(S.doors.find(d => d.name === 'Unit B Back Door'));
     if (bf) W.walks.push({ x: bf[0], y: bf[1], w: 1, h: G.SW - bf[1], unitB: true }); if (bb) W.patios.push({ x: bb[0] - 2, y: bb[1] - (bb[1] < H.y0 + 1 ? 2 : 1), w: 5, h: 3, unitB: true }); }
-  if (H.trailer) for (const d of S.doors.filter(q => q.exterior)) { const o = outOf(d), north = o[1] < H.y0;
-    W.steps.push({ x: o[0] - 1, y: north ? o[1] - 1 : o[1], w: 3, h: 2, door: d.id, porch: d.name === 'Front Door' }); }
+  if (H.trailer) for (const d of S.doors.filter(q => q.exterior)) { const o = outOf(d), north = o[1] < H.y0, side = o[0] < H.x0 ? 'w' : o[0] > H.x1 ? 'e' : null;
+    if (side) W.steps.push({ x: side === 'w' ? o[0] - 1 : o[0], y: o[1] - 1, w: 2, h: 3, door: d.id, porch: d.name === 'Front Door', vert: true }); // v22: rotated home, door on a long side
+    else W.steps.push({ x: o[0] - 1, y: north ? o[1] - 1 : o[1], w: 3, h: 2, door: d.id, porch: d.name === 'Front Door' }); }
   W.drives.forEach(q => pave(q, 4)); W.walks.forEach(q => pave(q, 5)); W.patios.forEach(q => markRect(q, c => { if (S.room[c] < 0 && !S.paved[c]) S.paved[c] = 6; }));
   if (H.dgarage) solid(H.dgarage, 10, true);
   // ---- neighbor houses ----
@@ -82,6 +83,7 @@ function genNeighborhood(r) {
     const north = L.side === 'n', lw = L.x1 - L.x0 + 1;
     let w = r.int(10, Math.min(18, lw - 10)), h = r.int(8, north ? 12 : 10);
     const park = !!(H.park && north && !L.rear); if (park) { h = h >= 10 ? 8 : 5; w = Math.max(w, Math.min(16, lw - 10)); } // v13: trailer-park cluster
+    const prot = park && makeRng(S.seed * 613 + L.id * 7 + 3)() < TRAILER_ROT; if (prot) { const t = w; w = h; h = t; } // v22: some park homes stand end-on
     let setback = north ? r.int(6, 10) : r.int(4, 7); if (L.rear) setback = Math.min(setback, 5);
     const y = north ? L.y1 - setback - h + 1 : L.y0 + setback;
     const hasG = r.chance(0.5) && lw - w >= 17 && !park, gl = r.chance(0.5);
@@ -90,7 +92,7 @@ function genNeighborhood(r) {
     if (r.chance(0.45) && !park) { const ww = r.int(4, Math.max(4, Math.floor(w / 2))), wh = r.int(3, 4), wx = r.chance(0.5) ? x : x + w - ww; parts.push({ x: wx, y: north ? y - wh : y + h, w: ww, h: wh }); }
     let garage = null; if (hasG) { const gh = Math.min(h, r.int(6, 7)); garage = { x: gl ? x - 6 : x + w, y: north ? y + h - gh : y, w: 6, h: gh }; parts.push(garage); }
     if (!parts.every(q => q.y >= L.y0 + 1 && q.y + q.h <= L.y1 && q.x >= L.x0 + 2 && q.x + q.w <= L.x1 - 1 && rectFree(q, 1))) continue;
-    const nb = { lot: L.id, parts, garage, north, rear: !!L.rear, roof: r.int(0, 5), body: r.int(0, 4), storeys: r.chance(0.5) ? 2 : 1 }; if (park) { nb.trailer = h >= 8 ? 'double' : 'single'; nb.storeys = 1; }
+    const nb = { lot: L.id, parts, garage, north, rear: !!L.rear, roof: r.int(0, 5), body: r.int(0, 4), storeys: r.chance(0.5) ? 2 : 1 }; if (park) { nb.trailer = Math.min(w, h) >= 8 ? 'double' : 'single'; nb.storeys = 1; if (prot) nb.rot = true; }
     parts.forEach(q => solid(q, 5, true));
     // driveway
     const dq = garage ? { x: garage.x, w: 6 } : { x: r.chance(0.5) ? Math.max(L.x0 + 1, x - 4) : Math.min(L.x1 - 3, x + w + 1), w: 3 };
@@ -103,6 +105,11 @@ function genNeighborhood(r) {
     pave(walk, 5); W.walks.push(walk);
     W.nb.push(nb);
   }
+  // v22: suspect's vehicles — ~50% a car in the driveway (own stream); garage cars (furniture) also block sight like any parked car
+  { const td = W.drives.find(q => q.target), cr = makeRng(S.seed * 389 + 9); const want = S.opts && S.opts.driveCar != null ? !!S.opts.driveCar : cr() < GARAGE_CFG.driveP;
+    if (td && want && td.h >= 6) { const cq = { x: td.x + Math.floor((td.w - 2) / 2), y: td.y + 1, w: 2, h: 4 }; let free = true; markRect(cq, c => { if (S.block[c] || S.room[c] >= 0) free = false; });
+      if (free) W.cars.push({ x: cq.x, y: cq.y, w: 2, h: 4, vert: true, color: cr.int(0, 5), suspectCar: 'driveway' }); }
+    for (const f of S.furn || []) if (f.garageCar) W.cars.push({ x: f.x, y: f.y, w: f.w, h: f.h, vert: true, color: cr.int(0, 5), suspectCar: 'garage', garage: true, stall: f.stall }); }
   // parked cars in driveways: make them solid now (paving is laid)
   for (const c of W.cars) solid(c, 3, false);
   // ---- fences: lot lines (backyard part) + back fence + side fences to the house ----
@@ -146,7 +153,9 @@ function genNeighborhood(r) {
   for (let x = 6; x < MAP_W - 4; x += r.int(20, 26)) { for (const y of [G.SW, G.SS + 1, G.rear.walk0]) { if (!S.block[idx(x, y)]) { S.block[idx(x, y)] = 1; W.lamps.push({ x, y }); } } }
   // ---- SWAT truck + staging (out of the suspect's likely range) ----
   const hcx = (H.x0 + H.x1) / 2, far = r.chance(0.5) ? -1 : 1;
-  let vx = Math.round(hcx + far * r.int(32, 38)); if (vx < 3 || vx > MAP_W - 10) vx = Math.round(hcx - far * r.int(32, 38));
+  // v22: staging sits out toward the left / right map edge (the secondary mirrors it at the other edge), never within 26 m of the house
+  const edgeX = f => f < 0 ? r.int(8, 12) : MAP_W - 10 - r.int(3, 7); let vx = edgeX(far); if (Math.abs(vx + 3 - hcx) < 26) vx = edgeX(-far);
+  if (Math.abs(vx + 3 - hcx) < 26) vx = Math.round(hcx + far * r.int(32, 38)); if (vx < 3 || vx > MAP_W - 10) vx = Math.round(hcx - far * r.int(32, 38));
   vx = clamp(vx, 3, MAP_W - 10); if (G.cross && vx + 6 >= G.cross.x0 - 1 && vx <= G.cross.x1 + 1) vx = vx < G.cross.x0 ? G.cross.x0 - 8 : G.cross.x1 + 2;
   W.van = { x: vx, y: G.ST + 1, w: 6, h: 2, kind: 'swat' }; solid(W.van, 9, false);
   W.staging = { x: vx + 3, y: G.ST + 4 };

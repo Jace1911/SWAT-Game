@@ -29,7 +29,7 @@ function stepTick() {
   updateVision();
   if (encContactCheck()) { S.encMid = true; S.version++; return true; } // v17: first sight this turn → pause before anyone reacts
   stepTickB(); return stepTickEnd(); }
-function stepTickB() { eachSp(suspectTick); officersFire(); teamResponses(); updateVision(); checkEnd();
+function stepTickB21() { eachSp(suspectTick); officersFire(); teamResponses(); updateVision(); checkEnd();
   if (S.phase === 'executing' && encContactCheck()) S.encMid = 'end'; } // v17: he stepped into view during his own move → pause at the end of this tick
 function stepTickEnd() {
   if (S.phase === 'over') return true;
@@ -149,7 +149,7 @@ function unitAct(u) {
     if (!goal(u.x, u.y)) { const r = stepAlong(u, o, goal, speed); if (r === null) failOrders(u, 'cannot reach door'); return; }
     const other = (() => { for (const [a, b] of d.cells) { if (a[0] === u.x && a[1] === u.y) return b; if (b[0] === u.x && b[1] === u.y) return a; } return d.cells[0][1]; })();
     faceTo(u, other[0], other[1]);
-    if (o.type === 'polecam') { const pc = polecamHands(u); if (!pc) { log(`${u.name}: nobody has two hands free to work the pole cam.`, 'radio'); popOrder(u); return; } const rr = roomAt(other[0], other[1]); if (rr >= 0) { const rm = S.rooms[rr]; for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) S.peek.push(idx(x, y)); }
+    if (o.type === 'polecam') { const pc = polecamHands(u); if (!pc) { log(`${u.name}: nobody has two hands free to work the pole cam.`, 'radio'); popOrder(u); return; } const rr = roomAt(other[0], other[1]); pcamStart(u, d, other, pc); // v22: live feed of what is visible from just inside the door
       log(`${u.name}: ${pc.name} works the pole cam (both hands) under the door — ${rr >= 0 ? S.rooms[rr].name : 'outside'} ${spInRoom(rr) ? (suspList().filter(s => spActive(s) && s.room === rr).length > 1 ? `has ${suspList().filter(s => spActive(s) && s.room === rr).length} SUSPECTS` : 'has the SUSPECT') : 'looks empty'}.`, spInRoom(rr) ? 'alert' : 'intel'); popOrder(u); return; }
     if (o.type === 'detonate') { if (!d.charge) { popOrder(u); return; } detonateCharge(u, d); popOrder(u); return; }
     if (d.state !== 'closed') { if (d.charge) d.charge = null; popOrder(u); return; }

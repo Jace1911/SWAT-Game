@@ -31,7 +31,7 @@ function primaryOf() { const sp = S.suspect; return sp.tgt && sp.tgt.turn === S.
 /** Is the primary officer of this turn still standing? */
 function primaryUp(tg) { const T = unit(tg.uid); if (!T || !unitAlive(T)) return false; if (T.kind !== 'team' || !tg.off) return true; return teamOk(T).some(o => o.id === tg.off); }
 const T_HIT = { slice: 0.4, open: 1, concealed: 0.85, covered: 0.2, perched: 0.12 }; // …but rounds go through a hedge; hard cover stops them
-function suspectTick() {
+function suspectTick21() {
   const sp = S.suspect; if (!suspectActive()) return;
   if (sp.daze > 0) sp.daze--;
   if (sp.stun > 0) { sp.stun--; return; }
@@ -46,7 +46,7 @@ function suspectTick() {
   if (sp.duck > 0) { sp.duck--; backHome(); return; }
   if (roomAt(sp.home.x, sp.home.y) !== sp.room && sp.room >= 0) { backHome(); sp.room = roomAt(sp.x, sp.y); return; } // relocating (e.g. away from gas)
   // best (position, target) pair: his current cell or a window of his room
-  const spots = [[sp.x, sp.y]].concat(sp.room >= 0 && !(sp.disp === 'hiding' && sp.agit < 75 && !sp.atWindow) ? suspectWindowCells().filter(([x, y]) => !suspList().some(o => o !== sp && spActive(o) && o.x === x && o.y === y)) : []);
+  const spots = [[sp.x, sp.y]].concat(sp.room >= 0 && !(((sp.disp === 'hiding' && sp.agit < 75) || behNoWin(sp)) && !sp.atWindow) ? suspectWindowCells().filter(([x, y]) => !suspList().some(o => o !== sp && spActive(o) && o.x === x && o.y === y)) : []);
   let best = null;
   const tg = primaryOf(); let pool = shooters();
   if (tg) { const T = unit(tg.uid); const up = primaryUp(tg); pool = pool.filter(u => u.uid === tg.uid && (up || (u.kind === 'team' && (tg.spill || 0) < SHOOT_CFG.spillMax))); } // no retarget until next turn

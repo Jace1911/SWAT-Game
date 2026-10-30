@@ -1,0 +1,2 @@
+() => { const C = GAME.Core, S = C.state, R = GAME.Render; let c = S.units.find(q => q.armored); if (!c && C.bcArriveNow) { if (!S.bcPending && C.bcSchedule) C.bcSchedule(); C.bcArriveNow(); c = S.units.find(q => q.armored); } if (!c) return 'no bearcat'; c.draco = true; if (!c.dracoTip) c.dracoTip = { bang: 2, gas: 2 };
+  if (R.cam) R.cam.z = 1.5; R.centerOn(c.x + 1, c.y); S.version++; GAME.refresh(true); return { uid: c.uid, x: c.x, y: c.y, z: R.cam && R.cam.z }; }

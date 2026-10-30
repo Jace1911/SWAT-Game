@@ -30,6 +30,8 @@ function extEdges(rm, side) { // edges of a room rect that face outside (no room
 /* ---- v13: structure type — house / duplex / mobile home. Picked on its own seeded stream, so the map of every
    seed that stays a house is unchanged. opts.struct ('house'|'duplex'|'trailer') forces it (Quick Mission, tests). ---- */
 const STRUCT_CFG = { duplex: 0.05, trailer: 0.05, doubleWide: 0.4, park: 0.6 };
+const GARAGE_CFG = { two: 0.35, three: 0.08, stallW: 4, carP: 0.5, driveP: 0.5 }; // v22: wider ranch garages + parked cars at the suspect house
+const TRAILER_ROT = 0.35; // v22: share of mobile homes rotated 90° (end-on to the street)
 const STRUCT_KEYS = ['house', 'duplex', 'trailer'];
 function structFor(seed, opts) { if (opts && STRUCT_KEYS.includes(opts.struct)) return opts.struct;
   const p = makeRng(seed * 4271 + 19)(); return p < STRUCT_CFG.duplex ? 'duplex' : p < STRUCT_CFG.duplex + STRUCT_CFG.trailer ? 'trailer' : 'house'; }
@@ -41,7 +43,10 @@ function genHouse(r, lot, frontY) {
   const Z = (k, x, y, w, h, extra) => zones.push(Object.assign({ k, x, y, w, h }, extra || {}));
   if (arch === 'ranch' || arch === 'bungalow') {
     const W = arch === 'ranch' ? r.int(17, 22) : r.int(13, 15), H = arch === 'ranch' ? r.int(11, 13) : r.int(10, 11);
-    const G = arch === 'ranch' ? r.int(6, 7) : 0; TW = W + G; TH = H; const mx = side === 'L' ? G : 0;
+    let G = arch === 'ranch' ? r.int(6, 7) : 0;
+    if (G) { const gq = S.opts && S.opts.stalls ? S.opts.stalls : (q => q < GARAGE_CFG.three ? 3 : q < GARAGE_CFG.two ? 2 : 1)(makeRng(S.seed * 389 + 1)()); // v22: 2- / 3-car garages (own stream)
+      const room = (lot.x1 - lot.x0 + 1) - 9 - W - G; G += gq >= 3 && room >= 8 ? 8 : gq >= 2 && room >= 4 ? 4 : 0; }
+    TW = W + G; TH = H; const mx = side === 'L' ? G : 0;
     parts.push({ x: mx, y: 0, w: W, h: H });
     if (G) { const GH = r.int(7, Math.min(9, H - 2)); garage = { x: side === 'L' ? 0 : W, y: H - GH, w: G, h: GH }; }
     const pw = arch === 'ranch' ? r.int(Math.round(W * 0.42), Math.round(W * 0.52)) : r.int(6, W - 6);
@@ -81,9 +86,13 @@ function genHouse(r, lot, frontY) {
     else { Z('private', rx, 0, rw - pw, H, { bnd: 'e' }); Z('public', rx + rw - pw, 0, pw, H); }
   }
   // place in the lot: front wall at frontY, centred with jitter
-  const ox = clamp(Math.round((lot.x0 + lot.x1 + 1) / 2 - TW / 2) + r.int(-3, 3), lot.x0 + 5, lot.x1 - TW - 4), oy = frontY - TH + 1;
+  // v22: ~35% of mobile homes stand end-on to the street (rotated 90°: long axis north-south, doors on the long east / west sides). Own stream.
+  const rot = struct === 'trailer' && (S.opts && S.opts.trailerRot != null ? !!S.opts.trailerRot : makeRng(S.seed * 977 + 41)() < TRAILER_ROT);
+  const FW = rot ? TH : TW, FH = rot ? TW : TH;
+  const ox = clamp(Math.round((lot.x0 + lot.x1 + 1) / 2 - FW / 2) + r.int(-3, 3), lot.x0 + 5, lot.x1 - FW - 4), oy = Math.min(frontY + (rot ? 2 : 0), lot.y1 - 5) - FH + 1;
   const R = [], openEdges = [], doorSpecs = [];
-  const add = (name, type, x, y, w, h) => { const rm = { name, type, x: ox + x, y: oy + y, w, h }; R.push(rm); return rm; };
+  const RT = (x, y, w, h) => rot ? { x: ox + y, y: oy + (TW - x - w), w: h, h: w } : { x: ox + x, y: oy + y, w, h };
+  const add = (name, type, x, y, w, h) => { const rm = Object.assign({ name, type }, RT(x, y, w, h)); R.push(rm); return rm; };
   let privRooms = [], wingRooms = [], hall = null, pub = {};
   if (cols) { // single-wide: columns left→right (mirrored for side R); bath stacked over a short hall
     let xx = 0; const at = w => { const x = side === 'R' ? TW - xx - w : xx; xx += w; return x; };
@@ -130,8 +139,10 @@ function genHouse(r, lot, frontY) {
     const k = sh.sort((p, q) => (p[0][0] - q[0][0]) || (p[0][1] - q[0][1])); const st = r.int(1, Math.max(1, k.length - n - 1)); for (let i = st; i < Math.min(k.length - 1, st + n); i++) openEdges.push(k[i]); };
   if (hall) { for (const rm of privRooms) { const sh = sharedEdges(rm, hall); if (sh.length) door(interiorPick(r, sh)); }
     // hall end opens into the public zone
-    const ex = hall.bnd === 'e' ? hall.x + hall.w - 1 : hall.x, nx = hall.bnd === 'e' ? ex + 1 : ex - 1;
-    for (const yy of [hall.y, hall.y + 1]) if (roomAt(nx, yy) >= 0) openEdges.push([[ex, yy], [nx, yy]]); }
+    if (rot) { const ey = hall.bnd === 'e' ? hall.y : hall.y + hall.h - 1, ny = hall.bnd === 'e' ? ey - 1 : ey + 1; // rotated: local east = map north
+      for (const xx of [hall.x, hall.x + 1]) if (roomAt(xx, ny) >= 0) openEdges.push([[xx, ey], [xx, ny]]); }
+    else { const ex = hall.bnd === 'e' ? hall.x + hall.w - 1 : hall.x, nx = hall.bnd === 'e' ? ex + 1 : ex - 1;
+    for (const yy of [hall.y, hall.y + 1]) if (roomAt(nx, yy) >= 0) openEdges.push([[ex, yy], [nx, yy]]); } }
   else for (let i = 1; i < privRooms.length; i++) { const sh = sharedEdges(privRooms[i - 1], privRooms[i]); if (sh.length) door(interiorPick(r, sh)); }
   if (pub.kitchen && pub.living) { if (sharedEdges(pub.kitchen, pub.living).length >= 4 && r.chance(0.7)) open(pub.kitchen, pub.living, r.int(2, 3)); else { const sh = sharedEdges(pub.kitchen, pub.living); if (sh.length) door(interiorPick(r, sh)); } }
   if (pub.kitchen && pub.dining) open(pub.kitchen, pub.dining, 2);
@@ -161,9 +172,9 @@ function genHouse(r, lot, frontY) {
   for (const [a, b] of openEdges) S.edges.set(ek(a[0], a[1], b[0], b[1]), E_OPEN);
   // ---- exterior doors ----
   const extPick = (rooms, sides) => { for (const rm of rooms) { if (!rm) continue; for (const sd of sides) { const e = extEdges(rm, sd); if (e.length >= 3) return interiorPick(r, e); } } return null; };
-  const front = extPick([pub.living, pub.dining, pub.kitchen, ...R.filter(q => q.type !== 'garage' && q.type !== 'bath')], ['s']) || extPick(R, ['s', 'e', 'w']);
+  const front = extPick([pub.living, pub.dining, pub.kitchen, ...R.filter(q => q.type !== 'garage' && q.type !== 'bath')], [rot ? 'e' : 's']) || extPick(R, rot ? ['e', 'w', 's'] : ['s', 'e', 'w']);
   door(front, { exterior: true, locked: true, name: 'Front Door' });
-  const back = extPick([pub.kitchen, pub.dining, pub.living, ...R.filter(q => q.type === 'office' || q.type === 'hall')], ['n']) || extPick([pub.kitchen, pub.dining, ...R.filter(q => q.type !== 'bath' && q.type !== 'garage')], ['e', 'w', 'n']);
+  const back = extPick([pub.kitchen, pub.dining, pub.living, ...R.filter(q => q.type === 'office' || q.type === 'hall')], [rot ? 'w' : 'n']) || extPick([pub.kitchen, pub.dining, ...R.filter(q => q.type !== 'bath' && q.type !== 'garage')], ['e', 'w', 'n']);
   if (back && !(back[0][0] === front[0][0] && back[0][1] === front[0][1])) door(back, { exterior: true, locked: true, name: 'Back Door' });
   if (arch === 'duplex') { door(front && [mc(front[0]), mc(front[1])], { exterior: true, locked: true, name: 'Unit B Front Door', unitB: true });
     if (back && !(back[0][0] === front[0][0] && back[0][1] === front[0][1])) door([mc(back[0]), mc(back[1])], { exterior: true, locked: true, name: 'Unit B Back Door', unitB: true }); }
@@ -201,11 +212,11 @@ function genHouse(r, lot, frontY) {
       flush();
     }
   }
-  const P = parts.map(q => ({ x: ox + q.x, y: oy + q.y, w: q.w, h: q.h }));
+  const P = parts.map(q => RT(q.x, q.y, q.w, q.h));
   const ARCH = { ranch: 'Ranch · attached garage', colonial: 'Colonial · detached garage', lshape: 'L-shaped · rear wing', split: 'Split-entry · tuck-under garage', bungalow: 'Bungalow',
     duplex: 'Duplex · side-by-side', single: 'Mobile home · single-wide', double: 'Mobile home · double-wide' };
   S.house = { arch, archName: ARCH[arch], parts: P, garage: garage ? { x: garage.x, y: garage.y, w: garage.w, h: garage.h } : null, detached, side,
-    x0: ox, x1: ox + TW - 1, y0: oy, y1: oy + TH - 1, oy, H: TH, TW };
+    x0: ox, x1: ox + FW - 1, y0: oy, y1: oy + FH - 1, oy, H: FH, TW: FW, rot: rot || undefined };
   S.house.main = P[0]; S.house.struct = struct;
   if (struct === 'trailer') { S.house.trailer = arch; S.house.thin = true; S.house.park = sr.chance(STRUCT_CFG.park); }
   if (struct === 'duplex') S.house.duplex = { partyX: ox + WA, aSide: side, bRooms: R.filter(q => q.unitB).map(q => q.id) }; // party wall between x = partyX-1 and partyX

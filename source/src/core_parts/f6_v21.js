@@ -1,7 +1,7 @@
 /* ===================== v21 (batch 2: items 18-25) =====================
    18 shield / 40mm officers leave the rifle at the vehicle (slung rifle = -10% for them) · 19 plates are worn, never "taken"
    20 personal flashbang (max 3 each), pole cam carried one-handed but worked two-handed · 21 drop shield / ram
-   22 breacher wall charges (through-wall hole, gun port) · 23 40mm / shotgun vs security cameras
+   22 breacher wall charges (through-wall hole, viewport) · 23 40mm / shotgun vs security cameras
    24 suspects vs drones (much harder) and robots (like a person in the open) · 25 K9 handler: send the dog, door sniff */
 const V21 = { rifleMul: 0.9, bangMax: 3, wallP: 0.9, portP: 0.9, wallR: 1.5, camRange: 30, camNear: 0.22, camFar: 0.08, droneMul: 0.22, droneMax: 0.15,
   dogRange: 25, sniffP: 0.75, sniffR: 2, dogHold: 0.55, dogHit: 0.25 };
@@ -16,7 +16,7 @@ function takeHome(o, inv) { takeHomeBase(o, inv);
 function rifleBurden(o) { return !!(rifleLeaver(o) && carries(o, 'rifle')); }
 function offSkill(o) { return o.skill * (rifleBurden(o) ? V21.rifleMul : 1); }
 function teamSkill(t) { const m = teamOk(t); if (!m.length) return 0; let s = m.reduce((a, o) => a + offSkill(o), 0) / m.length; if (hasSpec(t, 'leader')) s += 0.05; return clamp(s, 0, 1); }
-function invAct(offId, act, k) { const o = off(offId); if (!o) return invAct19(offId, act, k); const inv = invOf(o), t = o.team ? unit(o.team) : null;
+function invAct21(offId, act, k) { const o = off(offId); if (!o) return invAct19(offId, act, k); const inv = invOf(o), t = o.team ? unit(o.team) : null;
   const atEq = () => { const [x, y] = offPos(o); return atEquipment(x, y); }, done = r => { if (t) syncEquip(t); S.version++; return Object.assign({ ok: true }, r || {}); };
   if (k === 'rifle' && act === 'draw') { if (S.phase !== 'planning') return { ok: false, reason: 'Change loadout during planning' }; if (carries(o, 'rifle')) return { ok: false, reason: 'Already carries a rifle' };
     if (!atEq()) return { ok: false, reason: 'The rifle was left at the equipment vehicle (primary staging)' };
@@ -28,7 +28,7 @@ function invAct(offId, act, k) { const o = off(offId); if (!o) return invAct19(o
   if (k === 'bang' && act === 'draw' && countOf(o, 'bang') >= V21.bangMax) return { ok: false, reason: `Flashbangs: ${V21.bangMax} per officer at most` };
   if (k === 'bang' && act === 'return' && countOf(o, 'bang') <= (inv.ownBang || 0)) return { ok: false, reason: 'The personal flashbang stays with the officer' };
   const r = invAct19(offId, act, k);
-  if (r.ok && act === 'draw' && /^(shield|shield3|lesslethal)$/.test(k) && carries(o, 'rifle')) { const q = invAct(offId, 'return', 'rifle'); if (q.ok) { r.rifleLeft = true; log(`${o.name} leaves the rifle at the equipment vehicle (${EQUIP[k] ? EQUIP[k].short : k} officer).`, 'radio'); } }
+  if (false && r.ok && act === 'draw' && carries(o, 'rifle')) /* v22: see f7 invAct */ { const q = invAct(offId, 'return', 'rifle'); if (q.ok) { r.rifleLeft = true; log(`${o.name} leaves the rifle at the equipment vehicle (${EQUIP[k] ? EQUIP[k].short : k} officer).`, 'radio'); } }
   return r; }
 /** 20: the pole cam is carried in one hand but worked with both — the operator's weapon is put away and NOT READY next turn. Returns the operator or null. */
 function polecamHands(u) { const m = teamOk(u); const o = m.find(q => carries(q, 'polecam') && freeable(q) >= 2) || m.find(q => freeable(q) >= 2); if (!o) return null;
@@ -48,7 +48,7 @@ function wallSpotsFor(uid) { const u = unit(uid); if (!u || u.kind !== 'team' ||
   const best = new Map(); for (const w of out.sort((p, q) => p.d - q.d)) if (!best.has(w.dir + w.to)) best.set(w.dir + w.to, w); return [...best.values()].slice(0, 4); }
 function wallBlast(u, x, y, rb) { noise(x, y, 14, 'blast'); fx('text', x, y, { text: 'BANG', color: '#ffd34d' }); if (hostile()) aggressive(4);
   eachSp(sp => { if (spActive(sp) && rb >= 0 && sp.room === rb) { sp.stun = Math.max(sp.stun || 0, 1); sp.lastKnown = { x: sp.x, y: sp.y, turn: S.turn }; } }); }
-/** kind 'hole' (through-wall: an opening that works like an open door) or 'port' (gun port: a chosen member can shoot through). */
+/** kind 'hole' (through-wall: an opening that works like an open door) or 'port' (viewport: a chosen member can shoot through). */
 function wallCharge(uid, kind, i) { const u = unit(uid); if (!u || u.kind !== 'team') return { ok: false, reason: 'No team' }; if (S.phase !== 'planning') return { ok: false, reason: 'Set charges during planning' };
   if (!hasSpec(u, 'breacher')) return { ok: false, reason: 'Only a breacher can set a wall charge' }; if (!(u.equip.charge > 0)) return { ok: false, reason: 'No breaching charge on the team — draw one at the equipment vehicle' };
   const w = wallSpotsFor(uid)[i || 0]; if (!w) return { ok: false, reason: 'Stand within 1.5 m of a wall' };
@@ -56,16 +56,16 @@ function wallCharge(uid, kind, i) { const u = unit(uid); if (!u || u.kind !== 't
   wallBlast(u, bx, by, rb); if (!S.wallLog) S.wallLog = [];
   if (!S.rng.chance(kind === 'port' ? V21.portP : V21.wallP)) { log(`${u.name}: ${o ? o.name : 'breacher'} fires the ${kind === 'port' ? 'gun-port' : 'wall'} charge on the ${w.dir} wall — the wall holds (no opening).`, 'alert'); S.wallLog.push({ kind, ok: false, turn: S.turn }); S.version++; return { ok: true, made: false }; }
   if (kind === 'port') { const p = { id: (S.ports || (S.ports = [])).length, a: w.a, b: w.b, key: w.key, to: w.to, team: u.uid, turn: S.turn }; S.ports.push(p); S.edges.set(w.key, { t: 'P', port: p });
-    log(`${u.name}: gun port blown through the ${w.dir} wall into the ${w.to} — one officer can fire through it.`, 'radio'); S.wallLog.push({ kind, ok: true, turn: S.turn }); S.version++; return { ok: true, made: true, port: p }; }
+    log(`${u.name}: viewport blown through the ${w.dir} wall into the ${w.to} — one officer can fire through it.`, 'radio'); S.wallLog.push({ kind, ok: true, turn: S.turn }); S.version++; return { ok: true, made: true, port: p }; }
   const ra = roomAt(ax, ay), d = { id: S.doors.length, cells: [[[ax, ay], [bx, by]]], state: 'open', locked: false, barricaded: false, exterior: ra < 0 || roomAt(bx, by) < 0, kind: 'hole', hole: true, name: `Wall breach (${w.to})`, known: true, storm: false, stormState: 'open', stormKnown: true, charge: null, rooms: [ra, roomAt(bx, by)] };
   S.doors.push(d); S.edges.set(w.key, { t: 'D', d }); if (S.peek) S.peek.push(idx(bx, by));
   log(`${u.name}: wall charge — a hole through the ${w.dir} wall into the ${w.to}. It works like an open doorway.`, 'radio'); S.wallLog.push({ kind, ok: true, turn: S.turn }); S.version++; return { ok: true, made: true, door: d }; }
 function portsNear(uid) { const u = unit(uid); if (!u || !S.ports) return []; return S.ports.filter(p => dist(u.x, u.y, p.a[0], p.a[1]) <= V21.wallR + 0.01); }
-/** A chosen member fires through a gun port (the team's per-turn rate of fire applies). */
+/** A chosen member fires through a viewport (the team's per-turn rate of fire applies). */
 function portFire(uid, pid, offId) { const u = unit(uid), p = S.ports && S.ports[pid], o = off(offId); if (!u || !p || !o || !u.members.includes(offId) || !teamOk(u).includes(o)) return { ok: false, reason: 'Pick a team member' };
-  if (dist(u.x, u.y, p.a[0], p.a[1]) > V21.wallR + 0.01) return { ok: false, reason: 'Too far from the gun port' };
+  if (dist(u.x, u.y, p.a[0], p.a[1]) > V21.wallR + 0.01) return { ok: false, reason: 'Too far from the viewport' };
   const sp = S.suspect, ox = u.x, oy = u.y, e = S.edges.get(p.key); u.x = p.a[0]; u.y = p.a[1]; S.edges.set(p.key, E_OPEN); let r;
-  try { log(`${o.name} fires through the gun port into the ${p.to}.`, 'radio'); r = fireAt(u, sp.x, sp.y, 'aimed'); } finally { S.edges.set(p.key, e); u.x = ox; u.y = oy; }
+  try { log(`${o.name} fires through the viewport into the ${p.to}.`, 'radio'); r = fireAt(u, sp.x, sp.y, 'aimed'); } finally { S.edges.set(p.key, e); u.x = ox; u.y = oy; }
   S.version++; return { ok: true, r }; }
 /* ---------- 23: 40mm / shotgun vs security cameras (hard to hit) ---------- */
 function camSees(c, x, y) { return !c.dead && camSeesBase(c, x, y); }
@@ -116,11 +116,11 @@ function dogSniff(uid, doorId) { const u = unit(uid), h = k9Of(u), d = S.doors[d
 function v21Actions(uid) { const u = unit(uid); if (!u || u.kind !== 'team') return [];
   const out = [], plan = S.phase === 'planning';
   dropList(uid).forEach(q => out.push({ act: 'drop', a: q.id, b: q.k, icon: /shield/.test(q.k) ? '⛨' : '⚒', label: `Drop ${EQUIP[q.k] ? EQUIP[q.k].short : q.k} (${q.name})`, on: !!u.deployed }));
-  if (hasSpec(u, 'breacher') && u.equip.charge > 0) wallSpotsFor(uid).forEach((w, i) => { out.push({ act: 'hole', a: i, icon: '💥', label: `Wall charge: hole (${w.dir} → ${w.to})`, on: plan }); out.push({ act: 'port', a: i, icon: '◎', label: `Gun port (${w.dir} → ${w.to})`, on: plan }); });
+  if (hasSpec(u, 'breacher') && u.equip.charge > 0) wallSpotsFor(uid).forEach((w, i) => { out.push({ act: 'hole', a: i, icon: '💥', label: `Wall charge: hole (${w.dir} → ${w.to})`, on: plan }); out.push({ act: 'port', a: i, icon: '◎', label: `Viewport (${w.dir} → ${w.to})`, on: plan }); });
   portsNear(uid).forEach(p => teamOk(u).slice(0, 4).forEach(o => out.push({ act: 'pfire', a: p.id, b: o.id, icon: '➹', label: `Fire through port: ${o.name}`, on: plan && shotsLeft(u) > 0 })));
   camTargets(uid).forEach(c => out.push({ act: 'cam', a: c.id, icon: '📷', label: `Shoot camera (${c.name}, ${Math.round(c.p * 100)}%)`, on: plan }));
   if (k9Of(u)) { dogTargets(uid).slice(0, 6).forEach(t => out.push({ act: 'dog', a: t.room, icon: '🐾', label: `Send ${k9Of(u).dog}: ${t.name}`, on: plan })); sniffDoors(uid).forEach(d => out.push({ act: 'sniff', a: d.id, icon: '👃', label: `Door sniff: ${d.name}`, on: plan })); }
   return out; }
-function v21Do(uid, act, a, b) { if (act === 'drop') return dropItem(a, b); if (act === 'hole' || act === 'port') return wallCharge(uid, act, +a); if (act === 'pfire') return portFire(uid, +a, b);
+function v21Do21(uid, act, a, b) { if (act === 'drop') return dropItem(a, b); if (act === 'hole' || act === 'port') return wallCharge(uid, act, +a); if (act === 'pfire') return portFire(uid, +a, b);
   if (act === 'cam') return shootCam(uid, +a); if (act === 'dog') return dogSend(uid, +a); if (act === 'sniff') return dogSniff(uid, +a); return { ok: false, reason: 'Unknown action' }; }
 SPECS.k9.desc = 'Handler and dog (no second specialty). Passive: the dog indicates a suspect within 5 m through walls. Send the dog into a room up to 25 m away through an open way (barks, may hold the suspect), or sniff a door (75% to detect)';
