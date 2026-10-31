@@ -9,7 +9,7 @@
    Coordinates: integer grid cells (1 cell ≈ 1 m). Cell (x,y) centre = (x,y).
    ===================================================================== */
 /** Build version shown on the main menu — bump this one constant each build. */
-const GAME_VERSION = 'v22';
+const GAME_VERSION = 'v23';
 
 const Core = (function () {
 'use strict';
@@ -52,7 +52,7 @@ const EQUIP = {
   charge:     { name: 'Breaching Charge',      short: 'Charge',   pool: 3,  desc: 'Hang, back off, detonate. Fastest and most reliable; very loud. Needs a breacher.' },
   bang:       { name: 'Flashbang',             short: 'Flashbang',pool: 10, desc: 'Disorients occupants of a room for several ticks.' },
   gas:        { name: 'CS Gas Canister',       short: 'CS Gas',   pool: 4,  desc: 'Room becomes uninhabitable; suspect may surrender or flee.' },
-  lesslethal: { name: 'Less-Lethal Launcher',  short: '40mm LL',  pool: 2,  desc: 'Can incapacitate a hostile suspect; launches gas through windows.' },
+  lesslethal: { name: '4-shot 40mm multilauncher',  short: '4-shot 40mm multilauncher',  pool: 2,  desc: 'Can incapacitate a hostile suspect; launches gas through windows.' },
   polecam:    { name: 'Mirror / Pole Camera',  short: 'Pole Cam', pool: 2,  desc: 'Peek under a door into the next room without opening it.' },
   drone:      { name: 'Micro Drone',           short: 'Drone',    pool: 1,  desc: 'Fast flying scout. Needs a tech operator.' },
   robot:      { name: 'Throwbot 2',            short: 'Throwbot', pool: 1,  desc: 'Small two-wheeled throwable camera robot. Needs a tech operator.' },
@@ -92,7 +92,6 @@ const TEAM_NAMES = ['Rear Containment', 'React Team', 'Search Team', 'Containmen
 const LAST = ['Reyes','Kim','Novak','Okafor','Brennan','Castillo','Haddad','Lindqvist','Morales','Tran','Walsh','Diaz','Petrov','Hughes','Sato','Mensah','Kowalski','Rivera'];
 const LAST2 = ['Abbott','Banks','Chen','Dorsey','Ellison','Fischer','Gomez','Hale','Ibarra','Jovanovic','Kaur','Lund','Marsh','Nakamura','Olsen','Pratt','Quinn','Rossi','Sandoval','Tate','Underwood','Varga','Whitfield','Yilmaz'];
 const PATROL = ['Miller','Grant','Shah','Ortiz','Becker'];
-const OPS = ['NIGHTFALL','IRON GATE','BLUE HERON','STONEWALL','SILENT KEY','COLD HARBOR','NORTH STAR','GLASS HOUSE','BLACKWOOD','HALCYON'];
 const STREETS = ['Maple', 'Oak Hollow', 'Linden', 'Birch', 'Willow Creek', 'Juniper', 'Aspen', 'Cedar Ridge', 'Elm', 'Sycamore'];
 const COVER_NAMES = ['', 'tree', 'hedge', 'parked car', 'shed', 'neighbor house', 'mailbox', 'low wall', 'fence', 'SWAT truck', 'garage', 'utility box'];
 
@@ -203,7 +202,7 @@ function losEx(ax, ay, bx, by, wantCov) {
 /* v14 vehicles: static cars + the SWAT van get ids 1..n (S.veh grid, rebuilt lazily); cruisers / the armored truck use 1000+number (S.dyn). */
 const VEH_CFG = { lean: 2 };
 function vehGrid() { if (S.veh && S.veh.length === MAP_W * MAP_H) return S.veh; const g = S.veh = new Uint16Array(MAP_W * MAP_H), W = S.world || {};
-  const list = (W.cars || []).concat(W.van ? [W.van] : []); list.forEach((q, i) => { for (let y = q.y; y < q.y + q.h; y++) for (let x = q.x; x < q.x + q.w; x++) if (inb(x, y)) g[idx(x, y)] = i + 1; }); return g; }
+  const list = (W.cars || []).concat(W.van && !W.van.away ? [W.van] : []); list.forEach((q, i) => { for (let y = q.y; y < q.y + q.h; y++) for (let x = q.x; x < q.x + q.w; x++) if (inb(x, y)) g[idx(x, y)] = i + 1; }); return g; }
 function vehId(c) { const d = S.dyn && S.dyn[c]; if (d && !COV_STATIC) return 1000 + d; return S.world ? vehGrid()[c] : 0; }
 /** Is (x,y) within VEH_CFG.lean metres of any cell of vehicle vid? */
 function vehNear(x, y, vid) { const R = VEH_CFG.lean; for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) { if (dx * dx + dy * dy > R * R + 0.01 || !inb(x + dx, y + dy)) continue; if (vehId(idx(x + dx, y + dy)) === vid) return true; } return false; }

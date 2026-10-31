@@ -164,7 +164,7 @@ for (const seed of [11, 23, 57, 101, 314]) {
 { const S = Core.newGame(77, { roster: [{ id: 'A1', last: 'Tester', spec: 'leader', quals: [], skill: 0.8, rank: 'Sgt.' }, { id: 'A2', last: 'Two', spec: 'tech', quals: [], skill: 0.7 }], gear: { drone: 0, robot: 0 }, teamMax: 6, armored: true });
   ok(S.officers.length === 2 && S.officers[0].careerId === 'A1' && S.officers[0].name === 'Sgt. Tester', 'career roster replaces generated officers');
   ok(S.armory.drone === 0 && S.armory.robot === 0 && S.teamMax === 6, 'career gear + team size applied');
-  ok(S.units.some(u => u.armored) || (S.bcPending && S.bcPending.unit.armored), 'armored vehicle unlocked (v20: en route to staging)');
+  ok(S.units.some(u => u.armored) || (S.bcPending && S.bcPending.unit.armored) || (S.bcPend || []).some(p => p.unit.armored), 'armored vehicle unlocked (v20: en route to staging)');
   const sm = Core.careerSummary(); ok(sm.officers.length === 2 && typeof sm.score === 'number' && sm.outcome, 'careerSummary is plain data');
   const S2 = Core.newGame(77); ok(S2.officers.length === 11 && !S2.units.some(u => u.armored), 'classic (seed replay) game unaffected by career opts'); }
 console.log(`MECHANICS: ${pass} passed, ${fail} failed`); if (fail) process.exitCode = 1;

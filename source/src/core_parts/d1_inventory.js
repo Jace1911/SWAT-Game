@@ -43,7 +43,7 @@ function countOf(o, k) { const inv = invOf(o); return (k === 'plate' && inv.worn
 /** Items an officer can use right now (aggregated into the team's equip). */
 function usableCount(o, k) { const c = ITEM_CFG[k] || {};
   if (k === 'lesslethal') return holds(o, 'lesslethal') && (o.quals || []).includes('ll') && invOf(o).ll > 0 && isReady(o, 'lesslethal') && llOk(o) ? 1 : 0;
-  if (k === 'cs40') return holds(o, 'lesslethal') && llMagOf(invOf(o)) >= 4 && isReady(o, 'lesslethal') && llOk(o) ? (invOf(o).vest.cs40 || 0) : 0;
+  if (k === 'cs40') return holds(o, 'lesslethal') && isReady(o, 'lesslethal') && llOk(o) ? (invOf(o).vest.cs40 || 0) : 0;
   if (c.spec && !isSpec(o, c.spec)) return 0;
   return countOf(o, k); }
 function syncEquip(t) { if (!t || t.kind !== 'team') return; const e = {}; for (const k in EQUIP) e[k] = 0;
@@ -137,7 +137,7 @@ function defaultKit(t) { const m = teamOk(t), take = k => { if (S.armory[k] > 0)
   for (const b of br) for (let i = 0; i < 2; i++) if (take('charge')) invOf(b).vest.charge = (invOf(b).vest.charge || 0) + 1;
   const fixedH = o => shieldOf(o) || holds(o, 'ram'); const free = m.filter(o => o !== pt && !fixedH(o)), throwers = free.length ? free : m.filter(o => o !== pt).concat(pt ? [pt] : []); let ti = 0; // v19: free-handed officers carry the bangs (take-home shields / rams stay in hand)
   for (const k of ['bang', 'bang', 'gas']) { const o = throwers[ti++ % Math.max(1, throwers.length)]; if (o && take(k)) invOf(o).packed[k] = (invOf(o).packed[k] || 0) + 1; }
-  for (const o of by('tech')) { if (take('drone')) invOf(o).packed.drone = 1; if (take('robot')) invOf(o).packed.robot = 1; }
+  for (const o of by('tech')) { if (!carries(o, 'drone') && take('drone')) invOf(o).packed.drone = 1; if (take('robot')) invOf(o).packed.robot = 1; }
   for (const o of by('medic')) if (!carries(o, 'medkit') && take('medkit')) invOf(o).packed.medkit = 1;
   const ll1 = m.find(o => carries(o, 'lesslethal') && llMagOf(invOf(o)) === 1);
   if (ll1) { if (S.armory.lesslethal > 0) { S.armory.lesslethal--; upgradeLL(ll1); } }

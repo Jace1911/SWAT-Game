@@ -10,7 +10,7 @@ const SCEN_TYPES = {
   barricade: { name: 'Barricaded subject', short: 'Barricade', w: 0.30, agit: 45, fireMul: 1, negoMul: 1, calloutMul: 1, slipMul: 1, slipAfter: 2,
     desc: 'Armed adult barricaded in his house after a disturbance, a warrant attempt or shots reported.' },
   mental: { name: 'Mental health crisis', short: 'Mental health', w: 0.20, agit: 30, fireMul: 0.55, negoMul: 1.35, calloutMul: 1.3, slipMul: 0.5, slipAfter: 3,
-    temperW: { talker: 0.5, withdrawn: 0.45, volatile: 0.05 }, legal: { discharge: 0.3, warrant: 0.25, interview: 0.45 },
+    temperW: { talker: 0.5, withdrawn: 0.45, volatile: 0.05 }, legal: { discharge: 0.35, warrant: 0.30, menacing: 0.35 }, // v23 (B7): hidden hook — never shown as a legal line
     bonus: { noForce: 150, ems: 100 },
     desc: 'A person in crisis, armed, alone. Low aggression, open to talking. Resolve without force and arrange an EMS evaluation for a bonus.' },
   domestic: { name: 'Domestic disturbance', short: 'Domestic', w: 0.20, agit: 50, fireMul: 1, negoMul: 1, calloutMul: 1, slipMul: 1, slipAfter: 2,
@@ -39,7 +39,7 @@ const SCEN_TYPES = {
 };
 const SCEN_KEYS = Object.keys(SCEN_TYPES);
 const BASE_KEYS = SCEN_KEYS.filter(k => !SCEN_TYPES[k].xw);
-const LEGAL_TXT = { narcotics: 'Narcotics search warrant on file for the residence.', escape: 'Escape from custody — statewide alert; recapture warrant.', parole: 'Parole-violation warrant on file (absconded from supervision).', eviction: 'Court order on file (writ of possession / civil process).', discharge: 'He fired a round inside the house — reckless discharge charge.', warrant: 'Active warrant (failure to appear) on file.', interview: 'No crime reported — emergency mental-health evaluation (transport hold) only.' };
+const LEGAL_TXT = { narcotics: 'Narcotics search warrant on file for the residence.', escape: 'Escape from custody — statewide alert; escape warrant.', parole: 'Parole violation — warrant issued (absconded from supervision).', eviction: 'Court order on file (writ of possession / civil process).', discharge: 'He fired a round inside the house — unlawful discharge within city limits.', warrant: 'Active warrant on file.' };
 /* ============================================================ */
 function wpick(r, W) { let p = r() * Object.values(W).reduce((a, b) => a + b, 0); for (const k in W) { p -= W[k]; if (p <= 0) return k; } return Object.keys(W)[0]; }
 /** Scenario type for a seed (deterministic; independent of the map generator's random stream). */
@@ -75,7 +75,7 @@ function resolvedNoForce() { const R = S.result || {}, m = S.stats.method || '';
 /** Debrief lines for the scenario type. */
 function typeDebrief() {
   const st = S.stype, out = []; if (!st) return out;
-  out.push({ k: 'Scenario type', v: st.name + (st.legal ? ` · legal: ${st.legal}` : '') + '.' });
+  out.push({ k: 'Scenario type', v: st.name + (st.legal && st.key !== 'mental' ? ` · legal: ${st.legal}` : '') + '.' });
   if (st.key === 'mental') { out.push({ k: '  Crisis resolution', v: resolvedNoForce() ? 'Resolved without force.' : (S.result && S.result.win ? 'Resolved with force.' : 'Not resolved.') });
     out.push({ k: '  Risk flag', v: 'Risk to himself reported at the call. ' + (S.intel.emsEval ? 'Referred for EMS evaluation.' : 'No EMS evaluation arranged.') }); }
   if (st.key === 'domestic') out.push({ k: '  Partner interview', v: S.intel.partner ? 'Done — layout, weapons and history obtained.' : 'Not done.' });

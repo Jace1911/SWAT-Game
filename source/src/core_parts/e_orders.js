@@ -65,6 +65,7 @@ function planOrder(u, o, sx, sy, assume) {
       if (!p) return { ok: false, reason: 'No entry route — breach a door first' }; o.x = tc[0]; o.y = tc[1]; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
     case 'detonate': { const d = S.doors[o.door]; if (!d.charge && !u.orders.some(q => q !== o && q.type === 'breach' && q.door === o.door && q.hangOnly)) return { ok: false, reason: 'No charge hung on that door' };
       const [mx, my] = doorMid(d); const warn = d.charge && dist(sx, sy, mx, my) < CHARGE_SAFE ? 'Inside the safety distance — team will be dazed' : null; return { ok: true, path: [], end: [sx, sy], warn }; }
+    case 'hangwall': return hangwallPlan(u, o, sx, sy, mo);
     case 'mask': case 'land': return { ok: true, path: [], end: [sx, sy] };
     case 'breach': case 'polecam': case 'opendoor': { const d = S.doors[o.door]; const sides = doorSides(d).filter(c => cellOk(c[0], c[1], { avoidSuspect: true }) && !S.block[idx(c[0], c[1])]);
       const isGoal = (x, y) => sides.some(c => c[0] === x && c[1] === y);
@@ -104,9 +105,10 @@ function orderReq(u, o) {
       if (o.hangOnly && o.method !== 'charge') return 'Only a charge can be hung';
       if (d.charge && o.method === 'charge') return 'A charge is already hung — Detonate it'; }
     if (o.type === 'detonate') { const d = S.doors[o.door]; if (!d.charge && !u.orders.some(q => q.type === 'breach' && q.door === o.door && q.hangOnly)) return 'No charge hung on that door'; }
+    if (o.type === 'hangwall') { const w = hangCan(u); if (w) return w; if (pending('hangwall') >= (e.charge || 0)) return 'No charges left on this team'; }
     if (o.type === 'bang' && pending('bang') >= (e.bang || 0)) return 'No flashbangs left on this team';
     if (o.type === 'gas' && pending('gas') >= (e.gas || 0)) return 'No CS gas on this team';
-    if (o.type === 'cs40' && pending('cs40') >= (e.cs40 || 0)) return 'No 40mm CS ready — needs a less-lethal-qualified officer holding the 4-shot 40mm (ready, not reloading) with 40mm CS rounds from the equipment vehicle';
+    if (o.type === 'cs40' && pending('cs40') >= (e.cs40 || 0)) return 'No 40mm CS ready — needs a less-lethal-qualified officer holding a 40mm launcher (single-shot or 4-shot; ready, not reloading) with 40mm CS rounds';
     if ((o.type === 'bang' || o.type === 'gas') && !taskMember(u, o.type, 2)) return 'A throw needs BOTH hands — whoever carries it holds a shield or the ram (change loadout)';
     if (DEVICE_ORDERS.includes(o.type)) { const w = deviceWhyNot(u, o.type); if (w) return w; }
     if (o.type === 'polecam' && !(e.polecam > 0)) return 'Team has no pole camera';

@@ -9,7 +9,7 @@ const team = (S, n = 4, pred) => Core.formTeam((pred ? S.officers.filter(pred).c
 const force = (S, v, fn) => { const c = S.rng.chance; S.rng.chance = () => v; try { return fn(); } finally { S.rng.chance = c; } };
 const GORE = /blood|gore|brain|guts|splatter|gush|mangled|severed|maul/i;
 
-ok(Core.GAME_VERSION === 'v22' && (html.match(/'v22'/g) || []).length === 1, 'GAME_VERSION v22 defined once');
+{ const gv = Core.GAME_VERSION; ok(/^v2[2-9]$/.test(gv) && (html.match(new RegExp("'" + gv + "'", 'g')) || []).length === 1, 'GAME_VERSION (v22+) defined once'); }
 ok(/apple-touch-icon/.test(html) && /apple-mobile-web-app-capable/.test(html), 'iOS meta kept');
 ok(['Rifles, pole cam feed', 'Suspect vehicles &amp; mobile homes', 'SWAT Elements panel (v22)'].every(h => html.includes(h)), 'help sections (v22)');
 { const m = html.match(/HB\('(Rifles, pole cam|Suspect vehicles|SWAT Elements panel)[\s\S]*?\)\}/g) || []; ok(m.length === 3 && m.every(t => !GORE.test(t)), 'v22 help wording neutral'); }

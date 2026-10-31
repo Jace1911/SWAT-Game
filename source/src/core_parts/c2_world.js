@@ -37,7 +37,7 @@ function genGeo(r) {
     for (const [a, b] of segs) { south.push(...rsSplit(a, b, 's', SS + 2, MAP_H - 2)); rear.push(...rsSplit(a, b, 's', ry0, ry1).map(l => Object.assign(l, { rear: true }))); }
     lots.length = 0; lots.push(...nW, ...keep, ...nE, ...south, ...rear); }
   lots.forEach((l, i) => { l.id = i; l.lawn = r(); });
-  S.geo = { rear: { road0: 1, road1: REAR_CFG.road, walk0: RW, walk1: ry0 - 1, y0: ry0, y1: ry1 }, SW, ST, SB, SS, streetW: sw, alley, cross, side: sideSt, corner, lots, target, name: r.pick(STREETS) + (r.chance(0.5) ? ' Street' : ' Drive') };
+  S.geo = { rear: { road0: 1, road1: REAR_CFG.road, walk0: RW, walk1: ry0 - 1, y0: ry0, y1: ry1 }, SW, ST, SB, SS, streetW: sw, alley, cross, side: sideSt, corner, lots, target, name: (r.pick(STREETS), r.chance(0.5), streetName(makeRng(S.seed * 7907 + S.attempt * 13 + 5))) } // v23: rng calls kept so the map is unchanged;
   return target;
 }
 function markRect(q, f) { for (let y = q.y; y < q.y + q.h; y++) for (let x = q.x; x < q.x + q.w; x++) if (inb(x, y)) f(idx(x, y), x, y); }
@@ -78,12 +78,13 @@ function genNeighborhood(r) {
   W.drives.forEach(q => pave(q, 4)); W.walks.forEach(q => pave(q, 5)); W.patios.forEach(q => markRect(q, c => { if (S.room[c] < 0 && !S.paved[c]) S.paved[c] = 6; }));
   if (H.dgarage) solid(H.dgarage, 10, true);
   // ---- neighbor houses ----
+  const tLots = trailerLots(G.lots, H);
   for (const L of G.lots) {
     if (L.target || L.x1 - L.x0 < 17) continue;
     const north = L.side === 'n', lw = L.x1 - L.x0 + 1;
     let w = r.int(10, Math.min(18, lw - 10)), h = r.int(8, north ? 12 : 10);
-    const park = !!(H.park && north && !L.rear); if (park) { h = h >= 10 ? 8 : 5; w = Math.max(w, Math.min(16, lw - 10)); } // v13: trailer-park cluster
-    const prot = park && makeRng(S.seed * 613 + L.id * 7 + 3)() < TRAILER_ROT; if (prot) { const t = w; w = h; h = t; } // v22: some park homes stand end-on
+    const park = tLots.has(L); if (park) { h = h >= 10 ? 8 : 5; w = Math.max(w, Math.min(16, lw - 10)); } // v13: trailer-park cluster
+    const prot = park && !L.rear && makeRng(S.seed * 613 + L.id * 7 + 3)() < TRAILER_ROT; if (prot) { const t = w; w = h; h = t; } // v22: some park homes stand end-on
     let setback = north ? r.int(6, 10) : r.int(4, 7); if (L.rear) setback = Math.min(setback, 5);
     const y = north ? L.y1 - setback - h + 1 : L.y0 + setback;
     const hasG = r.chance(0.5) && lw - w >= 17 && !park, gl = r.chance(0.5);

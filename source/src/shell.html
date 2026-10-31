@@ -150,7 +150,7 @@ details.brs>summary{cursor:pointer;list-style:none;user-select:none}details.brs>
 .ugrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px}.ucard{border:1px solid var(--line2);border-radius:6px;padding:7px 8px;font-size:11.5px;color:#bcd0e6}.ucard b{color:#fff;display:block;font-size:12.5px}.ucard.own{border-color:var(--green)}.ucard button{margin-top:5px;width:100%}
 #cc-code{width:100%;min-height:58px;font:11px monospace;background:rgba(6,16,30,.8);color:#cfe;border:1px solid var(--line2);border-radius:6px;padding:6px;box-sizing:border-box}
 .rec{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px}.rec div{border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:11px;color:var(--dim)}.rec b{display:block;color:#fff;font-size:16px}
-@media (max-width:700px){.tr{grid-template-columns:52px 62px 1fr;font-size:12px}.ctab .hm3{display:none}}
+@media (max-width:700px){.tr{grid-template-columns:50px 84px 1fr;font-size:12px}.tr .who{font-size:11px;overflow:hidden;text-overflow:ellipsis}.ctab .hm3{display:none}}
 .dlg{width:min(640px,100%);max-height:calc(100% - 20px);display:flex;flex-direction:column;position:relative}
 .dlg .body{overflow:auto;padding:12px 14px}
 .dlg input[type=text]{font:inherit;font-weight:800;font-size:16px;letter-spacing:.06em;color:#fff;background:rgba(6,16,30,.8);border:1px solid var(--line2);border-radius:6px;padding:5px 8px;width:160px}
@@ -227,7 +227,7 @@ body.nogame .modal{background:transparent}
 <canvas id="map" aria-label="Tactical map"></canvas>
 <div id="top" class="panel">
   <svg class="logo" viewBox="0 0 30 34"><defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b8cff"/><stop offset="1" stop-color="#0a2a5a"/></linearGradient></defs><path d="M15 1 C20 3 25 3 28 3 L28 15 C28 24 22 29 15 33 C8 29 2 24 2 15 L2 3 C5 3 10 3 15 1Z" fill="url(#lg)" stroke="#7fe3ff" stroke-width="1.5"/><path d="M9 17 l4 4 l8 -9" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
-  <div class="grow"><div class="op" id="opname">OPERATION</div><div class="sub" id="opsub">BARRICADED SUBJECT · RESIDENTIAL</div></div>
+  <div class="grow"><div class="op" id="opname"></div><div class="sub" id="opsub">BARRICADED SUBJECT · RESIDENTIAL</div></div>
   <div class="stat st-s"><span>Status</span><b id="st-status">—</b></div>
   <button id="b-brief" class="ib" title="Mission brief &amp; 911 call">📋</button><button id="b-wd" title="End mission / withdraw (no time limit — optional)"><span>⚑</span> <span class="hm2">Withdraw</span></button>
   <button id="b-menu" class="ib" title="Menu — scenario, seed, career">☰</button>
@@ -260,6 +260,7 @@ body.nogame .modal{background:transparent}
 <div class="modal" id="m-form"><div class="panel dlg" id="form-dlg"></div></div>
 <div class="modal" id="m-load"><div class="panel dlg" id="load-dlg"></div></div>
 <div class="modal" id="m-issue"><div class="panel dlg" id="issue-dlg"></div></div>
+<div class="modal" id="m-tname" role="dialog" aria-label="Name the team"><div class="panel dlg" id="tname-dlg"></div></div>
 <div class="modal" id="m-intel"><div class="panel dlg" id="intel-dlg"></div></div>
 <div class="modal" id="m-end"><div class="panel dlg" id="end-dlg"></div></div>
 <div class="modal" id="m-brief"><div class="panel dlg" id="brief-dlg"></div></div>
@@ -267,7 +268,7 @@ body.nogame .modal{background:transparent}
 <div class="modal" id="m-career"><div class="panel dlg wide" id="career-dlg"></div></div>
 <div class="modal" id="m-wd"><div class="panel dlg" id="wd-dlg"></div></div>
 <div class="modal" id="m-menu"><div class="panel dlg" id="menu-dlg"><span class="verlab" id="mn-ver"></span><div class="ph">Menu<span class="sp"></span><button class="ib" data-close="m-menu">✕</button></div><div class="body">
-  <div class="kv" style="padding:0 0 8px"><span>Operation</span><b id="mn-op">—</b><span>Seed</span><b id="st-seed">—</b><span>Mission time</span><b id="mn-time">0:00</b></div>
+  <div class="kv" style="padding:0 0 8px"><span>Address</span><b id="mn-op">—</b><span>Seed</span><b id="st-seed">—</b><span>Mission time</span><b id="mn-time">0:00</b></div>
   <div class="grid2"><button id="b-new" class="cmd"><b>⟳ New Scenario</b><span>New random Quick Mission (not counted in the career)</span></button>
   <button id="b-career" class="cmd"><b>🎖 Career</b><span id="mn-car">Roster, record, team level</span></button>
   <button id="b-main" class="cmd"><b>⌂ Main menu</b><span>Quick Mission level, Career Mode, help</span></button>

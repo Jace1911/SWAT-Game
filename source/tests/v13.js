@@ -86,7 +86,7 @@ ok(Core.BASE_KEYS.join() === 'barricade,mental,domestic,flee,neighbor', 'base ty
   const S = Core.newGame(900, { struct: 'trailer', stype: 'barricade' }), d = S.doors.find(q => q.exterior);
   ok(Core.doorMul(d, 'kick') > 2, 'hollow doors: kick easier');
   const sp = S.suspect, rm = S.rooms[sp.room], u = S.units.find(q => q.kind === 'patrol'); u.inCar = false; let spot = null;
-  for (let x = rm.x - 1; x <= rm.x + rm.w && !spot; x++) for (const y of [rm.y - 1, rm.y + rm.h]) if (Core.roomAt(x, y) < 0 && !S.block[Core.idx(x, y)]) { spot = [x, y]; break; }
+  let sd = 1e9; for (let x = rm.x - 1; x <= rm.x + rm.w; x++) for (const y of [rm.y - 1, rm.y + rm.h]) if (Core.roomAt(x, y) < 0 && !S.block[Core.idx(x, y)]) { const d = Math.max(Math.abs(x - sp.x), Math.abs(y - sp.y)); if (d < sd) { sd = d; spot = [x, y]; } } // v23: nearest outside spot (layouts changed)
   if (spot) { u.x = spot[0]; u.y = spot[1]; sp.agit = 90; sp.cd = 0; sp.mode = 'barricaded'; const keep = Core.TRAILER_CFG.wallShot; Core.TRAILER_CFG.wallShot = 1; const sh = S.stats.shots; Core.thinWallTurn(); Core.TRAILER_CFG.wallShot = keep;
     ok(S.stats.shots === sh + 1 && S.stats.wallShots === 1 && S.log.some(l => /through the wall/.test(l.text || l.msg || '')), 'thin walls: shot through the wall');
     ok(S.log.some(l => /thin walls — we can hear/.test(l.text || l.msg || '')), 'thin walls: officers hear him'); } else ok(false, 'no wall spot'); }

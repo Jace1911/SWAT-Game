@@ -69,9 +69,9 @@ ok(['ll', 'gas', 'driver'].every(k => Core.SPECS[k] && Core.SPECS[k].name), 'new
   ok(!Core.invAct(l.id, 'return', 'scope').ok || true, 'noop');
   iv.ll = 6; iv.llLoad = 4; iv.reloadT = -1; S.phase = 'executing'; let reloads = 0;
   for (let k = 0; k < 4; k++) { S.turn = 10 + k; ok(Core.llOk(l), '4-shot ready turn ' + k); Core.llSpend(l); ok(!Core.llOk(l), 'one round per turn ' + k); if (iv.reloadT >= S.turn) reloads++; }
-  ok(reloads === 1 && iv.llLoad === 2 && iv.ll === 2, `4-shot: four rounds then one reload (${reloads}, load ${iv.llLoad})`);
+  ok(reloads === 1 && iv.llLoad === Math.min(4, 2 + (iv.vest.cs40 || 0)) && iv.ll === 2, `4-shot: four rounds then one reload (${reloads}, load ${iv.llLoad})`);
   S.phase = 'planning'; S.turn = 20; const rr = Core.invAct(l.id, 'return', 'lesslethal'); ok(rr.ok && Core.llKind(l) === 'single' && !(iv.vest.cs40 > 0), 'returning the 4-shot → back to the take-home single shot, CS back to the vehicle');
-  ok(!Core.invAct(l.id, 'draw', 'cs40').ok, 'CS rounds only with the 4-shot'); }
+  ok(Core.invAct(l.id, 'draw', 'cs40').ok, 'v23: CS rounds also fit the single-shot'); }
 
 // --- 40mm CS order: a quarter of a canister into the room ---
 { let done = 0, tried = 0, amt = [];

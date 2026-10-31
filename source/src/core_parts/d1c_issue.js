@@ -16,7 +16,7 @@ SPECS.medic.desc += '. Carries a medical bag';
 SPECS.tech.name = 'Robot / Drone / EOD Op'; SPECS.tech.desc = 'Operates drones and robots — all robotics live on the equipment vehicle (standard personal gear)';
 Object.assign(EQUIP, {
   gasbag: { name: 'Gas Bag',          short: 'Gas Bag', pool: 1, desc: 'Bag of hand-thrown CS canisters (+3 canisters). A gas specialist throws them with better accuracy.' },
-  cs40:   { name: '40mm CS Round',    short: '40mm CS', pool: 6, desc: 'CS round for the 4-shot 40mm: fired through a window, an open door or at the suspect. About 1/4 of the gas of a hand-thrown canister.' },
+  cs40:   { name: '40mm CS Round',    short: '40mm CS', pool: 6, desc: 'CS round for either 40mm launcher (single-shot or 4-shot): fired through a window, an open door or at the suspect. About 1/4 of the gas of a hand-thrown canister.' },
   scope:  { name: 'Spotting Scope',   short: 'Scope',   pool: 0, desc: 'Sniper / overwatch spotting scope.' },
 });
 Object.assign(ITEM_CFG, { gasbag: { where: 'packed' }, cs40: { where: 'vest' }, scope: { where: 'packed' } });
@@ -28,7 +28,7 @@ const HELMETS = { std: { name: 'Ballistic helmet (IIIA)', short: 'IIIA helmet', 
 const HELMET_CFG = { head: 0.3 }; // share of non-torso hits that strike the helmet
 /** TAKE-HOME by primary specialty: [item, gear type the team must have unlocked]. */
 const TAKE_HOME = { point: [['shield', 'shield']], breacher: [['ram', 'ram'], ['halligan', 'halligan']], ll: [['lesslethal', 'lesslethal']],
-  marksman: [['sniper', null], ['scope', null]], medic: [['medkit', 'medkit']] };
+  marksman: [['sniper', null], ['scope', null]], medic: [['medkit', 'medkit']], tech: [['drone', 'drone']] }; // v23: robotics specialists bring one drone from home
 function gearHave(k) { return !k || !S.gearHave || !!S.gearHave[k]; }
 function bestArmor() { return gearHave('plate') ? 'plate' : 'soft'; }
 function bestHelmet() { return gearHave('plate') ? 'rifle' : 'std'; }
@@ -58,7 +58,7 @@ function invAct19(offId, act, k) {
     if (k !== 'lesslethal' && countOf(o, k) > ((inv.home || []).filter(x => x === k).length)) return invActBase(offId, act, k);
     if (atEq() && k !== 'lesslethal') { const i = inv.home.indexOf(k); inv.home.splice(i, 1); const r = invActBase(offId, act, k); if (!r.ok) inv.home.splice(i, 0, k); return r; } // v20: leave it at the vehicle (e.g. deploy a breacher with no ram)
     return { ok: false, reason: `${EQUIP[k] ? EQUIP[k].short : k}: can only be left at the equipment vehicle (primary staging)` }; }
-  if (act === 'draw' && k === 'cs40') { if (llKind(o) !== 'multi') return { ok: false, reason: '40mm CS rounds deploy with the 4-shot 40mm launcher — draw the launcher first' }; }
+  if (act === 'draw' && k === 'cs40') { if (!llKind(o)) return { ok: false, reason: '40mm CS rounds fire from a 40mm launcher (single-shot or 4-shot) — carry one first' }; }
   if (act === 'draw' && k === 'lesslethal' && llKind(o) === 'single') { if (!atEq()) return invActBase(offId, act, k); if (!(S.armory.lesslethal > 0)) return { ok: false, reason: 'No 4-shot launcher left at the equipment vehicle' };
     S.armory.lesslethal--; upgradeLL(o); return done(); }
   if (act === 'return' && k === 'lesslethal' && llKind(o) === 'multi' && (inv.home || []).includes('lesslethal')) { if (!atEq()) return invActBase(offId, act, k);
@@ -74,7 +74,7 @@ function invAct19(offId, act, k) {
 const SPEC_KIT = { point: ['shield3', 'shield'], breacher: ['charge', 'ram', 'halligan'], ll: ['lesslethal', 'cs40'], gas: ['gasbag'], marksman: [], medic: ['medkit'], tech: ['drone', 'robot'], negotiator: ['tphone', 'bullhorn'] };
 function fetchSecondary(offId) { const o = off(offId); if (!o || !o.spec2) return { ok: false, reason: 'No secondary specialty' };
   const got = []; let why = null;
-  for (const k of SPEC_KIT[o.spec2] || []) { if (k === 'shield' && got.includes('shield3')) continue; if (k === 'cs40' && !got.includes('lesslethal') && llKind(o) !== 'multi') continue;
+  for (const k of SPEC_KIT[o.spec2] || []) { if (k === 'shield' && got.includes('shield3')) continue; if (k === 'cs40' && !got.includes('lesslethal') && !llKind(o)) continue;
     const r = invAct(offId, 'draw', k); if (r.ok) got.push(k); else why = why || r.reason; if (k === 'cs40' && r.ok) break; }
   return got.length ? { ok: true, got } : { ok: false, reason: why || 'Nothing to fetch for that specialty' }; }
 /** Issue-screen model for a team. */

@@ -131,14 +131,14 @@ function bakeGround() {
     g.fillStyle = '#3a2a1e'; g.beginPath(); g.arc(cx, cy, Math.max(2, k * 0.12), 0, 7); g.fill(); }
   // parked cars and the SWAT truck
   for (const car of X.cars) if (!car.garage) drawParked(g, car, k); // v22: garage cars are furniture (seen only through an open garage door)
-  if (X.van) drawTruck(g, X.van, k);
+  if (X.van && !X.van.away) drawTruck(g, X.van, k);
   // street lamps
   for (const l of X.lamps) { const px = (l.x + 0.5) * k, py = (l.y + 0.5) * k; g.fillStyle = '#20252c'; g.beginPath(); g.arc(px, py, k * 0.18, 0, 7); g.fill(); g.strokeStyle = '#59606b'; g.lineWidth = 1.5; g.stroke(); }
   // staging marker
   const st = X.staging; g.save(); g.strokeStyle = 'rgba(56,200,255,.6)'; g.setLineDash([6, 5]); g.lineWidth = 2; rr(g, (st.x - 3) * k, (st.y - 1.5) * k, 7 * k, 3.4 * k, 8); g.stroke(); g.setLineDash([]);
   g.fillStyle = 'rgba(56,200,255,.06)'; g.fill(); g.fillStyle = 'rgba(127,227,255,.8)'; g.font = `700 ${k * 0.5}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'left'; g.fillText('PRIMARY STAGING · EQUIPMENT', (st.x - 2.8) * k, (st.y + 1.6) * k); g.restore();
   const s2 = X.staging2; if (s2) { g.save(); g.strokeStyle = 'rgba(150,230,170,.6)'; g.setLineDash([6, 5]); g.lineWidth = 2; rr(g, (s2.x - 2.5) * k, (s2.y - 1.5) * k, 6 * k, 3.4 * k, 8); g.stroke(); g.setLineDash([]);
-    g.fillStyle = 'rgba(120,220,150,.06)'; g.fill(); g.fillStyle = 'rgba(170,240,190,.85)'; g.font = `700 ${k * 0.5}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'left'; g.fillText('SECONDARY STAGING · ON FOOT', (s2.x - 2.3) * k, (s2.y + 1.6) * k); g.restore(); }
+    g.fillStyle = 'rgba(120,220,150,.06)'; g.fill(); g.fillStyle = 'rgba(170,240,190,.85)'; g.font = `700 ${k * 0.5}px system-ui,Segoe UI,sans-serif`; g.textAlign = 'left'; g.fillText(Core.state.armory2 ? 'SECONDARY STAGING · BEARCAT 2' : 'SECONDARY STAGING · ON FOOT', (s2.x - 2.3) * k, (s2.y + 1.6) * k); g.restore(); }
   L.ground = c;
 }
 function fenceSeg(g, x1, y1, x2, y2, k) { g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = k * 0.24; g.beginPath(); g.moveTo(x1 + 2, y1 + 3); g.lineTo(x2 + 2, y2 + 3); g.stroke();
@@ -276,7 +276,9 @@ function buildComp() {
   L.comp = c; compKey = knowledgeKey();
 }
 function rebake() { bakeGround(); bakeInterior(); bakeBlueprint(); bakeRoof(); const MW = Core.MAP_W, MH = Core.MAP_H; L.fog = mk(MW, MH); L.tint = mk(MW, MH); L.gas = mk(MW, MH); L.expo = mk(MW, MH);
-  builtSeed = Core.state.seed; builtWV = ((Core.state.duplex && Core.state.duplex.wallV) || 0) + ((Core.state.wallLog || []).length * 1000); compKey = ''; dynVer = -1; planVer = -1; anims = []; seenFx = Core.state.fxSeq || 0; }
+  builtSeed = Core.state.seed; builtWV = wvKey(Core.state); compKey = ''; dynVer = -1; planVer = -1; anims = []; seenFx = Core.state.fxSeq || 0; }
+/** v23: static-layer key — wall changes and the equipment vehicle arriving force a rebake. */
+function wvKey(S) { return ((S.duplex && S.duplex.wallV) || 0) + ((S.wallLog || []).length * 1000) + (S.ext && S.ext.van && S.ext.van.away ? 1e6 : 0) + (S.armory2 ? 2e6 : 0); }
 let gasAny = false, peekAny = false;
 /** Line-of-sight reveal: indoor cells seen through open doors/doorways in rooms not yet explored. Lit while in view, dim once out of view. */
 function buildPeek() {
@@ -352,7 +354,7 @@ function syncFx() { const S = Core.state; for (const f of S.fx) if (f.id > seenF
 /* =====================================================================
    FRAME — world layers then screen-space overlays
    ===================================================================== */
-const ICON = { move: '➜', clear: '▣', breach: '✸', polecam: '◉', bang: '✦', gas: '☁', hold: '■', drone: '✣', robot: '⛭', shoot: '⊕', overwatch: '◎', board: '⇲', exit: '⇱', detonate: '✹', mask: 'M' };
+const ICON = { move: '➜', clear: '▣', breach: '✸', polecam: '◉', bang: '✦', gas: '☁', hold: '■', drone: '✣', robot: '⛭', shoot: '⊕', overwatch: '◎', board: '⇲', exit: '⇱', detonate: '✹', mask: 'M', hangwall: '▦' };
 function wpx(c) { return (c + 0.5) * CS; }
 // staging labels stay readable when zoomed out (the ground-layer text gets too small)
 function drawStageTags(g) { const S = Core.state, X = S && S.ext; if (!X || !X.staging || CS * 0.5 * cam.z >= 9) return;
@@ -371,7 +373,7 @@ function drawAddrTags(g) { const S = Core.state; if (!S || !S.house || !Core.add
   g.restore(); }
 function frame(now) { if (cv) { const [w, h] = viewportSize(); if (w !== VW || h !== VH || cv.width !== Math.round(w * Math.min(2, window.devicePixelRatio || 1))) resize(); } // self-heal a missed or stale rotate event
   const S = Core.state; if (!S || !cv) return;
-  if (builtSeed !== S.seed || builtWV !== ((S.duplex && S.duplex.wallV) || 0) + ((S.wallLog || []).length * 1000)) { rebake(); }
+  if (builtSeed !== S.seed || builtWV !== wvKey(S)) { rebake(); }
   if (knowledgeKey() !== compKey) buildComp();
   if (dynVer !== S.version) updateDyn();
   syncFx();
@@ -423,7 +425,7 @@ function lights(g, now, layer) {
     const blink = Math.floor(now / 260) % 2;
     for (const c of S.units) { if (c.kind !== 'cruiser' || c.disabled) continue; const [ux, uy] = posOf(c.uid, c.x, c.y); const px = wpx(ux), py = wpx(uy);
       glow(g, px, py, CS * (blink ? 3 : 1.6), 'rgba(255,40,60,A)', blink ? 0.4 : 0.08); glow(g, px, py, CS * (blink ? 1.6 : 3), 'rgba(40,110,255,A)', blink ? 0.08 : 0.4); }
-    if (X.van) { const px = (X.van.x + X.van.w / 2) * CS, py = (X.van.y + X.van.h / 2) * CS; glow(g, px, py, CS * 2.2, blink ? 'rgba(40,110,255,A)' : 'rgba(255,40,60,A)', 0.2); }
+    if (X.van && !X.van.away) { const px = (X.van.x + X.van.w / 2) * CS, py = (X.van.y + X.van.h / 2) * CS; glow(g, px, py, CS * 2.2, blink ? 'rgba(40,110,255,A)' : 'rgba(255,40,60,A)', 0.2); }
     for (const u of S.units) { if (u.status !== 'ok' || (u.kind !== 'team' && u.kind !== 'robot')) continue; if (u.kind === 'team' && !u.deployed) continue; if (u.perch) continue;
       const [ux, uy] = posOf(u.uid, u.x, u.y); const px = wpx(ux), py = wpx(uy), d = dirOf(u.uid, u.dir || 0); const rad = CS * (u.kind === 'team' ? 6 : 4);
       g.save(); g.beginPath(); g.moveTo(px, py); g.arc(px, py, rad, d - 0.45, d + 0.45); g.closePath();
@@ -615,9 +617,7 @@ function drawRoadblocks(g, now) { const S = Core.state, G = S.geo, s = sz(); dra
       g.fillStyle = 'rgba(8,12,18,.85)'; rr(g, tx - tw / 2, ty - 7 * s, tw, 14 * s, 3); g.fill(); g.fillStyle = held ? '#ffd0c0' : '#ffb020'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, tx, ty); } } }
 function drawContain(g, now) {
   const S = Core.state; const s = sz(); drawRoadblocks(g, now);
-  for (const c of S.contain) if (c.q === 'cruiser' && c.car && !c.covered) { // ghost cruiser outline: where a car must be parked to screen this post
-    const [gx, gy] = toScreen(c.car.x + 0.5, c.car.y + 0.5), L = 3 * CS * cam.z, W = 1.5 * CS * cam.z; g.save(); g.translate(gx, gy); g.strokeStyle = c.screened ? 'rgba(62,240,160,.7)' : 'rgba(127,227,255,' + (0.55 + 0.3 * Math.sin(now / 350)) + ')'; g.lineWidth = 1.6; g.setLineDash([5, 4]);
-    rr(g, -L / 2, -W / 2, L, W, 4 * s); g.stroke(); g.setLineDash([]); if (cam.z > 0.4) { g.fillStyle = 'rgba(127,227,255,.85)'; g.font = `700 ${7.5 * s}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('PARK CRUISER', 0, 0); } g.restore(); }
+  // v23: no 'park cruiser' ghost outlines
   // v8: no contain-post markers on the map (status lives in the Building Info panel and the Status Check)
 }
 /** Sniper perches (neighbor rooftops / windows) shown while choosing an overwatch spot. */
@@ -840,7 +840,7 @@ function drawMini(c) {
   for (const c of S.cas || []) { if (c.who === 'suspect' || !(Core.casActive(c) || c.state === 'kia' || c.state === 'lost')) continue; const px = ox + (c.x + 0.5) * k, py = oy + (c.y + 0.5) * k;
     if (!Core.casActive(c)) { g.fillStyle = '#8d97a6'; g.fillRect(px - 2, py - 1.5, 4, 3); continue; } g.fillStyle = !c.known ? '#9aa6b5' : c.stable ? '#3ef0a0' : '#ffb020'; g.fillRect(px - 0.8, py - 2.8, 1.6, 5.6); g.fillRect(px - 2.8, py - 0.8, 5.6, 1.6); }
   for (const b of S.roadblocks || []) { const px = ox + (b.side === 'W' ? b.x - 2.6 : b.x + 3.6) * k, held = Core.roadblockHeld(b); g.fillStyle = held ? '#e8401c' : 'rgba(255,176,32,.5)'; g.fillRect(px - 1.2, oy + S.geo.ST * k, 2.4, (S.geo.SB - S.geo.ST + 1) * k); }
-  for (const c of S.contain) { const px = ox + (c.x + 0.5) * k, py = oy + (c.y + 0.5) * k; if (c.q === 'cruiser' && c.car && !c.screened) { g.strokeStyle = 'rgba(127,227,255,.8)'; g.lineWidth = 1; g.strokeRect(ox + (c.car.x - 1) * k, oy + c.car.y * k, 3 * k, 1.4 * k); } }
+  // v23: minimap no longer outlines cruiser parking spots
   const v = viewRect(); g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.strokeRect(ox + v.x * k, oy + v.y * k, v.w * k, v.h * k); g.fillStyle = 'rgba(255,255,255,.06)'; g.fillRect(ox + v.x * k, oy + v.y * k, v.w * k, v.h * k);
 }
 /** v11: the minimap backing store follows its CSS box (× dpr) so the neighborhood is never stretched; drawing is in CSS px. */

@@ -9,7 +9,7 @@
    Coordinates: integer grid cells (1 cell ≈ 1 m). Cell (x,y) centre = (x,y).
    ===================================================================== */
 /** Build version shown on the main menu — bump this one constant each build. */
-const GAME_VERSION = 'v22';
+const GAME_VERSION = 'v23';
 
 const Core = (function () {
 'use strict';
@@ -52,7 +52,7 @@ const EQUIP = {
   charge:     { name: 'Breaching Charge',      short: 'Charge',   pool: 3,  desc: 'Hang, back off, detonate. Fastest and most reliable; very loud. Needs a breacher.' },
   bang:       { name: 'Flashbang',             short: 'Flashbang',pool: 10, desc: 'Disorients occupants of a room for several ticks.' },
   gas:        { name: 'CS Gas Canister',       short: 'CS Gas',   pool: 4,  desc: 'Room becomes uninhabitable; suspect may surrender or flee.' },
-  lesslethal: { name: 'Less-Lethal Launcher',  short: '40mm LL',  pool: 2,  desc: 'Can incapacitate a hostile suspect; launches gas through windows.' },
+  lesslethal: { name: '4-shot 40mm multilauncher',  short: '4-shot 40mm multilauncher',  pool: 2,  desc: 'Can incapacitate a hostile suspect; launches gas through windows.' },
   polecam:    { name: 'Mirror / Pole Camera',  short: 'Pole Cam', pool: 2,  desc: 'Peek under a door into the next room without opening it.' },
   drone:      { name: 'Micro Drone',           short: 'Drone',    pool: 1,  desc: 'Fast flying scout. Needs a tech operator.' },
   robot:      { name: 'Throwbot 2',            short: 'Throwbot', pool: 1,  desc: 'Small two-wheeled throwable camera robot. Needs a tech operator.' },
@@ -92,7 +92,6 @@ const TEAM_NAMES = ['Rear Containment', 'React Team', 'Search Team', 'Containmen
 const LAST = ['Reyes','Kim','Novak','Okafor','Brennan','Castillo','Haddad','Lindqvist','Morales','Tran','Walsh','Diaz','Petrov','Hughes','Sato','Mensah','Kowalski','Rivera'];
 const LAST2 = ['Abbott','Banks','Chen','Dorsey','Ellison','Fischer','Gomez','Hale','Ibarra','Jovanovic','Kaur','Lund','Marsh','Nakamura','Olsen','Pratt','Quinn','Rossi','Sandoval','Tate','Underwood','Varga','Whitfield','Yilmaz'];
 const PATROL = ['Miller','Grant','Shah','Ortiz','Becker'];
-const OPS = ['NIGHTFALL','IRON GATE','BLUE HERON','STONEWALL','SILENT KEY','COLD HARBOR','NORTH STAR','GLASS HOUSE','BLACKWOOD','HALCYON'];
 const STREETS = ['Maple', 'Oak Hollow', 'Linden', 'Birch', 'Willow Creek', 'Juniper', 'Aspen', 'Cedar Ridge', 'Elm', 'Sycamore'];
 const COVER_NAMES = ['', 'tree', 'hedge', 'parked car', 'shed', 'neighbor house', 'mailbox', 'low wall', 'fence', 'SWAT truck', 'garage', 'utility box'];
 
@@ -203,13 +202,70 @@ function losEx(ax, ay, bx, by, wantCov) {
 /* v14 vehicles: static cars + the SWAT van get ids 1..n (S.veh grid, rebuilt lazily); cruisers / the armored truck use 1000+number (S.dyn). */
 const VEH_CFG = { lean: 2 };
 function vehGrid() { if (S.veh && S.veh.length === MAP_W * MAP_H) return S.veh; const g = S.veh = new Uint16Array(MAP_W * MAP_H), W = S.world || {};
-  const list = (W.cars || []).concat(W.van ? [W.van] : []); list.forEach((q, i) => { for (let y = q.y; y < q.y + q.h; y++) for (let x = q.x; x < q.x + q.w; x++) if (inb(x, y)) g[idx(x, y)] = i + 1; }); return g; }
+  const list = (W.cars || []).concat(W.van && !W.van.away ? [W.van] : []); list.forEach((q, i) => { for (let y = q.y; y < q.y + q.h; y++) for (let x = q.x; x < q.x + q.w; x++) if (inb(x, y)) g[idx(x, y)] = i + 1; }); return g; }
 function vehId(c) { const d = S.dyn && S.dyn[c]; if (d && !COV_STATIC) return 1000 + d; return S.world ? vehGrid()[c] : 0; }
 /** Is (x,y) within VEH_CFG.lean metres of any cell of vehicle vid? */
 function vehNear(x, y, vid) { const R = VEH_CFG.lean; for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) { if (dx * dx + dy * dy > R * R + 0.01 || !inb(x + dx, y + dy)) continue; if (vehId(idx(x + dx, y + dy)) === vid) return true; } return false; }
 /** Distance (m) from (x,y) to the nearest vehicle cell (static or cruiser), capped at 9. */
 function vehDist(x, y) { let b = 9; for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { if (!inb(x + dx, y + dy) || (!dx && !dy)) continue; if (vehId(idx(x + dx, y + dy))) b = Math.min(b, Math.hypot(dx, dy)); } return b; }
 function los(ax, ay, bx, by) { return losEx(ax, ay, bx, by, false).v; }
+
+/* v23 (B3/B4): name and street pools for the call / brief text. Officer names stay on LAST/LAST2 above. */
+const SUS_FIRST = ['Aaron','Adam','Alan','Alex','Alfonso','Andre','Andrew','Anthony','Austin','Barry','Ben','Benjamin','Bernard','Billy','Blake','Bobby','Brad','Brendan','Brent','Brett','Brian','Byron','Caleb','Calvin','Cameron','Carl','Casey','Chad','Charles','Clayton','Clint','Cody','Colin','Corey','Curtis','Dallas','Damian','Damon','Danny','Darius','Darren','Darryl','Dave','David','Dean','Dennis','Desmond','Dmitri','Dominic','Don','Donnie','Douglas','Duane','Dylan','Earl','Edgar','Eduardo','Edward','Elijah','Eric','Ernest','Ethan','Eugene','Evan','Felix','Fernando','Frank','Frankie','Garrett','Gary','Gavin','Gene','George','Gerald','Gordon','Grant','Greg','Gregory','Hank','Harold','Harvey','Henry','Herman','Howard','Hugo','Isaac','Ivan','Jacob','Jamal','James','Jared','Jason','Javier','Jay','Jeff','Jeffrey','Jeremy','Jesse','Jim','John','Johnny','Jonathan','Jordan','Jorge','Joseph','Joshua','Juan','Julian','Kelvin','Ken','Kenneth','Kent','Kevin','Kirk','Kurt','Lawrence','Leon','Lionel','Lloyd','Logan','Louis','Lucas','Luke','Malcolm','Manuel','Marcus','Mark','Marshall','Martin','Matt','Matthew','Micah','Michael','Miguel','Mike','Mitchell','Nate','Nathan','Neil','Nelson','Norman','Oliver','Oscar','Owen','Pablo','Patrick','Paul','Pedro','Perry','Phil','Preston','Quentin','Rafael','Ralph','Ramon','Randy','Ray','Raymond','Rick','Ricky','Robert','Roberto','Rodney','Roland','Ross','Ruben','Ryan','Sam','Sean','Sergio','Seth','Shawn','Simon','Stephen','Steve','Steven','Stuart','Ted','Terry','Thomas','Timothy','Tom','Tony','Travis','Trent','Trevor','Troy','Tyrone','Vernon','Victor','Vincent','Wade','Walter','Warren','Wayne','Wesley','Will','William','Willie','Zachary']; // 200 male first names (suspect)
+const SUS_LAST = ['Adams','Allen','Alvarez','Andrews','Armstrong','Arnold','Austin','Barker','Barnes','Bell','Bennett','Bishop','Black','Blake','Boyd','Bradley','Brady','Brooks','Brown','Bryant','Butler','Byrd','Caldwell','Campbell','Carlson','Carr','Carroll','Carter','Chambers','Chapman','Clark','Cole','Coleman','Collins','Crawford','Daniels','Davidson','Davis','Dawson','Day','Dean','Dixon','Douglas','Duncan','Edwards','Elliott','Evans','Ferguson','Fields','Fleming','Fletcher','Flores','Foster','Franklin','Freeman','Fuller','Garcia','Garrett','Gilbert','Graham','Grant','Graves','Gray','Green','Greene','Gutierrez','Hall','Hamilton','Hansen','Harris','Hart','Hawkins','Hayes','Henderson','Henry','Hernandez','Hicks','Holland','Hopkins','Howard','Hudson','Hunter','Jackson','Jacobs','James','Jenkins','Jensen','Johnson','Johnston','Jones','Keller','Kelley','Kelly','Kennedy','Kim','King','Knight','Lambert','Lane','Larson','Lawrence','Lawson','Lee','Lewis','Little','Lopez','Lyons','Marshall','Maxwell','Mccarthy','Mcdonald','Meyer','Miller','Mills','Mitchell','Montgomery','Morgan','Morris','Morrison','Murphy','Murray','Myers','Nelson','Ortega','Owens','Palmer','Parker','Patel','Patterson','Pearson','Perez','Perry','Peters','Peterson','Phillips','Pierce','Porter','Powell','Price','Ramirez','Ray','Reed','Reid','Reynolds','Rhodes','Rice','Richards','Richardson','Riley','Robbins','Roberts','Robinson','Rodgers','Romero','Rose','Ross','Ruiz','Russell','Ryan','Sanchez','Schmidt','Schultz','Shaw','Simmons','Sims','Smith','Snyder','Stanley','Stephens','Stevens','Stewart','Stone','Sullivan','Swanson','Taylor','Thomas','Thompson','Tucker','Vargas','Wade','Wagner','Walker','Wallace','Ward','Warren','Watkins','Watson','Weaver','Webb','Wells','West','Wheeler','White','Williams','Willis','Wilson','Wood','Woods','Wright','Young']; // 200 surnames (suspect, family, neighbor callers)
+const CALLER_F = ['Alicia','Amanda','Amber','Amy','Andrea','Angela','Anna','Ashley','Beth','Brandi','Brittany','Brooke','Carla','Carmen','Carol','Cassie','Chelsea','Christina','Cindy','Claire','Courtney','Crystal','Dana','Danielle','Destiny','Diana','Donna','Elena','Elizabeth','Emily','Erica','Erin','Gina','Gloria','Grace','Heather','Holly','Irene','Janelle','Janet','Jasmine','Jen','Jenna','Jessica','Jill','Julia','Julie','Kara','Karen','Kate','Kayla','Kelly','Kim','Kristen','Laura','Lauren','Leah','Leslie','Lisa','Liz','Lucia','Lydia','Marcy','Maria','Megan','Melanie','Melissa','Michelle','Monica','Nicole','Nina','Olivia','Paula','Priya','Rachel','Renee','Robin','Sabrina','Samantha','Sandra','Shannon','Shauna','Sonia','Sophie','Stephanie','Tamara','Tammy','Tanya','Tara','Tasha','Teresa','Tiffany','Valerie','Vanessa','Veronica','Vivian','Wendy','Yolanda','Yvette','Zoe']; // 100 female first names (partner / girlfriend / sister callers)
+const STREET_WORDS = ['Acorn','Alder','Amber','Applewood','Arbor','Ashford','Aspen','Autumn','Bayberry','Beacon','Beech','Bellwood','Birch','Birchwood','Blackberry','Bluebell','Bluff','Bramble','Briar','Briarwood','Bridge','Brookside','Buckeye','Cambridge','Canterbury','Cardinal','Carriage','Cedar','Cedar Ridge','Center','Chapel','Cherry','Chestnut','Church','Clover','Cobblestone','Colonial','Commerce','Cottonwood','Country Club','Creekside','Crestview','Cypress','Dahlia','Deer Run','Dogwood','Dover','Eagle','Eastwood','Elm','Elmwood','Evergreen','Fairview','Fairway','Falcon','Fern','Fieldstone','Forest','Fox Run','Franklin','Garden','Glen','Glenwood','Grand','Granite','Green','Greenbriar','Grove','Hamilton','Harbor','Harvest','Hawthorn','Hazel','Heather','Hemlock','Heritage','Hickory','Highland','Hill','Hillcrest','Holly','Homestead','Honeysuckle','Hunters Ridge','Ivy','Jackson','Jefferson','Juniper','Kensington','Kingston','Lake','Lakeview','Larch','Laurel','Lavender','Lexington','Liberty','Lilac','Lincoln','Linden','Locust','Madison','Magnolia','Main','Mallard','Maple','Maplewood','Market','Meadow','Meadowbrook','Mill','Mockingbird','Monroe','Morningside','Mulberry','Myrtle','North','Oak','Oak Hollow','Oakwood','Old Mill','Orchard','Oriole','Park','Parkview','Partridge','Peach','Pebble Creek','Pecan','Pheasant','Pine','Pinecrest','Pleasant','Poplar','Prairie','Primrose','Prospect','Quail','Railroad','Raven','Redbud','Ridge','Ridgeview','River','Riverside','Robin','Rolling Hills','Rose','Rosewood','Sage','Sandstone','School','Sherwood','Silver','Spruce','Spring','Spring Valley','Springfield','Stone','Summit','Sunrise','Sunset','Sycamore','Tamarack','Thistle','Timber','Timberline','Tulip','Valley','Valleyview','Victoria','Village','Vine','Walnut','Warbler','Washington','Water','Westwood','Wheatfield','Whispering Pines','Wildflower','Williams','Willow','Willow Creek','Windsor','Winding Brook','Woodland','Woodlawn','Wren','Yorkshire','Sparrow','Bluejay','Larkspur','Clearwater','Stonebridge','Ironwood','Hollyhock','Quarry','Foxglove','Copper']; // 200 street-name words
+
+/* v23 (B6): criminal-history pool — no years. sev 0-3 feeds a modest hidden aggression bump; w = base weight, t = per-type multipliers, g = only one entry per group. */
+const CRIM = [
+  { s: 'Prior arrest for assault', sev: 1, w: 4, g: 'asl', t: { domestic: 1.5, neighbor: 1.5 } }, { s: 'Multiple prior assault arrests', sev: 2, w: 1.5, g: 'asl', t: { domestic: 2, inmates: 2 } },
+  { s: 'Prior arrest for aggravated assault', sev: 2, w: 1.2, t: { inmates: 3, domestic: 1.5 } }, { s: 'Prior arrest for assault with a deadly weapon', sev: 3, w: 0.7, t: { neighbor: 2, inmates: 3 } },
+  { s: 'Prior arrest for assault on a police officer', sev: 3, w: 0.5, t: { sovcit: 3, inmates: 3, parole: 2 } }, { s: 'Prior arrest for domestic assault', sev: 2, w: 0.8, g: 'dv', t: { domestic: 8 } },
+  { s: 'Multiple prior domestic assault arrests', sev: 2, w: 0.2, g: 'dv', t: { domestic: 10 } }, { s: 'Prior arrest for felony domestic assault', sev: 3, w: 0.15, t: { domestic: 8 } },
+  { s: 'Violation of a protective order', sev: 1, w: 0.4, t: { domestic: 9 } }, { s: 'Prior arrest for stalking', sev: 1, w: 0.4, t: { domestic: 4 } }, { s: 'Prior arrest for harassment', sev: 0, w: 1.2, t: { neighbor: 5, domestic: 2 } },
+  { s: 'Prior arrest for terroristic threats', sev: 2, w: 0.7, t: { neighbor: 4, domestic: 2, sovcit: 2 } }, { s: 'Prior arrest for menacing', sev: 1, w: 0.9, t: { neighbor: 5, mental: 1.5 } },
+  { s: 'Prior arrest for robbery', sev: 2, w: 0.9, g: 'rob', t: { inmates: 4, parole: 2, flee: 1.5 } }, { s: 'Prior arrest for armed robbery', sev: 3, w: 0.5, g: 'rob', t: { inmates: 5, parole: 2.5, flee: 1.5 } },
+  { s: 'Prior arrest for carjacking', sev: 3, w: 0.3, t: { flee: 3, inmates: 3 } }, { s: 'Prior arrest for home invasion', sev: 3, w: 0.25, t: { inmates: 4, parole: 2 } },
+  { s: 'Prior arrest for kidnapping', sev: 3, w: 0.1, t: { inmates: 6, domestic: 3 } }, { s: 'Prior arrest for false imprisonment', sev: 2, w: 0.2, t: { domestic: 5, inmates: 3 } },
+  { s: 'Prior arrest for attempted murder', sev: 3, w: 0.12, t: { inmates: 6, drughouse: 2 } }, { s: 'Prior conviction for manslaughter', sev: 3, w: 0.08, t: { inmates: 6 } },
+  { s: 'Suspect in a drive-by shooting', sev: 3, w: 0.25, g: 'sh', t: { drughouse: 5, inmates: 3, flee: 1.5 } }, { s: 'Suspect in multiple shootings', sev: 3, w: 0.15, g: 'sh', t: { drughouse: 5, inmates: 4 } },
+  { s: 'Firearm intelligence — known to carry', sev: 2, w: 1, t: { drughouse: 4, parole: 2, sovcit: 3, neighbor: 1.5 } }, { s: 'Prior arrest for unlawful possession of a firearm', sev: 2, w: 1, t: { parole: 3, drughouse: 3, inmates: 2 } },
+  { s: 'Prior arrest for carrying a weapon without a permit', sev: 1, w: 1.2, t: { drughouse: 2, neighbor: 1.5, sovcit: 2 } }, { s: 'Prior arrest for reckless discharge of a firearm', sev: 2, w: 0.6, t: { neighbor: 3, mental: 2 } },
+  { s: 'Active felony warrant', sev: 2, w: 1, g: 'war', t: { parole: 2, flee: 3, inmates: 2 } }, { s: 'Active misdemeanor warrant', sev: 0, w: 2, g: 'war', t: { flee: 2, sovcit: 3 } },
+  { s: 'Prior arrest for resisting arrest', sev: 1, w: 1.8, t: { flee: 2, sovcit: 3 } }, { s: 'Prior arrest for fleeing a police officer', sev: 1, w: 0.8, t: { flee: 6, parole: 2, inmates: 2 } },
+  { s: 'Prior arrest for obstructing a police officer', sev: 1, w: 1, t: { sovcit: 5 } }, { s: 'Prior arrest for burglary', sev: 1, w: 1.3, t: { flee: 4, inmates: 2, parole: 2 } },
+  { s: 'Prior arrest for auto theft', sev: 1, w: 0.9, t: { flee: 4, inmates: 2 } }, { s: 'Prior arrest for receiving stolen property', sev: 1, w: 1, t: { flee: 3, drughouse: 1.5 } },
+  { s: 'Prior arrest for possession of a controlled substance', sev: 1, w: 2.5, t: { drughouse: 4, parole: 2, flee: 1.5 } }, { s: 'Prior arrest for possession with intent to distribute', sev: 2, w: 0.8, g: 'drg', t: { drughouse: 6, parole: 2, inmates: 2 } },
+  { s: 'Prior arrest for drug trafficking', sev: 2, w: 0.25, g: 'drg', t: { drughouse: 10, inmates: 3 } }, { s: 'Prior arrest for manufacturing a controlled substance', sev: 2, w: 0.15, t: { drughouse: 10 } },
+  { s: 'Prior arrest for witness tampering', sev: 1, w: 0.25, t: { drughouse: 3, inmates: 2 } }, { s: 'Prior arrest for arson', sev: 2, w: 0.25, t: { mental: 1.5, neighbor: 1.5 } },
+  { s: 'Prior arrest for criminal damage to property', sev: 0, w: 1.8, t: { neighbor: 3, domestic: 2 } }, { s: 'Prior arrest for DUI', sev: 0, w: 2.5 }, { s: 'Prior arrest for disorderly conduct', sev: 0, w: 2.5, t: { mental: 1.5 } },
+  { s: 'Prior arrest for trespassing', sev: 0, w: 1.5, t: { flee: 2, sovcit: 2 } }, { s: 'Prior arrest for shoplifting', sev: 0, w: 1.5 }, { s: 'Prior arrest for fraud', sev: 0, w: 0.8, t: { sovcit: 4 } },
+  { s: 'Prior arrest for filing a false lien', sev: 0, w: 0.05, t: { sovcit: 40 } }, { s: 'Driving with a suspended licence', sev: 0, w: 2, t: { sovcit: 3, flee: 1.5 } },
+  { s: 'Failure to appear in court', sev: 0, w: 2, t: { sovcit: 3, parole: 2 } }, { s: 'Prior probation violation', sev: 1, w: 1.6, t: { parole: 4, inmates: 2 } }, { s: 'Prior parole violation', sev: 1, w: 0.4, t: { parole: 6, inmates: 3 } },
+  { s: 'Prior conviction for escape from custody', sev: 2, w: 0.05, t: { inmates: 30, parole: 4 } }, { s: 'Prior emergency mental-health hold', sev: 0, w: 0.25, t: { mental: 16 } },
+  { s: 'Two prior disturbance calls at this address', sev: 0, w: 1.5, t: { neighbor: 3, mental: 2 } },
+];
+/** Weights for 0..6 entries per type. "No criminal history on file" is most common on crisis, neighbor and domestic calls. */
+const CRIM_COUNT = { barricade: [2, 3, 3, 2, 1.5, 1, 0.5], mental: [6, 3, 1.5, 0.8, 0.3, 0.1, 0], domestic: [4, 3, 2.5, 1.5, 1, 0.4, 0.2], neighbor: [5, 3, 2, 1, 0.5, 0.2, 0.1], flee: [0.5, 1.5, 2, 3, 2.5, 1.5, 1],
+  parole: [0, 0.5, 1, 2, 3, 3, 2], sovcit: [1.5, 2, 3, 2.5, 1.5, 0.8, 0.3], drughouse: [0.3, 1, 2, 3, 3, 2, 1], inmates: [0, 0, 0.5, 1, 2, 3, 3] };
+const HID_CFG = { sevFire: 0.02, fireCap: 0.15, sevAgit: 1.5, agitCap: 10, // B6: per history severity point (hidden, modest)
+  downFire: 1.5, downNego: 0.7, downAgit: 10 };                             // B1: an officer was hit before SWAT arrived (hidden, significant)
+/** Seeded criminal history: up to 6 entries, weighted by scenario type, no years. */
+function crimHistory(r, type) {
+  const cw = CRIM_COUNT[type] || CRIM_COUNT.barricade; let p = r() * cw.reduce((a, b) => a + b, 0), n = 0; for (; n < cw.length - 1; n++) { p -= cw[n]; if (p <= 0) break; }
+  let pool = CRIM.map(c => ({ c, w: c.w * ((c.t && c.t[type]) || 1) })); const out = [];
+  for (let i = 0; i < n && pool.length; i++) { let q = r() * pool.reduce((a, b) => a + b.w, 0), k = 0; for (; k < pool.length - 1; k++) { q -= pool[k].w; if (q <= 0) break; }
+    const c = pool.splice(k, 1)[0].c; if (c.g) pool = pool.filter(x => x.c.g !== c.g); out.push({ text: c.s, sev: c.sev }); }
+  return out.sort((a, b) => b.sev - a.sev);
+}
+/** v23 (B3): a street name — ~30 % numbered / lettered ("N 27th Street", "S 84th Avenue", "A Street", "West B Street"), the rest a word plus a suffix. */
+function streetName(r) {
+  const ord = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  if (r() < 0.3) { if (r() < 0.7) { const d = r() < 0.6 ? 'NSEW'[Math.floor(r() * 4)] + ' ' : ''; return d + ord(1 + Math.floor(r() * 99)) + ' ' + (r() < 0.55 ? 'Street' : 'Avenue'); }
+    const L = 'ABCDEFGHJKLMNP'[Math.floor(r() * 14)], d = r() < 0.4 ? ['West', 'East', 'North', 'South'][Math.floor(r() * 4)] + ' ' : ''; return d + L + ' Street'; }
+  const w = STREET_WORDS[Math.floor(r() * STREET_WORDS.length)], SUF = [['Street', 22], ['Drive', 18], ['Avenue', 14], ['Lane', 12], ['Road', 10], ['Court', 8], ['Place', 5], ['Way', 5], ['Circle', 3], ['Trail', 3]];
+  let q = r() * 100; for (const [x, k2] of SUF) { q -= k2; if (q <= 0) return w + ' ' + x; } return w + ' Street';
+}
 
 /* =====================================================================
    MAP GENERATION 1/2 — TARGET HOUSE (seeded archetypes)
@@ -430,7 +486,7 @@ function genHouse(r, lot, frontY) {
   S.house = { arch, archName: ARCH[arch], parts: P, garage: garage ? { x: garage.x, y: garage.y, w: garage.w, h: garage.h } : null, detached, side,
     x0: ox, x1: ox + FW - 1, y0: oy, y1: oy + FH - 1, oy, H: FH, TW: FW, rot: rot || undefined };
   S.house.main = P[0]; S.house.struct = struct;
-  if (struct === 'trailer') { S.house.trailer = arch; S.house.thin = true; S.house.park = sr.chance(STRUCT_CFG.park); }
+  if (struct === 'trailer') { S.house.trailer = arch; S.house.thin = true; sr.chance(STRUCT_CFG.park); S.house.park = true; } // v23: neighbours either side are always mobile homes
   if (struct === 'duplex') S.house.duplex = { partyX: ox + WA, aSide: side, bRooms: R.filter(q => q.unitB).map(q => q.id) }; // party wall between x = partyX-1 and partyX
 }
 /** v13: rooms of the suspect's own dwelling (a duplex's unit B is a separate home) */
@@ -544,7 +600,7 @@ function genGeo(r) {
     for (const [a, b] of segs) { south.push(...rsSplit(a, b, 's', SS + 2, MAP_H - 2)); rear.push(...rsSplit(a, b, 's', ry0, ry1).map(l => Object.assign(l, { rear: true }))); }
     lots.length = 0; lots.push(...nW, ...keep, ...nE, ...south, ...rear); }
   lots.forEach((l, i) => { l.id = i; l.lawn = r(); });
-  S.geo = { rear: { road0: 1, road1: REAR_CFG.road, walk0: RW, walk1: ry0 - 1, y0: ry0, y1: ry1 }, SW, ST, SB, SS, streetW: sw, alley, cross, side: sideSt, corner, lots, target, name: r.pick(STREETS) + (r.chance(0.5) ? ' Street' : ' Drive') };
+  S.geo = { rear: { road0: 1, road1: REAR_CFG.road, walk0: RW, walk1: ry0 - 1, y0: ry0, y1: ry1 }, SW, ST, SB, SS, streetW: sw, alley, cross, side: sideSt, corner, lots, target, name: (r.pick(STREETS), r.chance(0.5), streetName(makeRng(S.seed * 7907 + S.attempt * 13 + 5))) } // v23: rng calls kept so the map is unchanged;
   return target;
 }
 function markRect(q, f) { for (let y = q.y; y < q.y + q.h; y++) for (let x = q.x; x < q.x + q.w; x++) if (inb(x, y)) f(idx(x, y), x, y); }
@@ -585,12 +641,13 @@ function genNeighborhood(r) {
   W.drives.forEach(q => pave(q, 4)); W.walks.forEach(q => pave(q, 5)); W.patios.forEach(q => markRect(q, c => { if (S.room[c] < 0 && !S.paved[c]) S.paved[c] = 6; }));
   if (H.dgarage) solid(H.dgarage, 10, true);
   // ---- neighbor houses ----
+  const tLots = trailerLots(G.lots, H);
   for (const L of G.lots) {
     if (L.target || L.x1 - L.x0 < 17) continue;
     const north = L.side === 'n', lw = L.x1 - L.x0 + 1;
     let w = r.int(10, Math.min(18, lw - 10)), h = r.int(8, north ? 12 : 10);
-    const park = !!(H.park && north && !L.rear); if (park) { h = h >= 10 ? 8 : 5; w = Math.max(w, Math.min(16, lw - 10)); } // v13: trailer-park cluster
-    const prot = park && makeRng(S.seed * 613 + L.id * 7 + 3)() < TRAILER_ROT; if (prot) { const t = w; w = h; h = t; } // v22: some park homes stand end-on
+    const park = tLots.has(L); if (park) { h = h >= 10 ? 8 : 5; w = Math.max(w, Math.min(16, lw - 10)); } // v13: trailer-park cluster
+    const prot = park && !L.rear && makeRng(S.seed * 613 + L.id * 7 + 3)() < TRAILER_ROT; if (prot) { const t = w; w = h; h = t; } // v22: some park homes stand end-on
     let setback = north ? r.int(6, 10) : r.int(4, 7); if (L.rear) setback = Math.min(setback, 5);
     const y = north ? L.y1 - setback - h + 1 : L.y0 + setback;
     const hasG = r.chance(0.5) && lw - w >= 17 && !park, gl = r.chance(0.5);
@@ -847,7 +904,7 @@ function genContain(r) {
 function containStatus() {
   const key = S.units.filter(u => u.kind === 'cruiser').map(u => u.x + ',' + u.y + ',' + carAxis(u)).join(';');
   if (S._cruKey !== key) { S._cruKey = key; for (const c of S.contain) if (c.q === 'cruiser') c.screened = shieldAt(c.x, c.y).q !== 'open'; }
-  for (const c of S.contain) c.covered = S.units.some(u => (onFoot(u) && dist(u.x, u.y, c.x, c.y) <= 2.3 && (c.q !== 'cruiser' || c.screened)) || (u.kind === 'cruiser' && u.occ.length && dist(u.x, u.y, c.x, c.y) <= 3));
+  for (const c of S.contain) c.covered = S.units.some(u => (onFoot(u) && dist(u.x, u.y, c.x, c.y) <= 2.3 && true /* v23: no park-cruiser dependence */) || (u.kind === 'cruiser' && u.occ.length && dist(u.x, u.y, c.x, c.y) <= 3));
   if (S.turn > 0 && S.contain.length && S.contain.every(c => c.covered) && !S.stats.containXp) { S.stats.containXp = S.turn; xpAct('contain', null); }
 }
 /** Which sides of the house (with openings) are actually watched right now by an officer outside or a crewed cruiser. */
@@ -1179,7 +1236,7 @@ function countOf(o, k) { const inv = invOf(o); return (k === 'plate' && inv.worn
 /** Items an officer can use right now (aggregated into the team's equip). */
 function usableCount(o, k) { const c = ITEM_CFG[k] || {};
   if (k === 'lesslethal') return holds(o, 'lesslethal') && (o.quals || []).includes('ll') && invOf(o).ll > 0 && isReady(o, 'lesslethal') && llOk(o) ? 1 : 0;
-  if (k === 'cs40') return holds(o, 'lesslethal') && llMagOf(invOf(o)) >= 4 && isReady(o, 'lesslethal') && llOk(o) ? (invOf(o).vest.cs40 || 0) : 0;
+  if (k === 'cs40') return holds(o, 'lesslethal') && isReady(o, 'lesslethal') && llOk(o) ? (invOf(o).vest.cs40 || 0) : 0;
   if (c.spec && !isSpec(o, c.spec)) return 0;
   return countOf(o, k); }
 function syncEquip(t) { if (!t || t.kind !== 'team') return; const e = {}; for (const k in EQUIP) e[k] = 0;
@@ -1273,7 +1330,7 @@ function defaultKit(t) { const m = teamOk(t), take = k => { if (S.armory[k] > 0)
   for (const b of br) for (let i = 0; i < 2; i++) if (take('charge')) invOf(b).vest.charge = (invOf(b).vest.charge || 0) + 1;
   const fixedH = o => shieldOf(o) || holds(o, 'ram'); const free = m.filter(o => o !== pt && !fixedH(o)), throwers = free.length ? free : m.filter(o => o !== pt).concat(pt ? [pt] : []); let ti = 0; // v19: free-handed officers carry the bangs (take-home shields / rams stay in hand)
   for (const k of ['bang', 'bang', 'gas']) { const o = throwers[ti++ % Math.max(1, throwers.length)]; if (o && take(k)) invOf(o).packed[k] = (invOf(o).packed[k] || 0) + 1; }
-  for (const o of by('tech')) { if (take('drone')) invOf(o).packed.drone = 1; if (take('robot')) invOf(o).packed.robot = 1; }
+  for (const o of by('tech')) { if (!carries(o, 'drone') && take('drone')) invOf(o).packed.drone = 1; if (take('robot')) invOf(o).packed.robot = 1; }
   for (const o of by('medic')) if (!carries(o, 'medkit') && take('medkit')) invOf(o).packed.medkit = 1;
   const ll1 = m.find(o => carries(o, 'lesslethal') && llMagOf(invOf(o)) === 1);
   if (ll1) { if (S.armory.lesslethal > 0) { S.armory.lesslethal--; upgradeLL(ll1); } }
@@ -1382,7 +1439,7 @@ SPECS.medic.desc += '. Carries a medical bag';
 SPECS.tech.name = 'Robot / Drone / EOD Op'; SPECS.tech.desc = 'Operates drones and robots — all robotics live on the equipment vehicle (standard personal gear)';
 Object.assign(EQUIP, {
   gasbag: { name: 'Gas Bag',          short: 'Gas Bag', pool: 1, desc: 'Bag of hand-thrown CS canisters (+3 canisters). A gas specialist throws them with better accuracy.' },
-  cs40:   { name: '40mm CS Round',    short: '40mm CS', pool: 6, desc: 'CS round for the 4-shot 40mm: fired through a window, an open door or at the suspect. About 1/4 of the gas of a hand-thrown canister.' },
+  cs40:   { name: '40mm CS Round',    short: '40mm CS', pool: 6, desc: 'CS round for either 40mm launcher (single-shot or 4-shot): fired through a window, an open door or at the suspect. About 1/4 of the gas of a hand-thrown canister.' },
   scope:  { name: 'Spotting Scope',   short: 'Scope',   pool: 0, desc: 'Sniper / overwatch spotting scope.' },
 });
 Object.assign(ITEM_CFG, { gasbag: { where: 'packed' }, cs40: { where: 'vest' }, scope: { where: 'packed' } });
@@ -1394,7 +1451,7 @@ const HELMETS = { std: { name: 'Ballistic helmet (IIIA)', short: 'IIIA helmet', 
 const HELMET_CFG = { head: 0.3 }; // share of non-torso hits that strike the helmet
 /** TAKE-HOME by primary specialty: [item, gear type the team must have unlocked]. */
 const TAKE_HOME = { point: [['shield', 'shield']], breacher: [['ram', 'ram'], ['halligan', 'halligan']], ll: [['lesslethal', 'lesslethal']],
-  marksman: [['sniper', null], ['scope', null]], medic: [['medkit', 'medkit']] };
+  marksman: [['sniper', null], ['scope', null]], medic: [['medkit', 'medkit']], tech: [['drone', 'drone']] }; // v23: robotics specialists bring one drone from home
 function gearHave(k) { return !k || !S.gearHave || !!S.gearHave[k]; }
 function bestArmor() { return gearHave('plate') ? 'plate' : 'soft'; }
 function bestHelmet() { return gearHave('plate') ? 'rifle' : 'std'; }
@@ -1424,7 +1481,7 @@ function invAct19(offId, act, k) {
     if (k !== 'lesslethal' && countOf(o, k) > ((inv.home || []).filter(x => x === k).length)) return invActBase(offId, act, k);
     if (atEq() && k !== 'lesslethal') { const i = inv.home.indexOf(k); inv.home.splice(i, 1); const r = invActBase(offId, act, k); if (!r.ok) inv.home.splice(i, 0, k); return r; } // v20: leave it at the vehicle (e.g. deploy a breacher with no ram)
     return { ok: false, reason: `${EQUIP[k] ? EQUIP[k].short : k}: can only be left at the equipment vehicle (primary staging)` }; }
-  if (act === 'draw' && k === 'cs40') { if (llKind(o) !== 'multi') return { ok: false, reason: '40mm CS rounds deploy with the 4-shot 40mm launcher — draw the launcher first' }; }
+  if (act === 'draw' && k === 'cs40') { if (!llKind(o)) return { ok: false, reason: '40mm CS rounds fire from a 40mm launcher (single-shot or 4-shot) — carry one first' }; }
   if (act === 'draw' && k === 'lesslethal' && llKind(o) === 'single') { if (!atEq()) return invActBase(offId, act, k); if (!(S.armory.lesslethal > 0)) return { ok: false, reason: 'No 4-shot launcher left at the equipment vehicle' };
     S.armory.lesslethal--; upgradeLL(o); return done(); }
   if (act === 'return' && k === 'lesslethal' && llKind(o) === 'multi' && (inv.home || []).includes('lesslethal')) { if (!atEq()) return invActBase(offId, act, k);
@@ -1440,7 +1497,7 @@ function invAct19(offId, act, k) {
 const SPEC_KIT = { point: ['shield3', 'shield'], breacher: ['charge', 'ram', 'halligan'], ll: ['lesslethal', 'cs40'], gas: ['gasbag'], marksman: [], medic: ['medkit'], tech: ['drone', 'robot'], negotiator: ['tphone', 'bullhorn'] };
 function fetchSecondary(offId) { const o = off(offId); if (!o || !o.spec2) return { ok: false, reason: 'No secondary specialty' };
   const got = []; let why = null;
-  for (const k of SPEC_KIT[o.spec2] || []) { if (k === 'shield' && got.includes('shield3')) continue; if (k === 'cs40' && !got.includes('lesslethal') && llKind(o) !== 'multi') continue;
+  for (const k of SPEC_KIT[o.spec2] || []) { if (k === 'shield' && got.includes('shield3')) continue; if (k === 'cs40' && !got.includes('lesslethal') && !llKind(o)) continue;
     const r = invAct(offId, 'draw', k); if (r.ok) got.push(k); else why = why || r.reason; if (k === 'cs40' && r.ok) break; }
   return got.length ? { ok: true, got } : { ok: false, reason: why || 'Nothing to fetch for that specialty' }; }
 /** Issue-screen model for a team. */
@@ -2384,25 +2441,25 @@ function makeBrief() {
   const r = makeRng(S.seed * 4111 + 17), sp = S.suspect, N = S.nego, sc = S.scene, G = S.geo;
   const stv = S.stype || { key: 'barricade' }, ST = stv.key, self = N.called911, shots = !!sc.injury || stv.legal === 'discharge' || r.chance(ST === 'mental' ? 0.2 : ST === 'flee' ? 0.35 : 0.55);
   const types = ST !== 'barricade' ? null : self ? ['shots reported', 'warrant service'] : ['welfare check', 'warrant service', 'traffic stop follow-up', 'shots reported'];
-  const type = types ? r.pick(types) : { mental: 'mental health crisis', domestic: 'domestic disturbance', flee: 'fleeing suspect', neighbor: 'neighbor dispute — gun displayed' }[ST]; const first = r.pick(FIRST), last = r.pick(LAST), age = r.int(24, 58), addr = `${r.int(1, 48) * 100 + r.int(1, 99)} ${G.name}`;
+  const type = types ? r.pick(types) : { mental: 'mental health crisis', domestic: 'domestic disturbance', flee: 'fleeing suspect', neighbor: 'neighbor dispute — gun displayed' }[ST]; const first = r.pick(SUS_FIRST), last = r.pick(SUS_LAST), age = r.int(24, 58), addr = `${r.int(1, 48) * 100 + r.int(1, 99)} ${G.name}`;
   const hh = r.int(0, 23), mm = r.int(0, 59), t0 = hh * 3600 + mm * 60 + r.int(0, 59), ts = s => { s = (t0 + s) % 86400; const p = n => String(n).padStart(2, '0'); return `${p(Math.floor(s / 3600))}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}`; };
-  const desc = `${first} ${last}, ${age}, ${r.pick(['about 6 ft, heavy build', 'medium build, beard', 'slim, shaved head', 'tall, thin, glasses', 'stocky, short dark hair'])}`;
+  r(); const desc = `${first} ${last}, ${age}`; // v23 (B5): no physical description (the r() keeps the seeded sequence)
   const gunWord = { handgun: 'a handgun', rifle: 'a long gun', shotgun: 'a long gun — maybe a shotgun' }[sp.weapon] || 'a gun';
-  const sawGun = ST === 'neighbor' || stv.variant === 'firearm' ? true : stv.variant === 'violent' ? false : self ? r.chance(0.5) : r.chance(0.65);
+  const sawGun = (ST === 'neighbor' || stv.variant === 'firearm' ? true : stv.variant === 'violent' ? false : self ? r.chance(0.5) : r.chance(0.65)) || (ST === 'mental' && stv.legal === 'menacing' && !!gunWordOf(sp.weapon));
   const callerKind = self ? 'suspect' : ST === 'domestic' ? 'partner' : ST === 'neighbor' || ST === 'flee' ? 'neighbor' : { 'domestic disturbance': 'girlfriend', 'welfare check': 'sister', 'warrant service': 'neighbor', 'traffic stop follow-up': 'neighbor', 'shots reported': 'neighbor', 'mental health crisis': 'mother' }[type];
-  const callerName = self ? `${first} ${last} (did not give a name)` : { partner: r.pick(['Kayla', 'Maria', 'Jess', 'Amber']) + ' (partner)', girlfriend: r.pick(['Kayla', 'Maria', 'Jess']) + ' (girlfriend)', sister: r.pick(['Dana', 'Erin', 'Tasha']) + ` ${last} (sister)`, neighbor: r.pick(['Mr. ', 'Mrs. ']) + r.pick(LAST.filter(n => n !== last)) + ' (neighbor)', mother: `Linda ${last} (mother)` }[callerKind];
+  const callerName = self ? `${first} ${last} (did not give a name)` : { partner: r.pick(CALLER_F) + ' (partner)', girlfriend: r.pick(CALLER_F) + ' (girlfriend)', sister: r.pick(CALLER_F) + ` ${last} (sister)`, neighbor: r.pick(['Mr. ', 'Mrs. ']) + r.pick(SUS_LAST.filter(n => n !== last)) + ' (neighbor)', mother: `Linda ${last} (mother)` }[callerKind];
   const giveNum = !self && ['girlfriend', 'sister', 'mother', 'partner'].includes(callerKind) && r.chance(SCENE_CFG.numberInCall * 2);
   const phone = `(612) 555-0${r.int(100, 199)}`;
   const L = [], add = (s, who, text) => L.push({ t: ts(s), who, text });
   let s = 0; add(s, 'Dispatcher', '911, what is the address of your emergency?');
-  if (self) { add(s += 4, 'Caller', `${addr}. You need to send somebody. ${type === 'mental health crisis' ? "I can't do this anymore." : type === 'shots reported' ? "I just fired a round so you'd know I'm serious." : "I'm not going back. Tell them that."}`);
+  if (self) { add(s += 4, 'Caller', `${addr}. You need to send somebody. ${type === 'mental health crisis' ? "I can't do this anymore." + mentalHook(stv.legal, sp, true) : type === 'shots reported' ? "I just fired a round so you'd know I'm serious." : "I'm not going back. Tell them that."}`);
     add(s += 6, 'Dispatcher', 'Okay, I am sending help. What is your name, sir?'); add(s += 5, 'Caller', "Doesn't matter. Tell them not to come in here.");
     add(s += 4, 'Dispatcher', 'Is anyone else in the house with you?'); add(s += 3, 'Caller', "No. Just me."); if (sawGun || shots) { add(s += 5, 'Dispatcher', 'Do you have any weapons?'); add(s += 3, 'Caller', sawGun ? `I've got ${gunWord.replace('a long gun — maybe a shotgun', 'a shotgun').replace('a long gun', 'a rifle')}.` : "I'm not answering that."); }
     add(s += 6, 'Dispatcher', "Sir, stay on the line with me — officers are on the way."); add(s += 2, '[Note]', 'Caller disconnected. Caller ID on the line: ' + phone + ' (registered to ' + first + ' ' + last + ').'); }
   else {
     const what = ST === 'domestic' ? (stv.variant === 'firearm' ? `My boyfriend — he hit me and then he got his gun out. I ran out the back. He's still in the house at ${addr}.` : `My boyfriend — he's been hitting me and throwing things, I got out the side door. He's still in the house at ${addr}.`)
       : ST === 'neighbor' ? `My neighbor at ${addr} just pointed a gun at me over the fence! We've been fighting about the property line for months.`
-      : ST === 'flee' ? `A guy the police were chasing just kicked in the back door of the empty house at ${addr}. Nobody lives there — it's for sale.` : { 'domestic disturbance': `My boyfriend — he's screaming and throwing things, I got out the back. He's still in the house at ${addr}.`, 'welfare check': `I'm calling about my brother at ${addr}. He sent me a goodbye text and now he won't answer.`, 'warrant service': `There's police at my neighbor's place, ${addr}, and he slammed the door on them and he's yelling.`, 'traffic stop follow-up': `A guy just ran from a car the police pulled over and went into ${addr}.`, 'shots reported': `I heard ${shots ? 'gunshots' : 'what sounded like a gunshot'} next door, ${addr}.`, 'mental health crisis': `My son at ${addr} — he's off his medication and he says he's going to make them shoot him.` }[type];
+      : ST === 'flee' ? `A guy the police were chasing just kicked in the back door of the empty house at ${addr}. Nobody lives there — it's for sale.` : { 'domestic disturbance': `My boyfriend — he's screaming and throwing things, I got out the back. He's still in the house at ${addr}.`, 'welfare check': `I'm calling about my brother at ${addr}. He sent me a goodbye text and now he won't answer.`, 'warrant service': `There's police at my neighbor's place, ${addr}, and he slammed the door on them and he's yelling.`, 'traffic stop follow-up': `A guy just ran from a car the police pulled over and went into ${addr}.`, 'shots reported': `I heard ${shots ? 'gunshots' : 'what sounded like a gunshot'} next door, ${addr}.`, 'mental health crisis': `My son at ${addr} — he's off his medication and he says he's going to make them shoot him.` + mentalHook(stv.legal, sp, false) }[type];
     add(s += 4, 'Caller', what); add(s += 6, 'Dispatcher', 'Okay. Are you somewhere safe right now?'); add(s += 3, 'Caller', callerKind === 'neighbor' ? "I'm inside my house, I'm looking out the window." : callerKind === 'partner' ? "I'm down the street — I can see a police car coming." : "I'm in my car down the street.");
     add(s += 5, 'Dispatcher', 'Does he have any weapons?'); add(s += 3, 'Caller', sawGun ? `Yes — I saw ${gunWord}.` : stv.variant === 'violent' ? "He had a knife in the kitchen. Guns — I don't know, maybe." : "I don't know. Maybe. He used to keep guns.");
     add(s += 5, 'Dispatcher', 'Is anyone else inside?'); add(s += 3, 'Caller', ST === 'flee' ? 'No — the house is empty, nobody lives there.' : ST === 'domestic' ? "No. The kids are at my mom's." : r.pick(["I don't think so.", "I don't know.", 'I think he is alone.']));
@@ -2421,16 +2478,16 @@ function makeBrief() {
   else if (shots) patrol.push(`${ts(shotS).slice(0, 5)} — patrol heard ${r.chance(0.5) ? 'one shot' : 'shots'} from inside; no one hit.`);
   patrol.push(`Subject refused commands to come out. SWAT activated at ${ts(actS)} — mission clock 0:00.`);
   const known = [];
-  known.push(r.pick(['Prior arrest for assault (2019).', 'No criminal history on file.', 'Two prior disturbance calls at this address.', 'Active misdemeanour warrant.', ST === 'flee' ? 'Prior arrest for burglary (2022).' : 'Recent job loss, per family.']));
+  r(); // v23 (B6): the single background line is replaced by a criminal history (v23Brief); r() keeps the seeded sequence
   if (type === 'warrant service') known.push('Felony warrant (probation violation); he refused to open the door to the warrant team.');
   if (ST === 'domestic') known.push(stv.variant === 'firearm' ? 'Two prior domestic calls at this address; a handgun is registered to him.' : 'Two prior domestic calls at this address; protective order filed last year.', 'His partner is at the perimeter with patrol — interview her (Partner Interview) for layout, weapons and history.');
   if (ST === 'neighbor') known.push(`Ongoing property-line dispute with the neighbor on the ${stv.side} side. He displayed the gun toward that house.`, 'Known armed — the neighbor saw the weapon. Neighbor Interview available.');
   if (ST === 'flee') known.push('Ran on foot from a traffic stop; patrol lost sight of him at the back of this house.', 'The house is vacant (bank-owned, for sale) — no residents, no family on scene.');
-  if (ST === 'mental') known.push(LEGAL_TXT[stv.legal], 'Crisis call: arrange an EMS evaluation (Intel → EMS Evaluation) and try to resolve without force.');
+  if (ST === 'mental') known.push('Crisis call: arrange an EMS evaluation (Intel → EMS Evaluation) and try to resolve without force. He can still be evaluated after he comes out, whatever charges follow.'); // v23 (B7): no legal line
   if (type === 'traffic stop follow-up') known.push('Ran from a traffic stop two blocks away; the car is registered to him.');
   S.brief = { type, time: ts(0).slice(0, 5), callAt: ts(0), arriveAt: arrive, activatedAt: ts(actS), addr, caller: callerName, self, shots, sawGun, suspect: desc, name: `${first} ${last}`,
     occupants: ST === 'flee' ? 'Vacant house — no residents. He is alone.' : ST === 'domestic' ? 'Partner is out and at the perimeter; she says nobody else is inside. Not confirmed.' : self ? 'Caller says he is alone. Not confirmed.' : 'Caller does not know whether anyone else is inside. Not confirmed.',
-    stype: ST, stypeName: stv.name || 'Barricaded subject', typeDesc: SCEN_TYPES[ST].desc, legal: stv.legal || null, variant: stv.variant || null, side: stv.side || null,
+    stype: ST, stypeName: stv.name || 'Barricaded subject', typeDesc: SCEN_TYPES[ST].desc, legal: ST === 'mental' ? null : stv.legal || null, variant: stv.variant || null, side: stv.side || null,
     patrol, known, officerDown: !!sc.injury, transcript: L, background: bg.sort(), phone: self || giveNum ? phone : null, giveNum, reviewed: false };
   if (ST === 'flee') fleeBrief(S.brief);
   typeBrief(S.brief); typeBrief3(S.brief); structBrief(S.brief);
@@ -2572,7 +2629,7 @@ const SCEN_TYPES = {
   barricade: { name: 'Barricaded subject', short: 'Barricade', w: 0.30, agit: 45, fireMul: 1, negoMul: 1, calloutMul: 1, slipMul: 1, slipAfter: 2,
     desc: 'Armed adult barricaded in his house after a disturbance, a warrant attempt or shots reported.' },
   mental: { name: 'Mental health crisis', short: 'Mental health', w: 0.20, agit: 30, fireMul: 0.55, negoMul: 1.35, calloutMul: 1.3, slipMul: 0.5, slipAfter: 3,
-    temperW: { talker: 0.5, withdrawn: 0.45, volatile: 0.05 }, legal: { discharge: 0.3, warrant: 0.25, interview: 0.45 },
+    temperW: { talker: 0.5, withdrawn: 0.45, volatile: 0.05 }, legal: { discharge: 0.35, warrant: 0.30, menacing: 0.35 }, // v23 (B7): hidden hook — never shown as a legal line
     bonus: { noForce: 150, ems: 100 },
     desc: 'A person in crisis, armed, alone. Low aggression, open to talking. Resolve without force and arrange an EMS evaluation for a bonus.' },
   domestic: { name: 'Domestic disturbance', short: 'Domestic', w: 0.20, agit: 50, fireMul: 1, negoMul: 1, calloutMul: 1, slipMul: 1, slipAfter: 2,
@@ -2601,7 +2658,7 @@ const SCEN_TYPES = {
 };
 const SCEN_KEYS = Object.keys(SCEN_TYPES);
 const BASE_KEYS = SCEN_KEYS.filter(k => !SCEN_TYPES[k].xw);
-const LEGAL_TXT = { narcotics: 'Narcotics search warrant on file for the residence.', escape: 'Escape from custody — statewide alert; recapture warrant.', parole: 'Parole-violation warrant on file (absconded from supervision).', eviction: 'Court order on file (writ of possession / civil process).', discharge: 'He fired a round inside the house — reckless discharge charge.', warrant: 'Active warrant (failure to appear) on file.', interview: 'No crime reported — emergency mental-health evaluation (transport hold) only.' };
+const LEGAL_TXT = { narcotics: 'Narcotics search warrant on file for the residence.', escape: 'Escape from custody — statewide alert; escape warrant.', parole: 'Parole violation — warrant issued (absconded from supervision).', eviction: 'Court order on file (writ of possession / civil process).', discharge: 'He fired a round inside the house — unlawful discharge within city limits.', warrant: 'Active warrant on file.' };
 /* ============================================================ */
 function wpick(r, W) { let p = r() * Object.values(W).reduce((a, b) => a + b, 0); for (const k in W) { p -= W[k]; if (p <= 0) return k; } return Object.keys(W)[0]; }
 /** Scenario type for a seed (deterministic; independent of the map generator's random stream). */
@@ -2637,7 +2694,7 @@ function resolvedNoForce() { const R = S.result || {}, m = S.stats.method || '';
 /** Debrief lines for the scenario type. */
 function typeDebrief() {
   const st = S.stype, out = []; if (!st) return out;
-  out.push({ k: 'Scenario type', v: st.name + (st.legal ? ` · legal: ${st.legal}` : '') + '.' });
+  out.push({ k: 'Scenario type', v: st.name + (st.legal && st.key !== 'mental' ? ` · legal: ${st.legal}` : '') + '.' });
   if (st.key === 'mental') { out.push({ k: '  Crisis resolution', v: resolvedNoForce() ? 'Resolved without force.' : (S.result && S.result.win ? 'Resolved with force.' : 'Not resolved.') });
     out.push({ k: '  Risk flag', v: 'Risk to himself reported at the call. ' + (S.intel.emsEval ? 'Referred for EMS evaluation.' : 'No EMS evaluation arranged.') }); }
   if (st.key === 'domestic') out.push({ k: '  Partner interview', v: S.intel.partner ? 'Done — layout, weapons and history obtained.' : 'Not done.' });
@@ -3671,6 +3728,7 @@ function planOrder(u, o, sx, sy, assume) {
       if (!p) return { ok: false, reason: 'No entry route — breach a door first' }; o.x = tc[0]; o.y = tc[1]; return { ok: true, path: p, end: p.length ? p[p.length - 1] : [sx, sy] }; }
     case 'detonate': { const d = S.doors[o.door]; if (!d.charge && !u.orders.some(q => q !== o && q.type === 'breach' && q.door === o.door && q.hangOnly)) return { ok: false, reason: 'No charge hung on that door' };
       const [mx, my] = doorMid(d); const warn = d.charge && dist(sx, sy, mx, my) < CHARGE_SAFE ? 'Inside the safety distance — team will be dazed' : null; return { ok: true, path: [], end: [sx, sy], warn }; }
+    case 'hangwall': return hangwallPlan(u, o, sx, sy, mo);
     case 'mask': case 'land': return { ok: true, path: [], end: [sx, sy] };
     case 'breach': case 'polecam': case 'opendoor': { const d = S.doors[o.door]; const sides = doorSides(d).filter(c => cellOk(c[0], c[1], { avoidSuspect: true }) && !S.block[idx(c[0], c[1])]);
       const isGoal = (x, y) => sides.some(c => c[0] === x && c[1] === y);
@@ -3710,9 +3768,10 @@ function orderReq(u, o) {
       if (o.hangOnly && o.method !== 'charge') return 'Only a charge can be hung';
       if (d.charge && o.method === 'charge') return 'A charge is already hung — Detonate it'; }
     if (o.type === 'detonate') { const d = S.doors[o.door]; if (!d.charge && !u.orders.some(q => q.type === 'breach' && q.door === o.door && q.hangOnly)) return 'No charge hung on that door'; }
+    if (o.type === 'hangwall') { const w = hangCan(u); if (w) return w; if (pending('hangwall') >= (e.charge || 0)) return 'No charges left on this team'; }
     if (o.type === 'bang' && pending('bang') >= (e.bang || 0)) return 'No flashbangs left on this team';
     if (o.type === 'gas' && pending('gas') >= (e.gas || 0)) return 'No CS gas on this team';
-    if (o.type === 'cs40' && pending('cs40') >= (e.cs40 || 0)) return 'No 40mm CS ready — needs a less-lethal-qualified officer holding the 4-shot 40mm (ready, not reloading) with 40mm CS rounds from the equipment vehicle';
+    if (o.type === 'cs40' && pending('cs40') >= (e.cs40 || 0)) return 'No 40mm CS ready — needs a less-lethal-qualified officer holding a 40mm launcher (single-shot or 4-shot; ready, not reloading) with 40mm CS rounds';
     if ((o.type === 'bang' || o.type === 'gas') && !taskMember(u, o.type, 2)) return 'A throw needs BOTH hands — whoever carries it holds a shield or the ram (change loadout)';
     if (DEVICE_ORDERS.includes(o.type)) { const w = deviceWhyNot(u, o.type); if (w) return w; }
     if (o.type === 'polecam' && !(e.polecam > 0)) return 'Team has no pole camera';
@@ -3985,6 +4044,7 @@ function unitAct(u) {
   const outside = roomAt(u.x, u.y) < 0;
   const speed = u.kind === 'drone' ? 2 : (u.kind === 'patrol' || u.kind === 'team') && outside && (u.impair || 0) < 0.35 ? 2 : 1;
   if (o.type === 'corner') return cornerTick(u, o);
+  if (o.type === 'hangwall') return hangwallTick(u, o, speed);
   if (DEVICE_ORDERS.includes(o.type)) return deviceTick(u, o);
   if (o.type === 'dracoInstall') return dracoInstallTick(u, o, speed);
   if (o.type === 'move' || o.type === 'clear') {
@@ -4030,8 +4090,8 @@ function unitAct(u) {
       if (e.t === 'D' && e.d.state === 'closed' && !e.d.locked && !e.d.barricaded) { e.d.state = 'open'; break; } if (e.t === 'W' && !e.w.broken && !canSeeRoom(u, o.room)) { e.w.broken = true; noise(nx, ny, 6, 'glass'); break; } }
     const rm = S.rooms[o.room]; const tc = roomTargetCell(o.room);
     if (o.type === 'cs40') { faceTo(u, tc[0], tc[1]); const q = teamOk(u).find(m => usableCount(m, 'cs40') > 0);
-      if (!q) { failOrders(u, 'no 40mm CS round ready (4-shot 40mm in hand, not reloading)'); return; }
-      const iv = invOf(q); iv.vest.cs40 = Math.max(0, (iv.vest.cs40 || 0) - 1); iv.llTurn = S.turn; syncEquip(u); popOrder(u); S.stats.cs40 = (S.stats.cs40 || 0) + 1;
+      if (!q) { failOrders(u, 'no 40mm CS round ready (a 40mm launcher in hand, loaded, not reloading)'); return; }
+      const iv = invOf(q); iv.vest.cs40 = Math.max(0, (iv.vest.cs40 || 0) - 1); llShot(q); syncEquip(u); popOrder(u); S.stats.cs40 = (S.stats.cs40 || 0) + 1;
       gasAdd(o.room, 1.1 * CS40_CFG.frac); fx('gas', tc[0], tc[1], { room: o.room, fromX: u.x, fromY: u.y }); noise(tc[0], tc[1], 5, 'glass');
       log(`${q.name}: 40mm CS round into ${rm.known ? rm.name : 'room'} (about a quarter of a canister's gas).`, 'radio'); aggressive(8); runAfter(u, o); return; }
     faceTo(u, tc[0], tc[1]); const th = handsTask(u, o.type, ITEM_CFG[o.type].throwHands, q => useItem(u, o.type, x => x === q));
@@ -5047,6 +5107,185 @@ function legTurns(u) { const pl = planFor(u), out = []; let t = S.phase === 'pla
 function pathInfo(uid) { const u = unit(uid); if (!u) return null; const legs = wpLegs(u); if (legs.length < 2) return null; const lt = legTurns(u).filter(l => l.leg > 0);
   const last = lt[lt.length - 1], ex = lt.filter(l => l.exposed).map(l => l.leg);
   return { legs: legs.length, turns: last ? last.turn : 0, exposed: ex, text: `Path ${legs.length} legs · ${last && last.turn ? 'arrives in ' + (last.turn + 1) + ' turns' : 'arrives this turn'}${ex.length ? ' · ⚠ exposed leg ' + ex.join(', ') : ''}` }; }
+/* ===== v23 ===== */
+const V23 = { wallR: 1.5 };
+/* A4 root cause: furniture on either side of an interior wall used to make the wall uncharged-able (≈35% of interior walls). */
+function wallEdgeOk(ax, ay, bx, by) { if (!inb(ax, ay) || !inb(bx, by)) return false; const ra = roomAt(ax, ay), rb = roomAt(bx, by); if (ra === rb || ra < 0 || rb < 0) return false;
+  const e = edge(ax, ay, bx, by); if (e.t !== 'X') return false; return !(S.hung || []).some(h => h.key === ek(ax, ay, bx, by)); }
+function wallDesc(ax, ay, bx, by) { const dd = WALL_DIRS.find(q => q[0] === bx - ax && q[1] === by - ay); const rb = roomAt(bx, by);
+  return { a: [ax, ay], b: [bx, by], dir: dd ? dd[2] : 'near', key: ek(ax, ay, bx, by), to: rb >= 0 ? S.rooms[rb].name : 'outside' }; }
+/** Wall cells within 1.5 m of (x,y) in the same room (furniture allowed on either side). */
+function wallsNear(x, y, R) { const r0 = roomAt(x, y), out = []; if (r0 < 0) return out; R = R || V23.wallR;
+  for (let cy = y - 2; cy <= y + 2; cy++) for (let cx = x - 2; cx <= x + 2; cx++) { if (!inb(cx, cy) || roomAt(cx, cy) !== r0 || dist(cx, cy, x, y) > R + 0.01) continue;
+    for (const [dx, dy] of WALL_DIRS) { if (!wallEdgeOk(cx, cy, cx + dx, cy + dy)) continue; const w = wallDesc(cx, cy, cx + dx, cy + dy); w.d = dist(cx, cy, x, y); out.push(w); } }
+  return out.sort((p, q) => p.d - q.d); }
+function wallSpotsFor(uid) { const u = unit(uid); if (!u || u.kind !== 'team' || !u.deployed || u.inCar) return [];
+  const best = new Map(); for (const w of wallsNear(u.x, u.y)) if (!best.has(w.dir + w.to)) best.set(w.dir + w.to, w); return [...best.values()].slice(0, 6); }
+/** Is wall key w in reach of a team standing at (x,y)? Returns the wall oriented from the team's side, or null. */
+function wallReach(x, y, w) { for (const [a, b] of [[w.a, w.b], [w.b, w.a]]) if (roomAt(a[0], a[1]) === roomAt(x, y) && roomAt(x, y) >= 0 && dist(a[0], a[1], x, y) <= V23.wallR + 0.01) return wallDesc(a[0], a[1], b[0], b[1]); return null; }
+/** Map tap → nearest wall edge. {ok, w} | {ok:false, reason}. */
+function wallAtTap(cx, cy) { const x0 = Math.floor(cx), y0 = Math.floor(cy); let best = null;
+  for (let y = y0 - 1; y <= y0 + 1; y++) for (let x = x0 - 1; x <= x0 + 1; x++) for (const [dx, dy] of WALL_DIRS) { const bx = x + dx, by = y + dy; if (!inb(x, y) || !inb(bx, by)) continue;
+    const ra = roomAt(x, y), rb = roomAt(bx, by); if (ra === rb) continue; const mx = (x + bx) / 2 + 0.5, my = (y + by) / 2 + 0.5, d = Math.hypot(mx - cx, my - cy);
+    if (d < 0.8 && (!best || d < best.d)) best = { d, x, y, bx, by, ra, rb }; }
+  if (!best) return { ok: false, reason: 'Tap right on an interior wall line' };
+  const e = edge(best.x, best.y, best.bx, best.by);
+  if (best.ra < 0 || best.rb < 0) return { ok: false, exterior: true, reason: 'That is an exterior wall — wall charges only go on interior walls. Pick a wall between two rooms.' };
+  if (e.t !== 'X') return { ok: false, reason: e.t === 'D' ? 'That is a doorway — use Breach for doors' : 'That wall section already has an opening' };
+  if ((S.hung || []).some(h => h.key === ek(best.x, best.y, best.bx, best.by))) return { ok: false, reason: 'A charge is already hung on that wall' };
+  return { ok: true, w: wallDesc(best.x, best.y, best.bx, best.by) }; }
+function hangCan(u) { if (!u || u.kind !== 'team') return 'No team'; if (!hasSpec(u, 'breacher')) return 'Only a breacher can set a wall charge';
+  if (!(u.equip.charge > 0)) return 'No breaching charge on the team — draw one at the equipment vehicle'; return null; }
+/** Hang (or fire) a charge on a specific wall the team can reach. */
+function hangWallAt(u, w0, kind, now) { if (kind !== 'hole' && kind !== 'port') return { ok: false, reason: 'Pick viewport or through-wall' }; const why = hangCan(u); if (why) return { ok: false, reason: why };
+  const w = wallReach(u.x, u.y, w0); if (!w || !wallEdgeOk(w.a[0], w.a[1], w.b[0], w.b[1])) return { ok: false, reason: 'Stand within 1.5 m of an interior wall' };
+  const o = useItem(u, 'charge'); if (now) return blowWall(u, w, kind, o ? o.name : null); if (!S.hung) S.hung = [];
+  const h = { id: (S.hungSeq = (S.hungSeq || 0) + 1), team: u.uid, kind, a: w.a, b: w.b, key: w.key, dir: w.dir, to: w.to, by: o ? o.name : 'breacher', turn: S.turn };
+  S.hung.push(h); log(`${u.name}: ${h.by} hangs a ${WALL_KIND[kind].toLowerCase()} charge on the ${h.dir} wall (into the ${h.to}). Ready to detonate.`, 'radio'); S.version++; return { ok: true, hung: h }; }
+/** Planning-phase entry from the map tap: in reach → act now; else the caller queues a 'hangwall' order. */
+function hangWallTap(uid, w, kind, now) { const u = unit(uid); if (S.phase !== 'planning') return { ok: false, reason: 'Set charges during planning' }; return hangWallAt(u, w, kind, now); }
+function hangwallGoal(o) { const sides = [[o.w.a, o.w.b], [o.w.b, o.w.a]]; return (x, y) => !S.block[idx(x, y)] && sides.some(([a]) => roomAt(a[0], a[1]) === roomAt(x, y) && dist(a[0], a[1], x, y) <= V23.wallR + 0.01); }
+function hangwallPlan(u, o, sx, sy, mo) { if (!o.w || !wallEdgeOk(o.w.a[0], o.w.a[1], o.w.b[0], o.w.b[1])) return { ok: false, reason: 'That wall cannot take a charge (interior walls only)' };
+  const g = hangwallGoal(o); if (g(sx, sy)) return { ok: true, path: [], end: [sx, sy] };
+  /* prefer spots not covered by a window; fall back to any valid spot */
+  const safe = (x, y) => g(x, y) && !(expoAt(x, y) > 0); let p = findPath(sx, sy, safe, mo); if (!p) p = findPath(sx, sy, g, mo);
+  if (!p) return { ok: false, reason: 'No route to a spot within 1.5 m of that wall' }; o.spot = p.length ? p[p.length - 1] : [sx, sy]; return { ok: true, path: p, end: o.spot }; }
+function hangwallTick(u, o, speed) { const g = hangwallGoal(o);
+  if (!g(u.x, u.y)) { const r = stepAlong(u, o, g, speed); if (r === null) { failOrders(u, 'cannot reach the wall'); return; } if (!r) return; }
+  popOrder(u); const r = hangWallAt(u, o.w, o.kind, !!o.now); if (!r.ok) log(`${u.name}: wall charge not set — ${r.reason}.`, 'alert'); }
+/* A1: mobile homes on the block. Suspect in a trailer → the houses either side are trailers; every row rolls its own
+   per-house trailer rate (avg ≈35%, so a row can be mostly trailers or hardly any). Suspect in a house → 1% per house. */
+const NB_TRAILER_CFG = { rowRates: [0.08, 0.35, 0.62], other: 0.01 };
+function trailerLots(lots, H) { const out = new Set(), rr = makeRng(S.seed * 4243 + 17), big = L => !L.target && L.x1 - L.x0 >= 17, T = lots.find(L => L.target);
+  if (S.opts && S.opts.noNbTrailers) return out;
+  if (!H.trailer) { for (const L of lots) if (big(L) && rr() < NB_TRAILER_CFG.other) out.add(L); return out; }
+  const row = L => (L.rear ? 'r' : '') + L.side, same = lots.filter(L => big(L) && row(L) === row(T));
+  const left = same.filter(L => L.x1 < T.x0).sort((a, b) => b.x1 - a.x1)[0], right = same.filter(L => L.x0 > T.x1).sort((a, b) => a.x0 - b.x0)[0];
+  if (left) out.add(left); if (right) out.add(right);
+  const rates = {}; for (const L of lots) { if (!big(L) || out.has(L)) continue; const k = row(L); if (rates[k] === undefined) rates[k] = NB_TRAILER_CFG.rowRates[Math.floor(rr() * NB_TRAILER_CFG.rowRates.length)]; if (rr() < rates[k]) out.add(L); }
+  return out; }
+
+/* ---- v23 A5 / A7: the equipment vehicle and two BearCats arrive on their own turns ----
+   S.eqVeh = { turn, here }  — until it is here, primary staging holds none of the vehicle kit (stashed in S.eqHeld).
+   S.bcPend = [{ unit, turn, zone }] — BearCats still on the way; each adds BC_KIT to its own staging pool (S.armory primary, S.armory2 secondary). */
+const EQV_CFG = { share: 0.35 };
+const BC_KIT = { shield3: 1, bang: 4, ll1: 1, medkit: 1, gasbag: 1, gas: 6, ram: 1, halligan: 1, charge: 2 };
+EQUIP.ll1 = { name: 'Single-shot 40mm LL launcher', short: 'Single-shot 40mm', pool: 0, desc: 'Single-shot 40mm less-lethal launcher from the BearCat: impact or 40mm CS rounds, reload after every shot.' };
+ITEM_CFG.ll1 = { where: 'packed' };
+function poolZone(x, y) { const X = S.ext; if (dist(x, y, X.staging.x, X.staging.y) <= INV_CFG.drawRange) return 'p';
+  return S.armory2 && X.staging2 && dist(x, y, X.staging2.x, X.staging2.y) <= INV_CFG.drawRange ? 's' : 'p'; }
+function atEquipment(x, y) { const X = S.ext; return dist(x, y, X.staging.x, X.staging.y) <= INV_CFG.drawRange || !!(S.armory2 && X.staging2 && dist(x, y, X.staging2.x, X.staging2.y) <= INV_CFG.drawRange); }
+function withPool(z, fn) { if (z !== 's' || !S.armory2) return fn(); const p = S.armory; S.armory = S.armory2; try { return fn(); } finally { S.armory2 = S.armory; S.armory = p; } }
+const zoneOfOff = o => { const [x, y] = offPos(o); return poolZone(x, y); }, zoneOfUnit = t => poolZone(t.x, t.y);
+function eqHere() { return !S.eqVeh || S.eqVeh.here; }
+function emptyPool() { const p = {}; for (const k in EQUIP) p[k] = 0; return p; }
+function addKit(pool, kit) { for (const k in kit) pool[k] = (pool[k] || 0) + kit[k]; }
+/** Draw/return, routed to the pool of whichever staging the officer stands at; the single-shot launcher (ll1) handled here. */
+const invAct22 = invAct;
+invAct = function (offId, act, k) { const o = off(offId); if (!o) return invAct22(offId, act, k);
+  return withPool(zoneOfOff(o), () => {
+    const inv = invOf(o), t = o.team ? unit(o.team) : null;
+    if (k === 'll1' && act === 'draw') { const [x, y] = offPos(o); if (!atEquipment(x, y)) return { ok: false, reason: 'Equipment is drawn at a staging vehicle — move there first' };
+      if (!(S.armory.ll1 > 0)) return { ok: false, reason: 'No single-shot 40mm LL launcher here' }; if (carries(o, 'lesslethal')) return { ok: false, reason: 'Already carries a 40mm launcher' };
+      S.armory.lesslethal = (S.armory.lesslethal || 0) + 1; const r = invActBase(offId, 'draw', 'lesslethal');
+      if (!r.ok) { S.armory.lesslethal--; return r; } S.armory.ll1--; inv.llMag = LL19.singleMag; inv.llLoad = Math.min(1, inv.ll); inv.reloadT = -1; inv.ll1 = 1; if (t) syncEquip(t); return r; }
+    if (k === 'll1' && act === 'return') { if (!inv.ll1) return { ok: false, reason: 'Not carried' }; k = 'lesslethal'; }
+    if (k === 'lesslethal' && act === 'return' && inv.ll1) { const r = invActBase(offId, 'return', 'lesslethal'); if (r.ok) { S.armory.lesslethal--; S.armory.ll1 = (S.armory.ll1 || 0) + 1; S.armory.cs40 += inv.vest.cs40 || 0; inv.vest.cs40 = 0; inv.ll1 = 0; inv.llMag = null; if (t) syncEquip(t); } return r; }
+    const r = invAct22(offId, act, k);
+    if (!r.ok && act === 'draw' && !eqHere() && poolZone(...offPos(o)) === 'p' && !(S.armory[k] > 0) && /None left|left at the equipment/.test(r.reason || '')) return { ok: false, reason: `The equipment vehicle is not on scene yet — ${EQUIP[k] ? EQUIP[k].short : k} arrives with it` };
+    return r; }); };
+const defaultKit22 = defaultKit; defaultKit = function (t) { return withPool(zoneOfUnit(t), () => { const r = defaultKit22(t);
+  for (const o of teamOk(t)) if (llKind(o) === 'single' && !(invOf(o).vest.cs40 > 0)) { let n = 0; while (n < CS40_CFG.issue && S.armory.cs40 > 0) { S.armory.cs40--; n++; } if (n) invOf(o).vest.cs40 = n; } // v23: CS rounds fit the single-shot too
+  syncEquip(t); return r; }); };
+const issueView22 = issueView; issueView = function (uid) { const t = unit(uid); if (!t) return issueView22(uid); const z = zoneOfUnit(t);
+  return withPool(z, () => { const v = issueView22(uid); if (v) { v.zone = z; v.eqHere = eqHere(); v.eqTurn = S.eqVeh ? S.eqVeh.turn : 0; v.bcPend = (S.bcPend || []).map(p => p.zone); } return v; }); };
+const fetchSecondary22 = fetchSecondary; fetchSecondary = function (offId) { const o = off(offId); return o ? withPool(zoneOfOff(o), () => fetchSecondary22(offId)) : fetchSecondary22(offId); };
+const equip22 = equip; equip = function (uid, item, d) { const t = unit(uid); return t ? withPool(zoneOfUnit(t), () => equip22(uid, item, d)) : equip22(uid, item, d); };
+/** All armored cruisers on scene; the one nearest a unit (Draco install). */
+function bearcats() { return S.units.filter(u => u.kind === 'cruiser' && u.armored); }
+function bearcatFor(u) { const L = bearcats().filter(c => !c.draco); if (!u || !L.length) return L[0] || bearcat(); return L.slice().sort((a, b) => dist(a.x, a.y, u.x, u.y) - dist(b.x, b.y, u.x, u.y))[0]; }
+function bcSpot(cx, cy, self) { let best = null, bs = 1e9; for (let dy = -6; dy <= 6; dy++) for (let dx = -24; dx <= 24; dx++) { const x = cx + dx, y = cy + dy; if (!inb(x, y) || !S.drive[idx(x, y)] || S.block[idx(x, y)] || carClash(x, y, self)) continue;
+  const s = Math.abs(dx) + Math.abs(dy) * 2 + (Math.abs(dx) < 4 && Math.abs(dy) < 3 ? 20 : 0); if (s < bs) { bs = s; best = [x, y]; } } return best; }
+function v23Equip() { const offs = S.officers || [], etas = offs.map(o => o.status === 'enroute' ? o.eta || 0 : 0).sort((a, b) => a - b);
+  const n35 = Math.max(1, Math.ceil(offs.length * EQV_CFG.share)), T35 = etas.length ? etas[Math.min(etas.length, n35) - 1] : 0, q = makeRng((S.seed * 6151 + 29) >>> 0);
+  const eqT = T35 >= 1 ? q.int(1, T35) : 0; S.eqVeh = { turn: eqT, here: eqT <= 0 || !!(S.opts && S.opts.eqNow) || !!V23.eqAtStart, T35 };
+  S.eqHeld = null; const W = S.world;
+  if (!S.eqVeh.here) { S.eqHeld = Object.assign({}, S.armory); S.armory = emptyPool();
+    if (W && W.van) { W.van.away = true; W.vanSave = []; for (let y = W.van.y; y < W.van.y + W.van.h; y++) for (let x = W.van.x; x < W.van.x + W.van.w; x++) { const c = idx(x, y); W.vanSave.push([c, S.block[c], S.cov[c], S.covLbl[c]]); S.block[c] = 0; S.cov[c] = 0; S.covLbl[c] = 0; } S.veh = null; } }
+}
+function v23Vehicles() { const offs = S.officers || []; S.armory2 = null;
+  // two BearCats: replace the single v20 BearCat (C4 at primary) with one per staging, each on its own random turn
+  S.bcPend = []; const P = S.bcPending; S.bcPending = null; const c1 = P ? P.unit : bearcats()[0];
+  if (c1 && S.opts && S.opts.armored) { S.units = S.units.filter(u => u !== c1); const mx = Math.max(2, ...offs.map(o => o.eta || 0));
+    const r1 = makeRng((S.seed * 433 + 71) >>> 0), r2 = makeRng((S.seed * 977 + 13) >>> 0);
+    c1.bcZone = 'p'; c1.name = 'BearCat 1'; c1.bcDriver = { name: 'BearCat 1 driver' }; S.bcPend.push({ unit: c1, turn: V20.bcDelay ? r1.int(1, mx) : 0, zone: 'p' });
+    const s2 = S.ext.staging2, sp = s2 && bcSpot(s2.x, s2.y, null);
+    if (sp) { const c2 = { uid: 'C5', kind: 'cruiser', name: 'BearCat 2', num: 5, x: sp[0], y: sp[1], dir: 0, occ: [], orders: [], status: 'ok', hits: 0, marks: [], vis: [], disabled: false, armored: true, bcZone: 's', bcDriver: { name: 'BearCat 2 driver' } };
+      S.bcPend.push({ unit: c2, turn: V20.bcDelay ? r2.int(1, mx) : 0, zone: 's' }); }
+    rebuildDyn(); for (const p of S.bcPend.filter(p => p.turn <= 0)) bcArrive(p, true); }
+}
+function vanArrive() { const W = S.world; if (!W || !W.van || !W.van.away) return true; const cells = (W.vanSave || []).map(a => a[0]);
+  if (cells.some(c => S.dyn && S.dyn[c])) return false; // a cruiser is parked in the bay: next turn
+  for (const [c, b, cv, cl] of W.vanSave) { S.block[c] = b; S.cov[c] = cv; S.covLbl[c] = cl; }
+  for (const u of S.units) if (onFoot(u) && cells.includes(idx(u.x, u.y))) { for (let d = 1; d < 6; d++) { const y = W.van.y + W.van.h - 1 + d; if (inb(u.x, y) && !S.block[idx(u.x, y)]) { u.x = u.x; u.y = y; break; } } }
+  W.van.away = false; W.vanSave = null; S.veh = null; return true; }
+function eqArriveNow() { if (eqHere()) return false; if (!vanArrive()) return false; S.eqVeh.here = true; S.eqVeh.at = S.turn;
+  addKit(S.armory, S.eqHeld || {}); S.eqHeld = null; S.version++;
+  log(`PAGER: Equipment vehicle on scene at primary staging — shields, breaching charges, 40mm launchers, gas and the rest of the vehicle kit can now be drawn.`, 'pager'); S.events.push({ type: 'pager' }); return true; }
+function bcArrive(p, quiet) { S.bcPend = (S.bcPend || []).filter(x => x !== p); const c = p.unit, X = S.ext, home = p.zone === 's' ? X.staging2 : X.staging;
+  if (carClash(c.x, c.y, c.uid) || S.block[idx(c.x, c.y)]) { const sp = bcSpot(home.x, home.y, c.uid); if (sp) { c.x = sp[0]; c.y = sp[1]; } }
+  S.units.push(c); rebuildDyn();
+  if (p.zone === 's') { S.armory2 = S.armory2 || emptyPool(); addKit(S.armory2, BC_KIT); } else addKit(S.armory, BC_KIT);
+  S.version++; if (!quiet) { log(`PAGER: ${c.name} on scene at ${p.zone === 's' ? 'secondary' : 'primary'} staging — its driver stays with it (room for 11 in the back). Added to that staging: 1 Level III shield, 4 flashbangs, 1 single-shot 40mm LL launcher, 1 medkit, 1 gas bag, 6 CS canisters, ram, halligan, 2 breaching charges.`, 'pager'); S.events.push({ type: 'pager' }); }
+  return c; }
+/** Compatibility (v20 tests / debug): bring every BearCat still on the way in now; returns the primary one. */
+function bcArriveNow() { if (S.bcPending) { S.bcPend = (S.bcPend || []).concat([{ unit: S.bcPending.unit, turn: 0, zone: 'p' }]); S.bcPending = null; }
+  for (const p of (S.bcPend || []).slice()) bcArrive(p); return bearcats().find(c => c.bcZone !== 's') || bearcat(); }
+function endTurn() { endTurnBase(); if (S.phase === 'over') return;
+  if (S.bcPending && S.turn >= S.bcPending.turn) bcArriveNow(); // pre-v23 save
+  for (const p of (S.bcPend || []).slice()) if (S.turn >= p.turn) bcArrive(p);
+  if (S.eqVeh && !S.eqVeh.here && S.turn >= S.eqVeh.turn) eqArriveNow(); }
+function poolAt(x, y) { return poolZone(x, y) === 's' ? S.armory2 : S.armory; }
+/* ---- v23 A8: one launcher load shared by impact and 40mm CS rounds. Single-shot reloads after every shot, the 4-shot multilauncher after 4. ---- */
+function llLeft(inv) { return (inv.ll || 0) + (inv.vest && inv.vest.cs40 || 0); }
+function llShot(o) { const inv = invOf(o), mag = llMagOf(inv); if (inv.llLoad == null) inv.llLoad = Math.min(mag, llLeft(inv) + 1);
+  inv.llLoad = Math.max(0, inv.llLoad - 1); inv.llTurn = S.turn;
+  if (inv.llLoad <= 0 && llLeft(inv) > 0) { inv.llLoad = Math.min(mag, llLeft(inv)); inv.reloadT = S.phase === 'planning' ? S.turn : S.turn + 1; log(`${o.name}: reloading the ${mag === 1 ? 'single-shot 40mm LL launcher' : '4-shot 40mm multilauncher'} — takes a full turn.`, 'radio'); } }
+function llSpend(o) { const inv = invOf(o); if (inv.llLoad == null) inv.llLoad = Math.min(llMagOf(inv), llLeft(inv)); inv.ll = Math.max(0, (inv.ll || 0) - 1); llShot(o); }
+function llName(o) { const k = llKind(o); return k === 'single' ? 'single-shot 40mm LL launcher' : k === 'multi' ? '4-shot 40mm multilauncher' : ''; }
+/** Launcher status line for the UI: rounds, load and reload state. */
+function llState(o) { const k = llKind(o); if (!k) return null; const inv = invOf(o), mag = llMagOf(inv), load = inv.llLoad == null ? Math.min(mag, llLeft(inv)) : inv.llLoad;
+  return { kind: k, name: llName(o), mag, load, impact: inv.ll || 0, cs: inv.vest.cs40 || 0, reloading: inv.reloadT >= S.turn, firedThisTurn: inv.llTurn === S.turn }; }
+
+/** v23: hands text names the actual 40mm launcher (single-shot vs 4-shot). */
+function handsText(o) { const h = invOf(o).hands, nm = x => x === 'lesslethal' && llKind(o) ? llName(o) : itemShort(x); if (h[0] && h[0] === h[1]) return nm(h[0]) + ' (both hands)'; return h.map(x => x ? nm(x) : 'free').join(' + '); }
+
+/* ===================== v23 PART B — scenario text + hidden modifiers ===================== */
+function gunWordOf(w) { return { handgun: 'a handgun', rifle: 'a rifle', shotgun: 'a shotgun' }[w] || null; }
+/** B7: why police are involved in a crisis call — told by the caller (or by him), never as a legal line. */
+function mentalHook(k, sp, self) { const g = gunWordOf(sp && sp.weapon);
+  if (k === 'discharge') return self ? ' I already fired one in here.' : ' He fired a gun inside the house a few minutes ago.';
+  if (k === 'warrant') return self ? " And I'm not going to jail." : " There's a warrant out for him — he says he's not going back.";
+  if (k === 'menacing') return self ? ` My brother left. I made him leave.` : g ? ` He pointed ${g} at his brother and told him to get out.` : ' He waved a kitchen knife at his brother and told him to get out.';
+  return ''; }
+const MENTAL_KNOWN = { discharge: 'Reported before patrol arrived: he fired a round inside the house.', warrant: 'He has an outstanding warrant and has said he will not go back to jail.', menacing: 'Reported before patrol arrived: he threatened a family member with a weapon.' };
+/** B6 criminal history (shown) + B1/B6 hidden modifiers (never shown). Runs once at mission start. */
+function v23Brief() { const B = S.brief; if (!B) return; const ST = (S.stype && S.stype.key) || 'barricade', r = makeRng(S.seed * 6151 + 29);
+  const H = crimHistory(r, ST); B.history = H;
+  const line = H.length ? 'Record on file: ' + H.map((h, i) => i ? h.text.charAt(0).toLowerCase() + h.text.slice(1) : h.text).join('; ') + '.' : 'No criminal history on file.';
+  B.known = B.known || []; B.known.splice(Object.values(LEGAL_TXT).includes(B.known[0]) ? 1 : 0, 0, line);
+  if (ST === 'mental' && MENTAL_KNOWN[S.stype.legal]) B.known.splice(1, 0, MENTAL_KNOWN[S.stype.legal]);
+  const C = HID_CFG, score = H.reduce((a, h) => a + h.sev, 0), down = !!(S.scene && S.scene.injury);
+  S.hid = { score, down, fire: (1 + Math.min(C.fireCap, score * C.sevFire)) * (down ? C.downFire : 1), nego: down ? C.downNego : 1, agit: Math.round(Math.min(C.agitCap, score * C.sevAgit) + (down ? C.downAgit : 0)) };
+  (S.suspects && S.suspects.length ? S.suspects : [S.suspect]).forEach(s => { if (s) s.agit = clamp((s.agit || 0) + S.hid.agit, 0, 100); });
+}
+/** Scenario config with the hidden modifiers folded in (fire attempts, negotiation gain). Old states without S.hid are unchanged. */
+function stypeCfg() { const T = SCEN_TYPES[(S.stype && S.stype.key) || 'barricade'], h = S.hid; if (!h || (h.fire === 1 && h.nego === 1)) return T;
+  return Object.assign({}, T, { fireMul: (T.fireMul || 1) * h.fire, negoMul: (T.negoMul || 1) * h.nego }); }
+/** B7: a crisis subject in custody still gets the EMS evaluation (noted in the result). */
+const checkEnd23 = checkEnd;
+checkEnd = function () { const was = S.phase; checkEnd23(); if (was !== 'over' && S.phase === 'over' && S.result && S.result.win && S.stype && S.stype.key === 'mental')
+  S.result.text += S.intel.emsEval ? ' EMS: the crisis team evaluates him at the EMS point before transport.' : ' EMS: he will get a mental-health evaluation after booking (no crisis team was staged).'; };
 /* ---------- team management (planning phase only) ---------- */
 const nearStaging = (x, y) => atEquipment(x, y);
 function stagePos(stage) { return stage === 'secondary' && S.ext.staging2 ? S.ext.staging2 : S.ext.staging; }
@@ -5068,7 +5307,7 @@ function formTeam(ids, opts) {
   for (const k in EQUIP) t.equip[k] = 0;
   S.units.push(t); ids.forEach(id => assign(id, t.uid));
   t.point = t.members[0] || null; t.defense = t.members[1] || null;
-  if (stage === 'primary' && opts.kit !== false) defaultKit(t); else syncEquip(t);
+  if ((stage === 'primary' || (stage === 'secondary' && S.armory2)) && opts.kit !== false) defaultKit(t); else syncEquip(t);
   log(`${t.name} team formed (${t.members.length} officers) at ${stage === 'primary' ? 'primary staging (equipment vehicle)' : 'secondary staging (on foot — personal gear only)'}. Point: ${off(t.members[0]).name}${t.defense ? ', defense: ' + off(t.defense).name : ''}.`, 'system'); S.version++; return { ok: true, team: t };
 }
 /** Re-order a team's stack: ids is the new member order (point first, then his defense man, then the rest). */
@@ -5098,7 +5337,8 @@ function equip(teamUid, item, delta) {
   const pref = m.slice().sort((a, b) => (c.spec ? (b.spec === c.spec) - (a.spec === c.spec) : 0) + (c.qual ? ((b.quals || []).includes(c.qual) - (a.quals || []).includes(c.qual)) : 0) || freeHands(b) - freeHands(a));
   for (const o of pref) { last = invAct(o.id, 'draw', item); if (last.ok) return Object.assign({ by: o.id }, last); } return last;
 }
-function renameTeam(uid, name) { const t = unit(uid); if (t && name && name.trim()) { t.name = name.trim().slice(0, 18); S.version++; } }
+function renameTeam(uid, name) { const t = unit(uid); if (!t || t.kind !== 'team') return { ok: false }; const nm = String(name || '').replace(/[<>]/g, '').trim().slice(0, 18); if (!nm || nm === t.name) return { ok: true, renamed: false, name: t.name };
+  const old = t.name; t.name = nm; log(`Team renamed: ${old} → ${nm}.`, 'system'); S.version++; return { ok: true, renamed: true, name: nm }; }
 
 /* ---------- derived info for HUD ---------- */
 function intelInfo() {
@@ -5123,7 +5363,7 @@ function newGame(seed, opts) {
       room: new Int16Array(N).fill(-1), block: new Uint8Array(N), vis: new Uint8Array(N), opaque: new Uint8Array(N), cov: new Uint8Array(N), covLbl: new Uint8Array(N), paved: new Uint8Array(N),
       dyn: new Uint8Array(N), gas: new Float32Array(N), gasSeen: new Float32Array(N), gasActive: false, gasEver: false, wind: [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }][((seed * 2654435761) >>> 0) % 4], drive: null, expo: null, edges: new Map(), peek: [], units: [], contain: [], perches: [],
       intel: { interview: false, blueprint: 0, flybyReady: 0, floors: false, threat: 0, located: false, weapon: false }, cmd: null, stats: { down: 0, breaches: 0, shots: 0, ofShots: 0, method: '', kia: 0, lost: 0, evac: 0 }, downList: [], cas: [], casSeq: 0, surrSpot: null,
-      opName: 'OPERATION ' + OPS[seed % OPS.length], opts: opts || {}, encOn: opts && opts.encounters !== undefined ? !!opts.encounters : ENC_CFG.enabled };
+      opName: '', /* v23: operation names removed (key kept for old saves) */ opts: opts || {}, encOn: opts && opts.encounters !== undefined ? !!opts.encounters : ENC_CFG.enabled };
     genGeo(r);
     genHouse(r, S.geo.target, S.geo.SW - r.int(7, 9));
     const he = validateHouse(); if (he.length) { S.genErrors = he; continue; }
@@ -5141,20 +5381,20 @@ function newGame(seed, opts) {
   S.stype = typeForSeed(seed, S.opts.stype); applyScenType();
   setupSuspects(); applyTypeExtras(); setupLocks();
   S.bigAvail = !(S.opts && S.opts.gear && S.opts.gear.robot === 0); // v18: no Large Robot before the unit has robots. setupSuspects tags the suspect; 'flee' calls may add more (1-4); armor per suspect
-  setupStaging2(); S.ems = defaultEMS(); initNego(seed); makeBrief(); v22Brief();
+  setupStaging2(); v23Vehicles(); S.ems = defaultEMS(); initNego(seed); makeBrief(); v22Brief(); v23Brief();
   updateVision();
-  log(`${S.opName} — seed ${seed}. ${S.house.archName}, ${S.geo.name}.`, 'system');
+  log(`Seed ${seed}. ${S.house.archName}, ${S.geo.name}.`, 'system');
   const B = S.brief; log(`Dispatch ${B.time}: ${B.type} at ${B.addr}. ${B.shots ? 'Shots fired. ' : ''}${S.stype.key === 'drughouse' ? `Narcotics unit requests SWAT — fortified house, ${S.brief.report && S.brief.report.kind === 'atleast' ? 'at least two suspects' : S.brief.report ? S.brief.report.text : 'several suspects'} inside.` : S.stype.key === 'inmates' ? `Escaped inmate${S.brief.report && (S.brief.report.n > 1 || S.brief.report.kind === 'atleast') ? 's' : ''} forced into an occupied house — the family got out.` : S.stype.key === 'flee' ? (S.brief.report && S.brief.report.kind === 'atleast' ? 'At least one suspect — possibly more — fled from patrol into a vacant house.' : S.brief.report && S.brief.report.n > 1 ? `${S.brief.report.n} suspects fled from patrol into a vacant house.` : 'Suspect fled from patrol into a vacant house.') : S.stype.key === 'mental' ? 'Adult male in crisis, armed, alone inside.' : 'Adult male barricaded inside.'} Patrol cruisers blocking traffic at both ends of the block.`, 'alert');
   if (S.scene.injury) { const c = casById(S.scene.injury.cas), mate = S.units.find(u => u.kind === 'patrol' && u.status === 'ok' && !u.inCar);
     log(c.state === 'kia' ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit in the front yard — he's not moving. We can't get to him!"` : c.state === 'mobile' ? `${c.name}: "I'm hit — I can move. I'm in the open out front, need cover!"` : c.sev === 3 ? `${mate ? mate.name : 'Patrol'}: "OFFICER DOWN! ${c.name} is hit out front, his condition is critical — we need help NOW!"` : `${c.name}: "I'm hit — I can't move. Front yard. Somebody get me out of here!"`, 'bad'); }
   log('SWAT team paged. Set containment from cover while the team responds.', 'system');
-  const A = initialArrivals(); S.brief.arrival = A;
+  const A = initialArrivals(); S.brief.arrival = A; v23Equip();
   if (A) log(A.mode === 'all' ? `SWAT: FULL TEAM ON SCENE — ${A.why}` : `SWAT: ${A.count} of ${A.of} on scene at staging — ${A.why}${A.count < A.of ? ' The rest are paged and en route.' : ''}`, A.mode === 'all' ? 'good' : 'system');
   S.officers.forEach(o => log(o.status === 'staged' ? `PAGER: ${o.name} (${SPECS[o.spec].name}${o.quals.length ? ', ' + o.quals.map(q => QUALS[q].name).join(', ') : ''}) ON SCENE at staging.` : `PAGER: ${o.name} (${SPECS[o.spec].name}${o.quals.length ? ', ' + o.quals.map(q => QUALS[q].name).join(', ') : ''}) en route — ETA ${tMin(o.eta)}.`, 'pager'));
   return S;
 }
 
-return { V22, behScore, debrief, winCellSet, WP_CFG, wpLegs, wpBeyond, addWaypoint, clearPath, legTurns, pathInfo, BEH, BEH_CFG, behOf, behInfo, behLearn, behTick, behNoWin, behAmbushCell, behRoamTarget, NON_SLING, rifleZone, rifleHere, handGearOf, pcamStart, pcamTape, pcamTick, pcamsNear, hangCharge, hungOf, detonateWalls, unhangCharge, WALL_KIND, suspectCars, garageStalls, GARAGE_CFG, TRAILER_ROT, V20, V21, freeable, inb, teamOkV21: teamOk, seeE, countOf, invOf, holds, rifleLeaver, rifleBurden, offSkill, polecamHands, dropList, wallSpotsFor, wallCharge, portsNear, portFire, camTargets, camHitP, shootCam, deviceHitP, k9Of, dogTargets, dogSend, sniffDoors, dogSniff, v21Actions, v21Do, encReactText, END_OPT, confText, formGap, wallSpots, FIRE_RATE, autoAcc, fireRate, shotsLeft, shotsUsed, bcSchedule, bcArriveNow, dracoTipOf, dracoTipInfo, dracoTipAct, dracoMinutes, dracoRate, TEAM_NAMES, dropItem, droppedNear, pickUp, throwPicks, prepThrower, bullhornUsable, voiceCallout, calloutMode, encFair, encViaWindow, encFollow, injWhere, injText, hitMessage, offTag, handsText, offRole, offSpecs, itemShort, WIN_OPTS, watchPts, carries, holds, canThrowFrom, SPEC2_MUL, GAS19, CS40_CFG, LL19, HELMETS, HELMET_CFG, TAKE_HOME, SPEC_KIT, gearHave, bestArmor, bestHelmet, helmetOf, takeHomeList, llMagOf, llOk, llSpend, upgradeLL, llKind, fetchSecondary, issueView, setupSpecs19, gasThrowAmt, helmetStops, gasAdd, isSpec, specMul, teamSpecMul, invActBase, GAME_VERSION, DEV_CFG, SIDE_CFG, SIDE_KEYS, devLabel, devDrain, sideSeen, houseSideAt, bigRobotWhyNot, bigRobotOperator, deployBigRobot, parkBigRobot, contactEffort, setupLocks, cornerAt, encSliceSees, doorSides, spHostile, dracoSpots, dracoContact, dracoFit, dracoSpotAt, openingNormal, ENC_CFG, ENC_TRAITS, ENC_POSES, ENC_OPTS, BLIND_OPTS, encOn, encWord, mindOf, encSeers, encPose, encRead, encDescribe, encWho, encOdds, encOptions, encBuild, encPause, encEndTurn, encCur, encChoose, encNext, encFinal, encExchange, encFirstP, encMarkDev, encJustified, encThreshold, blindChoose, encScore, encDebrief, encWithdraw, spAt, DRUG_CFG, INMATE_CFG, DUPLEX_CFG, TRAILER_CFG, DOOR_MUL, doorMul, exitWin, roomInPlay, camSees, camTurn, duplexTurn, partyBreach, thinWallTurn, types3Turn, cmdShown, structFor, STRUCT_CFG, STRUCT_KEYS, ownRooms, isOwnRoom, MULTI_TYPES, multiType, PAROLE_CFG, SOVCIT_CFG, BASE_KEYS, hiddenNow, applyTypeExtras, NEGO_FLAVOR, SCEN_TYPES, SCEN_KEYS, typeForSeed, stypeCfg, resolvedNoForce, onNeighborSide, typeFireMul, LEGAL_TXT, typeDebrief, SHOOT_CFG, MAX_RETURN_FIRE, returnFirers, returnFire, memberWeapon, primaryOf, suspectTick, suspectFire, TASER_CFG, doorExposed, FORM_CFG, wallSpots, doorStack, pickVictim, LL_CFG, DEVICE_ORDERS, deviceUser, deviceWhyNot, deviceShotReq, deviceChance, ARMOR, ARMOR_CFG, SHIELDS, SHIELD_CFG, SUSPECT_CAL, armorOf, shieldOf, armorHit, shotOfficer, suspectArmorStops, hasShield, teamArmor, revealSuspectArmor, officerDown, suspectHit, fireAt, DRACO_CFG, bearcat, installTicks, dracoTick, passE, edge, dracoTargetReq, openingMid,
+return { V23, makeRng, SUS_FIRST, SUS_LAST, CALLER_F, STREET_WORDS, CRIM, CRIM_COUNT, HID_CFG, crimHistory, streetName, mentalHook, v23Brief, usableCount, llState, llName, llShot, poolAt, bearcats, bearcatFor, eqArriveNow, eqHere, BC_KIT, poolZone, EQV_CFG, wallsNear, wallReach, wallAtTap, wallDesc, hangWallTap, hangwallGoal, hangCan, V22, behScore, debrief, winCellSet, WP_CFG, wpLegs, wpBeyond, addWaypoint, clearPath, legTurns, pathInfo, BEH, BEH_CFG, behOf, behInfo, behLearn, behTick, behNoWin, behAmbushCell, behRoamTarget, NON_SLING, rifleZone, rifleHere, handGearOf, pcamStart, pcamTape, pcamTick, pcamsNear, hangCharge, hungOf, detonateWalls, unhangCharge, WALL_KIND, suspectCars, garageStalls, GARAGE_CFG, TRAILER_ROT, V20, V21, freeable, inb, teamOkV21: teamOk, seeE, countOf, invOf, holds, rifleLeaver, rifleBurden, offSkill, polecamHands, dropList, wallSpotsFor, wallCharge, portsNear, portFire, camTargets, camHitP, shootCam, deviceHitP, k9Of, dogTargets, dogSend, sniffDoors, dogSniff, v21Actions, v21Do, encReactText, END_OPT, confText, formGap, wallSpots, FIRE_RATE, autoAcc, fireRate, shotsLeft, shotsUsed, bcSchedule, bcArriveNow, dracoTipOf, dracoTipInfo, dracoTipAct, dracoMinutes, dracoRate, TEAM_NAMES, dropItem, droppedNear, pickUp, throwPicks, prepThrower, bullhornUsable, voiceCallout, calloutMode, encFair, encViaWindow, encFollow, injWhere, injText, hitMessage, offTag, handsText, offRole, offSpecs, itemShort, WIN_OPTS, watchPts, carries, holds, canThrowFrom, SPEC2_MUL, GAS19, CS40_CFG, LL19, HELMETS, HELMET_CFG, TAKE_HOME, SPEC_KIT, gearHave, bestArmor, bestHelmet, helmetOf, takeHomeList, llMagOf, llOk, llSpend, upgradeLL, llKind, fetchSecondary, issueView, setupSpecs19, gasThrowAmt, helmetStops, gasAdd, isSpec, specMul, teamSpecMul, invActBase, GAME_VERSION, DEV_CFG, SIDE_CFG, SIDE_KEYS, devLabel, devDrain, sideSeen, houseSideAt, bigRobotWhyNot, bigRobotOperator, deployBigRobot, parkBigRobot, contactEffort, setupLocks, cornerAt, encSliceSees, doorSides, spHostile, dracoSpots, dracoContact, dracoFit, dracoSpotAt, openingNormal, ENC_CFG, ENC_TRAITS, ENC_POSES, ENC_OPTS, BLIND_OPTS, encOn, encWord, mindOf, encSeers, encPose, encRead, encDescribe, encWho, encOdds, encOptions, encBuild, encPause, encEndTurn, encCur, encChoose, encNext, encFinal, encExchange, encFirstP, encMarkDev, encJustified, encThreshold, blindChoose, encScore, encDebrief, encWithdraw, spAt, DRUG_CFG, INMATE_CFG, DUPLEX_CFG, TRAILER_CFG, DOOR_MUL, doorMul, exitWin, roomInPlay, camSees, camTurn, duplexTurn, partyBreach, thinWallTurn, types3Turn, cmdShown, structFor, STRUCT_CFG, STRUCT_KEYS, ownRooms, isOwnRoom, MULTI_TYPES, multiType, PAROLE_CFG, SOVCIT_CFG, BASE_KEYS, hiddenNow, applyTypeExtras, NEGO_FLAVOR, SCEN_TYPES, SCEN_KEYS, typeForSeed, stypeCfg, resolvedNoForce, onNeighborSide, typeFireMul, LEGAL_TXT, typeDebrief, SHOOT_CFG, MAX_RETURN_FIRE, returnFirers, returnFire, memberWeapon, primaryOf, suspectTick, suspectFire, TASER_CFG, doorExposed, FORM_CFG, wallSpots, doorStack, pickVictim, LL_CFG, DEVICE_ORDERS, deviceUser, deviceWhyNot, deviceShotReq, deviceChance, ARMOR, ARMOR_CFG, SHIELDS, SHIELD_CFG, SUSPECT_CAL, armorOf, shieldOf, armorHit, shotOfficer, suspectArmorStops, hasShield, teamArmor, revealSuspectArmor, officerDown, suspectHit, fireAt, DRACO_CFG, bearcat, installTicks, dracoTick, passE, edge, dracoTargetReq, openingMid,
   REAR_CFG, REAR_OFF, reach, newGame, get state() { return S; }, MULTI_CFG, suspList, multiSp, spName, spState, suspectCountInfo, fleeCount, patrolReport, suspById, withSp, eachSp, spHostile, spActive, setLead, MAP_W, MAP_H, TICKS, LOSE_DOWN, SCORE, withdraw, forceLeft, updateVision, computeVis, checkEnd, EQUIP, SPECS, QUALS, WEAPONS, SUSPECT_WEAPONS, STANCES, COVER_NAMES, COMMANDS, idx, roomAt, edge, los, losEx, findPath, planFor, queueOrder, undoOrder, clearOrders, AFTER_CFG, AFTER_ORDERS, setAfter, afterOrders, afterRoom, regroupSpot, regroupForm, startRegroup, roomDoorCells, addrLabels, ADDR_CFG, neighbourAddr,
   setCommand, execute, stepTick, formTeam, assign, equip, renameTeam, intelInfo, unit, off, teamOk, hasSpec, teamSkill, nearStaging, orderReq, setStance, BREACH, CHARGE_SAFE, breachEst, breachMethods, breachCan, defaultMethod, doorMid, gasAt, gasTurn, gasDeploy, gasCond, gasExpose, suspectGas, suspectGasTurn, masked, impairAcc, impairVis, donMasks, detonateCharge, dist, hitChance, coverInfo, expoAt, computeExpo,
   validateHouse, patrolStartOk, patrolCoverKind, suspSees, houseRectDist, onProperty, suspEyePts, vehId, vehDist, vehNear, VEH_CFG, PATROL_CFG, GEO_CFG, downedSpot, losEx, sceneTurn, validateWorld, footprint, carAxis, houseSideOf, exitCell, spotterOf, perchAt, owCone, weaponOf, onFoot, skillOf, houseCenter, carAt, snapCover, shieldAt, validateContain, COVER_CFG, exposedOrders, ITEM_CFG, INV_CFG, invAct, invView, invOf, isReady, teamWeapon, syncEquip, setTeamOrder, atEquipment, stagePos, CAR_SEATS, carSeats, seatsUsed, TURN_SEC, missionScore, careerSummary, ACT_XP, xpAct, xpSummary, callState, preview, cornerAt, cornerAvail, CORNER_CFG, FIRE_CFG, fireImpair, formationFor, FORM_CFG, initialArrivals, ARRIVE_CFG, mmss, tDur, tMin, clockAt, elapsedAt, sideWatch, watchAt, houseSides, statusCheck, review911, roadblockHeld, withVirtualCar, SCENE_CFG, VARIANT_TXT, setupScene, sceneDebrief, T_HIT, T_TRY,

@@ -218,7 +218,7 @@ function genHouse(r, lot, frontY) {
   S.house = { arch, archName: ARCH[arch], parts: P, garage: garage ? { x: garage.x, y: garage.y, w: garage.w, h: garage.h } : null, detached, side,
     x0: ox, x1: ox + FW - 1, y0: oy, y1: oy + FH - 1, oy, H: FH, TW: FW, rot: rot || undefined };
   S.house.main = P[0]; S.house.struct = struct;
-  if (struct === 'trailer') { S.house.trailer = arch; S.house.thin = true; S.house.park = sr.chance(STRUCT_CFG.park); }
+  if (struct === 'trailer') { S.house.trailer = arch; S.house.thin = true; sr.chance(STRUCT_CFG.park); S.house.park = true; } // v23: neighbours either side are always mobile homes
   if (struct === 'duplex') S.house.duplex = { partyX: ox + WA, aSide: side, bRooms: R.filter(q => q.unitB).map(q => q.id) }; // party wall between x = partyX-1 and partyX
 }
 /** v13: rooms of the suspect's own dwelling (a duplex's unit B is a separate home) */

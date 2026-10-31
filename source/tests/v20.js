@@ -86,13 +86,13 @@ ok(!/[Tt]akes? home|[Tt]ake-home (gear|kit)|<b>Take-home/.test(html.replace(/\/\
 
 // --- 13: BearCat ---
 { let turns = [], placed = 0, drv = 0;
-  for (let s = 1; s <= 12; s++) { const S = Core.newGame(s, { armored: true }); ok(!Core.bearcat() && S.bcPending && S.bcPending.turn >= 1, 'BearCat not on scene at the start s' + s);
-    turns.push(S.bcPending.turn); const c = Core.bcArriveNow(); if (c && Math.hypot(c.x - S.ext.staging.x, c.y - S.ext.staging.y) <= 12) placed++; if (c && c.bcDriver) drv++;
+  for (let s = 1; s <= 12; s++) { const S = Core.newGame(s, { armored: true }); const P1 = (S.bcPend || []).find(p => p.zone === 'p'); ok(!Core.bearcat() && P1 && P1.turn >= 1, 'BearCat not on scene at the start s' + s); // v23: two BearCats (S.bcPend)
+    turns.push(P1 ? P1.turn : -1); const c = Core.bcArriveNow(); if (c && Math.hypot(c.x - S.ext.staging.x, c.y - S.ext.staging.y) <= 12) placed++; if (c && c.bcDriver) drv++;
     ok(S.officers.every(o => o.spec !== 'driver' && o.spec2 !== 'driver'), 'no driver specialty on the roster s' + s); }
   ok(new Set(turns).size > 1, 'random arrival turn (' + turns.join(',') + ')'); ok(placed === 12, 'arrives next to primary staging'); ok(drv === 12, 'its own BearCat driver');
   ok(Core.carSeats(Core.bearcat()) === 11, 'BearCat carries 11 in the back'); }
-{ const S = Core.newGame(3, { armored: true }); const T = S.bcPending.turn; let g = 0; while (S.bcPending && g++ < 30 && S.phase !== 'over') { Core.execute(); let q = 0; while (Core.state.phase === 'executing' && !Core.stepTick() && q++ < 300); if (Core.state.phase === 'encounter') break; }
-  ok(!S.bcPending && Core.bearcat() && S.turn >= T, 'BearCat rolls in on its turn (' + T + ')'); }
+{ const S = Core.newGame(3, { armored: true }); const P1 = () => (S.bcPend || []).find(p => p.zone === 'p'); const T = P1().turn; let g = 0; while (P1() && g++ < 30 && S.phase !== 'over') { Core.execute(); let q = 0; while (Core.state.phase === 'executing' && !Core.stepTick() && q++ < 300); if (Core.state.phase === 'encounter') break; }
+  ok(!P1() && Core.bearcat() && S.turn >= T, 'BearCat rolls in on its turn (' + T + ')'); }
 
 // --- 14 / 15: Draco ---
 ok([1, 2, 3, 4, 5, 6].map(Core.dracoMinutes).join() === '5,3,2,1.5,1.25,1' && Core.dracoMinutes(7) <= 1 && Core.dracoMinutes(10) <= 1, 'Draco install minutes 5/3/2/1.5/1.25/1, ≤1 for 7+');
